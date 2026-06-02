@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # LMS Platform
 
 Production-grade Learning Management System built with **Next.js 14**, **TypeScript**, **NeonDB (PostgreSQL)**, **Drizzle ORM**, **NextAuth.js v5**, **Tailwind CSS**, and **shadcn/ui**.
@@ -117,3 +118,6 @@ When Razorpay is not configured, the system runs in **mock mode** — payments a
 - Recharts
 - Resend + Razorpay
 - Tailwind CSS + shadcn/ui
+=======
+# lmsclasses
+>>>>>>> 42222c322efe267c1b2973b42793143089688d6d
