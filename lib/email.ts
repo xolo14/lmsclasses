@@ -1,9 +1,23 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const fromEmail = process.env.RESEND_FROM_EMAIL || "LMS Platform <onboarding@resend.dev>";
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 const appName = process.env.NEXT_PUBLIC_APP_NAME || "LMS Platform";
+
+async function sendEmail(payload: { to: string; subject: string; html: string }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.log("[Email] Mock send:", { to: payload.to, subject: payload.subject });
+    return;
+  }
+  const resend = new Resend(apiKey);
+  await resend.emails.send({
+    from: fromEmail,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.html,
+  });
+}
 
 export async function sendStudentWelcomeEmail({
   email,
@@ -18,13 +32,7 @@ export async function sendStudentWelcomeEmail({
   password: string;
   courseName: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[Email] Student welcome (mock):", { email, lmsId, password });
-    return;
-  }
-
-  await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: email,
     subject: `Welcome to ${appName} — Your Login Details`,
     html: `
@@ -58,13 +66,7 @@ export async function sendMentorLiveClassEmail({
   scheduledAt: string;
   meetingLink?: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[Email] Mentor live class (mock):", { email, title });
-    return;
-  }
-
-  await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: email,
     subject: `New Live Class Assigned: ${title}`,
     html: `
@@ -92,13 +94,7 @@ export async function sendOrgAdminWelcomeEmail({
   orgName: string;
   password: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[Email] Org admin welcome (mock):", { email, password });
-    return;
-  }
-
-  await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: email,
     subject: `Welcome to ${appName} — Organisation Admin Account`,
     html: `
@@ -121,12 +117,7 @@ export async function sendHrOtpEmail({
   email: string;
   otp: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[Email] HR OTP (mock):", { email, otp });
-    return;
-  }
-  await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: email,
     subject: `Your ${appName} HR verification OTP`,
     html: `
@@ -147,12 +138,7 @@ export async function sendHrWelcomeEmail({
   hrName: string;
   companyName: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[Email] HR welcome (mock):", { email, companyName });
-    return;
-  }
-  await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: email,
     subject: "HR Account Successfully Created",
     html: `
@@ -174,12 +160,7 @@ export async function sendJobPostedEmail({
   jobTitle: string;
   companyName: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[Email] Job posted (mock):", { email, jobTitle });
-    return;
-  }
-  await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: email,
     subject: "Job Posted Successfully",
     html: `
@@ -201,12 +182,7 @@ export async function sendNewApplicationEmail({
   jobTitle: string;
   applicantName: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[Email] New application (mock):", { email, jobTitle, applicantName });
-    return;
-  }
-  await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: email,
     subject: "New Application Received",
     html: `
@@ -226,12 +202,7 @@ export async function sendApplicationShortlistedEmail({
   applicantName: string;
   jobTitle: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[Email] Application shortlisted (mock):", { email, jobTitle });
-    return;
-  }
-  await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: email,
     subject: "Application Shortlisted",
     html: `
@@ -251,12 +222,7 @@ export async function sendApplicationRejectedEmail({
   applicantName: string;
   jobTitle: string;
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[Email] Application rejected (mock):", { email, jobTitle });
-    return;
-  }
-  await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: email,
     subject: "Application Update",
     html: `
