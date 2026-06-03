@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { courses, payments, slots } from "@/lib/db/schema";
+import { courses, payments } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
-import { logAction, getClientIp } from "@/lib/audit";
 import { buySlotsSchema } from "@/lib/validations";
-import { getRazorpayInstance } from "@/lib/razorpay";
+import { getRazorpayInstance, isRazorpayConfigured } from "@/lib/razorpay";
+
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const { error, session } = await requireAuth(["org_admin"]);
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
 
   const razorpay = getRazorpayInstance();
 
-  if (!razorpay) {
+  if (!razorpay || !isRazorpayConfigured()) {
     return NextResponse.json({
       paymentId: payment.id,
       amount,
@@ -51,22 +52,29 @@ export async function POST(request: Request) {
     });
   }
 
-  const order = await razorpay.orders.create({
-    amount: Math.round(amount * 100),
-    currency: "INR",
-    receipt: payment.id,
-  });
+  try {
+    const order = await razorpay.orders.create({
+      amount: Math.round(amount * 100),
+      currency: "INR",
+      receipt: payment.id,
+    });
 
-  await db
-    .update(payments)
-    .set({ razorpayOrderId: order.id })
-    .where(eq(payments.id, payment.id));
+    await db
+      .update(payments)
+      .set({ razorpayOrderId: order.id })
+      .where(eq(payments.id, payment.id));
 
-  return NextResponse.json({
-    paymentId: payment.id,
-    orderId: order.id,
-    amount,
-    currency: "INR",
-    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-  });
+    return NextResponse.json({
+      paymentId: payment.id,
+      orderId: order.id,
+      amount,
+      currency: "INR",
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+    });
+  } catch (err) {
+    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, payment.id));
+    console.error("[payments/create-order]", err);
+    const message = err instanceof Error ? err.message : "Failed to create Razorpay order";
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
 }

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { isNull, sql } from "drizzle-orm";
 import { useSecureCookies } from "@/lib/auth.config";
+import { isRazorpayConfigured } from "@/lib/razorpay";
 
 export const runtime = "nodejs";
 
@@ -33,6 +34,12 @@ export async function GET() {
       url: authUrl,
       trustHost: true,
       useSecureCookies,
+    },
+    razorpay: {
+      configured: isRazorpayConfigured(),
+      keyIdSet: !!process.env.RAZORPAY_KEY_ID,
+      keySecretSet: !!process.env.RAZORPAY_KEY_SECRET,
+      publicKeySet: !!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
     },
   });
 }

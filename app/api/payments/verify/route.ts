@@ -6,6 +6,8 @@ import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { verifyRazorpaySignature } from "@/lib/razorpay";
 
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   const { error, session } = await requireAuth(["org_admin"]);
   if (error) return error;
@@ -25,6 +27,10 @@ export async function POST(request: Request) {
 
   if (payment.organisationId !== session!.user.organisationId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  if (payment.status === "success") {
+    return NextResponse.json({ success: true, alreadyProcessed: true });
   }
 
   if (!mock) {

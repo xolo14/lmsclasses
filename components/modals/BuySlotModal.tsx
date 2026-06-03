@@ -23,7 +23,10 @@ interface BuySlotModalProps {
 
 declare global {
   interface Window {
-    Razorpay: new (options: Record<string, unknown>) => { open: () => void };
+    Razorpay: new (options: Record<string, unknown>) => {
+      open: () => void;
+      on: (event: string, handler: (response: { error?: { description?: string } }) => void) => void;
+    };
   }
 }
 
@@ -31,13 +34,30 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
   const router = useRouter();
   const [slotsCount, setSlotsCount] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [showAssignPrompt, setShowAssignPrompt] = useState(false);
 
   const unitPrice = parseFloat(course.price);
   const total = unitPrice * slotsCount;
 
+  const completePurchase = async (paymentId: string, payload: Record<string, unknown>) => {
+    const verifyRes = await fetch("/api/payments/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paymentId, ...payload }),
+    });
+    const verifyData = await verifyRes.json();
+    if (!verifyRes.ok) {
+      throw new Error(verifyData.error || "Payment verification failed");
+    }
+    onOpenChange(false);
+    setShowAssignPrompt(true);
+    router.refresh();
+  };
+
   const handlePurchase = async () => {
     setLoading(true);
+    setError("");
     try {
       const res = await fetch("/api/payments/create-order", {
         method: "POST",
@@ -46,46 +66,51 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
       });
       const data = await res.json();
 
+      if (!res.ok) {
+        throw new Error(data.error || "Could not start payment");
+      }
+
       if (data.mock) {
-        await fetch("/api/payments/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paymentId: data.paymentId, mock: true }),
-        });
-        onOpenChange(false);
-        setShowAssignPrompt(true);
+        await completePurchase(data.paymentId, { mock: true });
         return;
+      }
+
+      if (!window.Razorpay) {
+        throw new Error("Razorpay checkout failed to load. Refresh the page and try again.");
       }
 
       const options = {
         key: data.key,
         amount: data.amount * 100,
         currency: data.currency,
-        name: "LMS Platform",
-        description: `${slotsCount} slots for ${course.title}`,
+        name: process.env.NEXT_PUBLIC_APP_NAME || "LMS Platform",
+        description: `${slotsCount} slot(s) for ${course.title}`,
         order_id: data.orderId,
+        theme: { color: "#06b6d4" },
         handler: async (response: {
           razorpay_order_id: string;
           razorpay_payment_id: string;
           razorpay_signature: string;
         }) => {
-          await fetch("/api/payments/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              paymentId: data.paymentId,
+          try {
+            await completePurchase(data.paymentId, {
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
-            }),
-          });
-          onOpenChange(false);
-          setShowAssignPrompt(true);
+            });
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Verification failed");
+          }
         },
       };
 
       const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", (response) => {
+        setError(response.error?.description || "Payment failed. Please try again.");
+      });
       rzp.open();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Payment failed");
     } finally {
       setLoading(false);
     }
@@ -97,6 +122,9 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Buy Slots — {course.title}</DialogTitle>
+            <DialogDescription>
+              Pay securely via Razorpay to purchase student enrollment slots.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -116,6 +144,7 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
                 Total: {formatCurrency(total)}
               </p>
             </div>
+            {error && <p className="text-sm text-destructive text-center">{error}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
