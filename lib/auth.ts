@@ -7,6 +7,8 @@ import { users, hrUsers } from "@/lib/db/schema";
 import type { Role } from "@/lib/db/schema";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Required on Hostinger/Vercel-style hosts so Auth.js trusts the public domain.
+  trustHost: true,
   providers: [
     Credentials({
       credentials: {
