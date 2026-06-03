@@ -1,7 +1,9 @@
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { authConfig } from "@/lib/auth.config";
 import { ROLE_ROUTES } from "@/lib/utils";
+
+const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
@@ -12,7 +14,9 @@ export default auth((req) => {
     (p) =>
       pathname === p ||
       pathname.startsWith("/api/auth") ||
-      pathname.startsWith("/api/hr/register")
+      pathname.startsWith("/api/hr/register") ||
+      pathname.startsWith("/api/health") ||
+      pathname.startsWith("/api/bootstrap")
   );
 
   if (isPublic) {

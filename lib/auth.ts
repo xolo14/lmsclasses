@@ -4,20 +4,10 @@ import bcrypt from "bcryptjs";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, hrUsers } from "@/lib/db/schema";
-import type { Role } from "@/lib/db/schema";
-
-const authBaseUrl =
-  process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "";
-// Secure cookies only when the configured URL is https (http://lmsclasses.com needs false).
-const useSecureCookies = authBaseUrl
-  ? authBaseUrl.startsWith("https://")
-  : false;
+import { authConfig } from "@/lib/auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // Required on Hostinger/Vercel-style hosts so Auth.js trusts the public domain.
-  trustHost: true,
-  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
-  useSecureCookies,
+  ...authConfig,
   providers: [
     Credentials({
       credentials: {
@@ -27,6 +17,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         try {
           if (!credentials?.email || !credentials?.password) return null;
+
+          if (!authConfig.secret) {
+            console.error("[auth] AUTH_SECRET / NEXTAUTH_SECRET is not set");
+            return null;
+          }
 
           const email = (credentials.email as string).trim().toLowerCase();
           const password = credentials.password as string;
@@ -38,11 +33,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             .limit(1);
 
           if (user && user.isActive !== false) {
-            if (!user.password.startsWith("$2")) {
-              console.error("[auth] User password is not bcrypt-hashed:", email);
+            const hash = user.password.trim();
+            if (!hash.startsWith("$2")) {
+              console.error("[auth] Password not bcrypt-hashed for:", email);
               return null;
             }
-            const isValid = await bcrypt.compare(password, user.password);
+            const isValid = await bcrypt.compare(password, hash);
             if (isValid) {
               return {
                 id: user.id,
@@ -54,6 +50,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 companyId: null,
               };
             }
+            console.error("[auth] Password mismatch for:", email);
+          } else if (user) {
+            console.error("[auth] User inactive or deleted:", email);
+          } else {
+            console.error("[auth] No user found:", email);
           }
 
           const [hr] = await db
@@ -62,7 +63,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             .where(eq(hrUsers.email, email))
             .limit(1);
           if (!hr || hr.isActive === false) return null;
-          const isHrValid = await bcrypt.compare(password, hr.passwordHash);
+
+          const hrHash = hr.passwordHash.trim();
+          const isHrValid = await bcrypt.compare(password, hrHash);
           if (!isHrValid) return null;
 
           return {
@@ -81,27 +84,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  session: { strategy: "jwt" },
-  pages: { signIn: "/login" },
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.role = user.role;
-        token.organisationId = user.organisationId;
-        token.lmsId = user.lmsId;
-        token.companyId = user.companyId;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.sub!;
-        session.user.role = token.role as Role;
-        session.user.organisationId = token.organisationId as string | null;
-        session.user.lmsId = token.lmsId as string | null;
-        session.user.companyId = token.companyId as string | null;
-      }
-      return session;
-    },
-  },
 });
