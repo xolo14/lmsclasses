@@ -2,14 +2,16 @@ import { PATCHClassRecording, DELETEClassRecording } from "@/lib/api-trash-recor
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return PATCHClassRecording(request, params.id);
+  const { id } = await params;
+  return PATCHClassRecording(request, id);
 }
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return DELETEClassRecording(request, params.id);
+  const { id } = await params;
+  return DELETEClassRecording(request, id);
 }

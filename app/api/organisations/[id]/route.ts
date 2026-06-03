@@ -14,10 +14,11 @@ import { PATCHOrganisation, DELETEOrganisation } from "@/lib/api-handlers";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const { error } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
+  const { id } = await params;
 
   const [org] = await db
     .select({
@@ -34,7 +35,7 @@ export async function GET(
     })
     .from(organisations)
     .leftJoin(users, eq(organisations.adminId, users.id))
-    .where(and(eq(organisations.id, params.id), isNull(organisations.deletedAt)))
+    .where(and(eq(organisations.id, id), isNull(organisations.deletedAt)))
     .limit(1);
 
   if (!org) {
@@ -44,12 +45,12 @@ export async function GET(
   const [studentCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(users)
-    .where(and(eq(users.organisationId, params.id), eq(users.role, "student")));
+    .where(and(eq(users.organisationId, id), eq(users.role, "student")));
 
   const orgPayments = await db
     .select()
     .from(payments)
-    .where(eq(payments.organisationId, params.id))
+    .where(eq(payments.organisationId, id))
     .orderBy(desc(payments.createdAt));
 
   const orgStudents = await db
@@ -65,13 +66,13 @@ export async function GET(
     .from(users)
     .leftJoin(studentCourses, eq(studentCourses.studentId, users.id))
     .leftJoin(courses, eq(studentCourses.courseId, courses.id))
-    .where(and(eq(users.organisationId, params.id), eq(users.role, "student")))
+    .where(and(eq(users.organisationId, id), eq(users.role, "student")))
     .orderBy(desc(users.createdAt));
 
   const orgSlots = await db
     .select()
     .from(slots)
-    .where(eq(slots.organisationId, params.id));
+    .where(eq(slots.organisationId, id));
 
   return NextResponse.json({
     ...org,
@@ -84,14 +85,16 @@ export async function GET(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return PATCHOrganisation(request, params.id);
+  const { id } = await params;
+  return PATCHOrganisation(request, id);
 }
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return DELETEOrganisation(_request, params.id);
+  const { id } = await params;
+  return DELETEOrganisation(_request, id);
 }

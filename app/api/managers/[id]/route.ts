@@ -2,14 +2,16 @@ import { PATCHUser, DELETEUser } from "@/lib/api-handlers";
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return PATCHUser(request, params.id);
+  const { id } = await params;
+  return PATCHUser(request, id);
 }
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return DELETEUser(request, params.id);
+  const { id } = await params;
+  return DELETEUser(request, id);
 }

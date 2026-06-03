@@ -2,14 +2,16 @@ import { PATCHCourse, DELETECourse } from "@/lib/api-handlers";
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return PATCHCourse(request, params.id);
+  const { id } = await params;
+  return PATCHCourse(request, id);
 }
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return DELETECourse(request, params.id);
+  const { id } = await params;
+  return DELETECourse(request, id);
 }

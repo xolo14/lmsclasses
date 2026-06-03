@@ -2,8 +2,9 @@ import { GETSuperAdminJobPostingDetail } from "@/lib/api-hr";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return GETSuperAdminJobPostingDetail(params.id);
+  const { id } = await params;
+  return GETSuperAdminJobPostingDetail(id);
 }
 
