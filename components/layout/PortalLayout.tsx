@@ -36,10 +36,10 @@ export function PortalLayout({ children, sidebar, userName, userRole }: PortalLa
     : sidebar;
 
   return (
-    <div className="flex min-h-screen min-h-[100dvh] bg-background">
+    <div className="flex h-screen min-h-[100dvh] overflow-hidden bg-background">
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-[min(100vw-1rem,16rem)] shadow-xl lg:static lg:z-auto lg:w-64 lg:shadow-none",
+          "fixed inset-y-0 left-0 z-50 h-full w-[min(100vw-1rem,16rem)] shrink-0 shadow-xl lg:relative lg:z-auto lg:w-64 lg:shadow-none",
           !sidebarOpen && "hidden lg:block"
         )}
       >
@@ -52,13 +52,15 @@ export function PortalLayout({ children, sidebar, userName, userRole }: PortalLa
           aria-hidden
         />
       )}
-      <div className="flex flex-1 flex-col min-w-0 w-full">
+      <div className="flex min-h-0 flex-1 flex-col w-full overflow-hidden">
         <TopBar
           userName={userName}
           userRole={userRole}
           onMenuClick={() => setSidebarOpen((o) => !o)}
         />
-        <main className="flex-1 p-4 sm:p-6 overflow-x-hidden overflow-y-auto">{children}</main>
+        <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+          {children}
+        </main>
       </div>
     </div>
   );

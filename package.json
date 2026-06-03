@@ -12,7 +12,8 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
-    "reset-password": "tsx --env-file=.env.local scripts/reset-password.ts"
+    "reset-password": "tsx --env-file=.env.local scripts/reset-password.ts",
+    "test-db": "tsx --env-file=.env.local scripts/test-db-connection.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.7.4",

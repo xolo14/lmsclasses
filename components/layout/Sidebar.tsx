@@ -42,7 +42,7 @@ export function Sidebar({ items, title, collapsed, onNavigate, brandLogoUrl }: S
   return (
     <aside
       className={cn(
-        "flex h-full min-h-screen flex-col border-r border-border bg-card transition-all duration-300 w-full",
+        "flex h-full flex-col border-r border-border bg-card transition-all duration-300 w-full",
         collapsed ? "lg:w-16" : "lg:w-64"
       )}
     >

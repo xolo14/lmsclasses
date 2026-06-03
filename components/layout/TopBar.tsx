@@ -21,7 +21,7 @@ export function TopBar({ userName, userRole, onMenuClick }: TopBarProps) {
     .slice(0, 2);
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 sm:h-16 items-center justify-between gap-2 border-b border-border bg-background/80 backdrop-blur-md px-3 sm:px-6 safe-top">
+    <header className="z-40 flex h-14 sm:h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/80 backdrop-blur-md px-3 sm:px-6 safe-top">
       <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
         <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={onMenuClick} aria-label="Open menu">
           <Menu className="h-5 w-5" />
