@@ -53,7 +53,7 @@ export async function fulfillSlotPurchase(
       entity: "Payment",
       entityId: paymentId,
       metadata: { slotsCount: payment.slotsCount, courseId: payment.courseId },
-      ipAddress: opts.ipAddress ?? null,
+      ipAddress: opts.ipAddress ?? undefined,
     });
   }
 
