@@ -7,7 +7,7 @@ import { buySlotsSchema } from "@/lib/validations";
 import {
   getRazorpayInstance,
   getRazorpayKeyId,
-  isRazorpayConfigured,
+  getRazorpayKeySecret,
 } from "@/lib/razorpay";
 
 export const runtime = "nodejs";
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   const razorpay = getRazorpayInstance();
   const keyId = getRazorpayKeyId();
 
-  if (!razorpay || !isRazorpayConfigured() || !keyId) {
+  if (!razorpay || !keyId || !getRazorpayKeySecret()) {
     if (process.env.NODE_ENV === "production") {
       await db.update(payments).set({ status: "failed" }).where(eq(payments.id, payment.id));
       return NextResponse.json(

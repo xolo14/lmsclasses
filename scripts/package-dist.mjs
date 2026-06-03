@@ -47,7 +47,15 @@ Hostinger Node.js start command:
 Required: set all environment variables in hPanel (DATABASE_URL, AUTH_SECRET, NEXTAUTH_URL, etc.)
 Do NOT upload .env.local with secrets to public folders — use Hostinger env settings.
 
-This is NOT a static site — do not upload only to public_html without Node.js.
+Razorpay (live payments — NOT mock):
+  RAZORPAY_KEY_ID=rzp_test_... or rzp_live_...
+  RAZORPAY_KEY_SECRET=your_secret
+  RAZORPAY_WEBHOOK_SECRET=from Razorpay webhook settings (optional but recommended)
+After changing env vars you MUST redeploy / rebuild this app.
+
+Verify deploy: open https://your-domain/api/health
+  deployVersion should be "razorpay-v3"
+  razorpay.configured should be true
 `
 );
 

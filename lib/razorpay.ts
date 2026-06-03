@@ -1,27 +1,36 @@
 import Razorpay from "razorpay";
 import crypto from "crypto";
 
-/** Public key for checkout — server can supply this; NEXT_PUBLIC_* is optional on Hostinger. */
+/** Bump when payment/env behavior changes — visible at /api/health */
+export const PAYMENTS_DEPLOY_VERSION = "razorpay-v3";
+
 export function getRazorpayKeyId(): string | null {
-  return (
-    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
-    process.env.RAZORPAY_KEY_ID ||
-    null
-  );
+  const id =
+    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.trim() ||
+    process.env.RAZORPAY_KEY_ID?.trim() ||
+    "";
+  return id || null;
+}
+
+export function getRazorpayKeySecret(): string | null {
+  const secret = process.env.RAZORPAY_KEY_SECRET?.trim() || "";
+  return secret || null;
 }
 
 export function isRazorpayConfigured(): boolean {
-  return !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+  return !!(getRazorpayKeyId() && getRazorpayKeySecret());
 }
 
 export function getRazorpayInstance() {
-  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+  const keyId = getRazorpayKeyId();
+  const keySecret = getRazorpayKeySecret();
+  if (!keyId || !keySecret) {
     return null;
   }
 
   return new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
+    key_id: keyId,
+    key_secret: keySecret,
   });
 }
 

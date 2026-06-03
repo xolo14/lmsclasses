@@ -3,7 +3,12 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { isNull, sql } from "drizzle-orm";
 import { useSecureCookies } from "@/lib/auth.config";
-import { isRazorpayConfigured, getRazorpayKeyId } from "@/lib/razorpay";
+import {
+  isRazorpayConfigured,
+  getRazorpayKeyId,
+  getRazorpayKeySecret,
+  PAYMENTS_DEPLOY_VERSION,
+} from "@/lib/razorpay";
 
 export const runtime = "nodejs";
 
@@ -28,6 +33,7 @@ export async function GET() {
 
   return NextResponse.json({
     ok: dbConnected && secretSet,
+    deployVersion: PAYMENTS_DEPLOY_VERSION,
     database: { connected: dbConnected, activeUsers, error: dbError },
     auth: {
       secretSet,
@@ -36,11 +42,12 @@ export async function GET() {
       useSecureCookies,
     },
     razorpay: {
+      deployVersion: PAYMENTS_DEPLOY_VERSION,
       configured: isRazorpayConfigured(),
-      keyIdSet: !!process.env.RAZORPAY_KEY_ID,
-      keySecretSet: !!process.env.RAZORPAY_KEY_SECRET,
-      publicKeySet: !!getRazorpayKeyId(),
-      webhookSecretSet: !!process.env.RAZORPAY_WEBHOOK_SECRET,
+      keyIdSet: !!getRazorpayKeyId(),
+      keySecretSet: !!getRazorpayKeySecret(),
+      checkoutKey: getRazorpayKeyId(),
+      webhookSecretSet: !!process.env.RAZORPAY_WEBHOOK_SECRET?.trim(),
     },
   });
 }
