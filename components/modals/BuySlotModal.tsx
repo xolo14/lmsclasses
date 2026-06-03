@@ -71,8 +71,13 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
       }
 
       if (data.mock) {
-        await completePurchase(data.paymentId, { mock: true });
-        return;
+        throw new Error(
+          "Razorpay is not configured on the server. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in Hostinger, then redeploy."
+        );
+      }
+
+      if (!data.key || !data.orderId) {
+        throw new Error("Invalid payment session. Please try again.");
       }
 
       if (!window.Razorpay) {

@@ -4,7 +4,11 @@ import { db } from "@/lib/db";
 import { courses, payments } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { buySlotsSchema } from "@/lib/validations";
-import { getRazorpayInstance, isRazorpayConfigured } from "@/lib/razorpay";
+import {
+  getRazorpayInstance,
+  getRazorpayKeyId,
+  isRazorpayConfigured,
+} from "@/lib/razorpay";
 
 export const runtime = "nodejs";
 
@@ -41,14 +45,26 @@ export async function POST(request: Request) {
     .returning();
 
   const razorpay = getRazorpayInstance();
+  const keyId = getRazorpayKeyId();
 
-  if (!razorpay || !isRazorpayConfigured()) {
+  if (!razorpay || !isRazorpayConfigured() || !keyId) {
+    if (process.env.NODE_ENV === "production") {
+      await db.update(payments).set({ status: "failed" }).where(eq(payments.id, payment.id));
+      return NextResponse.json(
+        {
+          error:
+            "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the server.",
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json({
       paymentId: payment.id,
       amount,
       slotsCount,
       mock: true,
-      message: "Razorpay not configured — use verify endpoint with mock flag",
+      message: "Razorpay not configured — dev mock mode only",
     });
   }
 
@@ -69,7 +85,7 @@ export async function POST(request: Request) {
       orderId: order.id,
       amount,
       currency: "INR",
-      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      key: keyId,
     });
   } catch (err) {
     await db.update(payments).set({ status: "failed" }).where(eq(payments.id, payment.id));

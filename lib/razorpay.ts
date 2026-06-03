@@ -1,12 +1,17 @@
 import Razorpay from "razorpay";
 import crypto from "crypto";
 
-export function isRazorpayConfigured(): boolean {
-  return !!(
-    process.env.RAZORPAY_KEY_ID &&
-    process.env.RAZORPAY_KEY_SECRET &&
-    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
+/** Public key for checkout — server can supply this; NEXT_PUBLIC_* is optional on Hostinger. */
+export function getRazorpayKeyId(): string | null {
+  return (
+    process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
+    process.env.RAZORPAY_KEY_ID ||
+    null
   );
+}
+
+export function isRazorpayConfigured(): boolean {
+  return !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
 }
 
 export function getRazorpayInstance() {
@@ -32,6 +37,21 @@ export function verifyRazorpaySignature(
   const expected = crypto
     .createHmac("sha256", secret)
     .update(body)
+    .digest("hex");
+
+  return expected === signature;
+}
+
+export function verifyRazorpayWebhookSignature(
+  rawBody: string,
+  signature: string | null
+): boolean {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!secret || !signature) return false;
+
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
     .digest("hex");
 
   return expected === signature;

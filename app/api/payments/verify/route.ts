@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { payments, slots } from "@/lib/db/schema";
+import { payments } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
-import { logAction, getClientIp } from "@/lib/audit";
+import { getClientIp } from "@/lib/audit";
 import { verifyRazorpaySignature } from "@/lib/razorpay";
+import { fulfillSlotPurchase } from "@/lib/payments-fulfill";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, alreadyProcessed: true });
   }
 
-  if (!mock) {
+  if (mock) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { error: "Mock payments are disabled in production" },
+        { status: 400 }
+      );
+    }
+  } else {
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      return NextResponse.json({ error: "Missing payment details" }, { status: 400 });
+    }
     const isValid = verifyRazorpaySignature(
       razorpayOrderId,
       razorpayPaymentId,
@@ -45,32 +56,17 @@ export async function POST(request: Request) {
     }
   }
 
-  await db
-    .update(payments)
-    .set({
-      status: "success",
-      razorpayOrderId: razorpayOrderId || payment.razorpayOrderId,
-      razorpayPaymentId: razorpayPaymentId || `mock_${Date.now()}`,
-    })
-    .where(eq(payments.id, paymentId));
-
-  await db.insert(slots).values({
-    organisationId: payment.organisationId,
-    courseId: payment.courseId,
-    totalSlots: payment.slotsCount,
-    usedSlots: 0,
-    paymentId: payment.id,
-  });
-
-  await logAction({
+  const result = await fulfillSlotPurchase(paymentId, {
+    razorpayOrderId: razorpayOrderId || payment.razorpayOrderId || "",
+    razorpayPaymentId: razorpayPaymentId || `mock_${Date.now()}`,
     userId: session!.user.id,
     role: session!.user.role,
-    action: "PURCHASED_SLOTS",
-    entity: "Payment",
-    entityId: paymentId,
-    metadata: { slotsCount: payment.slotsCount, courseId: payment.courseId },
     ipAddress: getClientIp(request),
   });
 
-  return NextResponse.json({ success: true });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+
+  return NextResponse.json({ success: true, alreadyProcessed: result.alreadyProcessed });
 }
