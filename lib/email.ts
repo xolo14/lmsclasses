@@ -1,22 +1,9 @@
-import { Resend } from "resend";
+import { appName, deliverEmail } from "@/lib/mail";
 
-const fromEmail = process.env.RESEND_FROM_EMAIL || "LMS Platform <onboarding@resend.dev>";
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-const appName = process.env.NEXT_PUBLIC_APP_NAME || "LMS Platform";
 
 async function sendEmail(payload: { to: string; subject: string; html: string }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.log("[Email] Mock send:", { to: payload.to, subject: payload.subject });
-    return;
-  }
-  const resend = new Resend(apiKey);
-  await resend.emails.send({
-    from: fromEmail,
-    to: payload.to,
-    subject: payload.subject,
-    html: payload.html,
-  });
+  await deliverEmail(payload);
 }
 
 export async function sendStudentWelcomeEmail({
@@ -45,6 +32,7 @@ export async function sendStudentWelcomeEmail({
         <li><strong>Password:</strong> ${password}</li>
       </ul>
       <p><a href="${appUrl}/login">Login here</a></p>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });
 }
@@ -79,6 +67,7 @@ export async function sendMentorLiveClassEmail({
         <li><strong>Scheduled:</strong> ${scheduledAt}</li>
         ${meetingLink ? `<li><strong>Meeting Link:</strong> <a href="${meetingLink}">${meetingLink}</a></li>` : ""}
       </ul>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });
 }
@@ -106,6 +95,7 @@ export async function sendOrgAdminWelcomeEmail({
         <li><strong>Password:</strong> ${password}</li>
       </ul>
       <p><a href="${appUrl}/login">Login here</a></p>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });
 }
@@ -125,6 +115,7 @@ export async function sendHrOtpEmail({
       <p>Your OTP is:</p>
       <p style="font-size:24px;font-weight:700;letter-spacing:2px">${otp}</p>
       <p>This code expires in 10 minutes.</p>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });
 }
@@ -145,6 +136,7 @@ export async function sendHrWelcomeEmail({
       <h2>Welcome, ${hrName}!</h2>
       <p>Your HR account for <strong>${companyName}</strong> is successfully created.</p>
       <p><a href="${appUrl}/hr/login">Login here</a></p>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });
 }
@@ -167,6 +159,7 @@ export async function sendJobPostedEmail({
       <h2>Hello ${hrName},</h2>
       <p>Your job <strong>${jobTitle}</strong> for <strong>${companyName}</strong> is now live.</p>
       <p><a href="${appUrl}/hr/jobs/live">View live jobs</a></p>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });
 }
@@ -189,6 +182,7 @@ export async function sendNewApplicationEmail({
       <h2>Hello ${hrName},</h2>
       <p><strong>${applicantName}</strong> applied for <strong>${jobTitle}</strong>.</p>
       <p><a href="${appUrl}/hr/applications">Open applications</a></p>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });
 }
@@ -209,6 +203,7 @@ export async function sendApplicationShortlistedEmail({
       <h2>Hello ${applicantName},</h2>
       <p>Your application for <strong>${jobTitle}</strong> has been shortlisted.</p>
       <p>We will contact you with next steps.</p>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });
 }
@@ -229,6 +224,7 @@ export async function sendApplicationRejectedEmail({
       <h2>Hello ${applicantName},</h2>
       <p>Thank you for applying to <strong>${jobTitle}</strong>.</p>
       <p>At this time, your application was not selected. We encourage you to apply for future opportunities.</p>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });
 }

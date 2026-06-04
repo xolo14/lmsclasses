@@ -9,6 +9,12 @@ import {
   getRazorpayKeySecret,
   PAYMENTS_DEPLOY_VERSION,
 } from "@/lib/razorpay";
+import {
+  isEmailConfigured,
+  isSmtpConfigured,
+  isResendConfigured,
+  getDefaultFromEmail,
+} from "@/lib/mail";
 
 export const runtime = "nodejs";
 
@@ -48,6 +54,13 @@ export async function GET() {
       keySecretSet: !!getRazorpayKeySecret(),
       checkoutKey: getRazorpayKeyId(),
       webhookSecretSet: !!process.env.RAZORPAY_WEBHOOK_SECRET?.trim(),
+    },
+    email: {
+      configured: isEmailConfigured(),
+      provider: isSmtpConfigured() ? "smtp" : isResendConfigured() ? "resend" : "none",
+      from: getDefaultFromEmail(),
+      smtpHost: process.env.SMTP_HOST ?? null,
+      smtpUserSet: !!process.env.SMTP_USER?.trim(),
     },
   });
 }
