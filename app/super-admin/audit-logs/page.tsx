@@ -5,6 +5,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/tables/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
+import { fetchJson } from "@/lib/fetch-json";
 
 type AuditLog = {
   id: string;
@@ -19,8 +20,8 @@ type AuditLog = {
 export default function AuditLogsPage() {
   const { data: logs = [], isLoading } = useQuery<AuditLog[]>({
     queryKey: ["audit-logs"],
-    queryFn: () => fetch("/api/audit-logs").then((r) => r.json()),
-    refetchInterval: 10000,
+    queryFn: () => fetchJson<AuditLog[]>("/api/audit-logs"),
+    staleTime: 2 * 60 * 1000,
   });
 
   const columns: ColumnDef<AuditLog>[] = [

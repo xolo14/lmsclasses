@@ -261,22 +261,30 @@ export async function GETCourses() {
   const { error } = await requireAuth();
   if (error) return error;
 
-  const allCourses = await db
-    .select()
-    .from(courses)
-    .where(isNull(courses.deletedAt))
-    .orderBy(desc(courses.createdAt));
+  const [allCourses, enrollmentCounts] = await Promise.all([
+    db
+      .select()
+      .from(courses)
+      .where(isNull(courses.deletedAt))
+      .orderBy(desc(courses.createdAt)),
+    db
+      .select({
+        courseId: studentCourses.courseId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(studentCourses)
+      .where(eq(studentCourses.isActive, true))
+      .groupBy(studentCourses.courseId),
+  ]);
 
-  const enriched = await Promise.all(
-    allCourses.map(async (course) => {
-      const [enrolled] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(studentCourses)
-        .where(and(eq(studentCourses.courseId, course.id), eq(studentCourses.isActive, true)));
-
-      return { ...course, enrolledCount: enrolled?.count ?? 0 };
-    })
+  const countByCourse = new Map(
+    enrollmentCounts.map((row) => [row.courseId, row.count])
   );
+
+  const enriched = allCourses.map((course) => ({
+    ...course,
+    enrolledCount: countByCourse.get(course.id) ?? 0,
+  }));
 
   return NextResponse.json(enriched);
 }

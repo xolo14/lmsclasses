@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import {
   Building2,
@@ -11,43 +12,72 @@ import {
 import { KpiCard } from "@/components/charts/KpiCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { fetchJson } from "@/lib/fetch-json";
+
+const RevenueChart = dynamic(
+  () => import("@/components/charts/RevenueChart").then((m) => m.RevenueChart),
+  {
+    ssr: false,
+    loading: () => <div className="h-[260px] animate-pulse rounded-lg bg-muted" />,
+  }
+);
 
 interface DashboardPageProps {
   scope?: "org" | "global";
 }
 
+type DashboardStats = {
+  totalOrgs?: number;
+  totalStudents?: number;
+  totalRevenue?: number | string;
+  activeCourses?: number;
+  liveClassesToday?: number;
+  slotsRemaining?: number;
+  paymentsMade?: number;
+};
+
+type PaymentRow = {
+  id: string;
+  orgName: string;
+  courseTitle: string;
+  amount: string;
+  status: string;
+  createdAt: string;
+};
+
+type AuditRow = {
+  id: string;
+  action: string;
+  userName: string;
+  createdAt: string;
+};
+
 export function DashboardPage({ scope = "global" }: DashboardPageProps) {
-  const { data: stats } = useQuery({
+  const { data: stats } = useQuery<DashboardStats>({
     queryKey: ["dashboard", scope],
-    queryFn: () => fetch(`/api/dashboard?scope=${scope}`).then((r) => r.json()),
+    queryFn: () => fetchJson<DashboardStats>(`/api/dashboard?scope=${scope}`),
   });
 
-  const { data: payments = [] } = useQuery({
+  const { data: payments = [] } = useQuery<PaymentRow[]>({
     queryKey: ["payments"],
-    queryFn: () => fetch("/api/payments").then((r) => r.json()),
+    queryFn: () => fetchJson<PaymentRow[]>("/api/payments"),
     enabled: scope === "global",
   });
 
-  const { data: auditLogs = [] } = useQuery({
-    queryKey: ["audit-logs"],
-    queryFn: () => fetch("/api/audit-logs").then((r) => r.json()),
-    refetchInterval: 30000,
+  const { data: auditLogs = [] } = useQuery<AuditRow[]>({
+    queryKey: ["audit-logs", "dashboard"],
+    queryFn: () => fetchJson<AuditRow[]>("/api/audit-logs"),
     enabled: scope === "global",
+    staleTime: 2 * 60 * 1000,
   });
 
   const revenueChart = payments
-    .filter((p: { status: string }) => p.status === "success")
-    .reduce((acc: Record<string, number>, p: { createdAt: string; amount: string }) => {
-      const month = new Date(p.createdAt).toLocaleString("en-IN", { month: "short", year: "2-digit" });
+    .filter((p) => p.status === "success")
+    .reduce((acc: Record<string, number>, p) => {
+      const month = new Date(p.createdAt).toLocaleString("en-IN", {
+        month: "short",
+        year: "2-digit",
+      });
       acc[month] = (acc[month] || 0) + parseFloat(p.amount);
       return acc;
     }, {});
@@ -88,18 +118,7 @@ export function DashboardPage({ scope = "global" }: DashboardPageProps) {
             <CardTitle className="text-lg">Revenue by Month</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={260} className="min-h-[220px] sm:min-h-[300px]">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} />
-                <Tooltip
-                  contentStyle={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8 }}
-                  labelStyle={{ color: "#0f172a" }}
-                />
-                <Bar dataKey="revenue" fill="#06B6D4" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <RevenueChart data={chartData} />
           </CardContent>
         </Card>
 
@@ -109,11 +128,13 @@ export function DashboardPage({ scope = "global" }: DashboardPageProps) {
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-[300px] overflow-y-auto">
-              {auditLogs.slice(0, 10).map((log: { id: string; action: string; userName: string; createdAt: string }) => (
+              {auditLogs.slice(0, 10).map((log) => (
                 <div key={log.id} className="flex items-start gap-3 text-sm border-b border-border pb-3">
                   <div className="h-2 w-2 rounded-full bg-primary mt-1.5 shrink-0" />
                   <div>
-                    <p><span className="font-medium">{log.userName || "System"}</span> — {log.action}</p>
+                    <p>
+                      <span className="font-medium">{log.userName || "System"}</span> — {log.action}
+                    </p>
                     <p className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</p>
                   </div>
                 </div>
@@ -132,7 +153,7 @@ export function DashboardPage({ scope = "global" }: DashboardPageProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {payments.slice(0, 5).map((p: { id: string; orgName: string; courseTitle: string; amount: string; status: string; createdAt: string }) => (
+            {payments.slice(0, 5).map((p) => (
               <div key={p.id} className="flex items-center justify-between py-2 border-b border-border text-sm">
                 <div>
                   <p className="font-medium">{p.orgName}</p>
