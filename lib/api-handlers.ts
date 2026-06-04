@@ -546,6 +546,25 @@ export async function POSTStudent(request: Request) {
       organisationId,
     });
 
+    const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
+
+    // Send credentials immediately (same as HR register) — before slots/audit so nothing blocks email.
+    const emailResult = await trySendWelcomeEmail("student welcome", () =>
+      sendStudentWelcomeEmail({
+        email,
+        studentName: name,
+        lmsId: finalLmsId,
+        password: plainPassword,
+        courseName: course?.title || "Course",
+      })
+    );
+
+    if (emailResult.sent) {
+      console.log("[POSTStudent] Welcome email sent to", email);
+    } else {
+      console.error("[POSTStudent] Welcome email failed:", emailResult.error);
+    }
+
     if (slotRecords.length > 0) {
       const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
       if (slotToUpdate) {
@@ -563,27 +582,19 @@ export async function POSTStudent(request: Request) {
       });
     }
 
-    const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
-
-    await logAction({
-      userId: session!.user.id,
-      role: session!.user.role,
-      action: "CREATED_STUDENT",
-      entity: "Student",
-      entityId: student.id,
-      metadata: { name, email, courseId, batchId },
-      ipAddress: getClientIp(request),
-    });
-
-    const emailResult = await trySendWelcomeEmail("student welcome", () =>
-      sendStudentWelcomeEmail({
-        email,
-        studentName: name,
-        lmsId: finalLmsId,
-        password: plainPassword,
-        courseName: course?.title || "Course",
-      })
-    );
+    try {
+      await logAction({
+        userId: session!.user.id,
+        role: session!.user.role,
+        action: "CREATED_STUDENT",
+        entity: "Student",
+        entityId: student.id,
+        metadata: { name, email, courseId, batchId, emailSent: emailResult.sent },
+        ipAddress: getClientIp(request),
+      });
+    } catch (auditErr) {
+      console.error("[POSTStudent] Audit log failed (student still created):", auditErr);
+    }
 
     return NextResponse.json(
       {

@@ -3,6 +3,14 @@ import { getAppUrl } from "@/lib/app-url";
 
 const appUrl = getAppUrl();
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 async function sendEmail(payload: { to: string; subject: string; html: string }) {
   const result = await deliverEmail(payload);
   if (!result.ok) {
@@ -37,20 +45,22 @@ async function sendMemberCredentialsEmail({
   extraFields?: CredentialField[];
 }) {
   const extras = extraFields
-    .map((f) => `<li><strong>${f.label}:</strong> ${f.value}</li>`)
+    .map((f) => `<li><strong>${escapeHtml(f.label)}:</strong> ${escapeHtml(f.value)}</li>`)
     .join("");
 
+  const safeEmail = email.trim().toLowerCase();
+
   return sendEmail({
-    to: email,
+    to: safeEmail,
     subject: `Welcome to ${appName} — ${roleLabel} Account`,
     html: `
-      <h2>Welcome, ${name}!</h2>
+      <h2>Welcome, ${escapeHtml(name)}!</h2>
       ${introHtml}
       <p>Your login credentials:</p>
       <ul>
         ${extras}
-        <li><strong>Email:</strong> ${email}</li>
-        <li><strong>Password:</strong> ${password}</li>
+        <li><strong>Email:</strong> ${escapeHtml(safeEmail)}</li>
+        <li><strong>Password:</strong> ${escapeHtml(password)}</li>
       </ul>
       <p><a href="${appUrl}${loginPath}">Login here</a></p>
       <p style="color:#64748b;font-size:12px;margin-top:24px">Please change your password after first login if your organisation requires it.</p>
@@ -101,7 +111,7 @@ export async function sendStudentWelcomeEmail({
     roleLabel: "Student",
     password,
     loginPath: "/login",
-    introHtml: `<p>You have been enrolled in <strong>${courseName}</strong>.</p>`,
+    introHtml: `<p>You have been enrolled in <strong>${escapeHtml(courseName)}</strong>.</p>`,
     extraFields: [{ label: "LMS ID", value: lmsId }],
   });
 }
@@ -117,13 +127,13 @@ export async function sendOrgAdminWelcomeEmail({
   orgName: string;
   password: string;
 }) {
-  await sendMemberCredentialsEmail({
+  return sendMemberCredentialsEmail({
     email,
     name: adminName,
     roleLabel: "Organisation Admin",
     password,
     loginPath: "/login",
-    introHtml: `<p>Your organisation <strong>${orgName}</strong> has been set up on ${appName}.</p>`,
+    introHtml: `<p>Your organisation <strong>${escapeHtml(orgName)}</strong> has been set up on ${appName}.</p>`,
   });
 }
 
@@ -136,7 +146,7 @@ export async function sendManagerWelcomeEmail({
   name: string;
   password: string;
 }) {
-  await sendMemberCredentialsEmail({
+  return sendMemberCredentialsEmail({
     email,
     name,
     roleLabel: "Manager",
@@ -155,7 +165,7 @@ export async function sendMentorWelcomeEmail({
   name: string;
   password: string;
 }) {
-  await sendMemberCredentialsEmail({
+  return sendMemberCredentialsEmail({
     email,
     name,
     roleLabel: "Mentor",
@@ -176,13 +186,13 @@ export async function sendHrWelcomeEmail({
   companyName: string;
   password: string;
 }) {
-  await sendMemberCredentialsEmail({
+  return sendMemberCredentialsEmail({
     email,
     name: hrName,
     roleLabel: "HR",
     password,
     loginPath: "/hr/login",
-    introHtml: `<p>Your HR account for <strong>${companyName}</strong> is ready.</p>`,
+    introHtml: `<p>Your HR account for <strong>${escapeHtml(companyName)}</strong> is ready.</p>`,
   });
 }
 
