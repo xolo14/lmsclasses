@@ -5,12 +5,12 @@ import { fontSans, fontMono } from "@/lib/fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LMS Platform",
-  description: "Learning Management System",
-  icons: {
-    icon: "/lms-logo.png",
-    apple: "/lms-logo.png",
+  title: {
+    default: "LMS Platform",
+    template: "%s | LMS Platform",
   },
+  description: "Learning Management System",
+  manifest: "/site.webmanifest",
 };
 
 export const viewport = {

@@ -1,6 +1,7 @@
 import { appName, deliverEmail } from "@/lib/mail";
+import { getAppUrl } from "@/lib/app-url";
 
-const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const appUrl = getAppUrl();
 
 async function sendEmail(payload: { to: string; subject: string; html: string }) {
   await deliverEmail(payload);
