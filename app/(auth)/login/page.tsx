@@ -68,12 +68,12 @@ export default function LoginPage() {
     <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-background p-4 safe-top safe-bottom">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-100 via-transparent to-transparent" />
       <Card className="w-full max-w-md relative z-10">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex justify-center">
-            <AppLogo size="lg" />
+        <CardHeader className="flex flex-col items-center gap-4 space-y-0 text-center pb-4">
+          <AppLogo size="lg" layout="stacked" />
+          <div className="w-full space-y-1.5">
+            <CardTitle className="text-2xl">LMS Platform</CardTitle>
+            <CardDescription>Sign in to your account</CardDescription>
           </div>
-          <CardTitle className="text-2xl">LMS Platform</CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

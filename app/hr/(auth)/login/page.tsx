@@ -44,12 +44,12 @@ export default function HrLoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-3 flex justify-center">
-            <AppLogo size="md" />
+        <CardHeader className="flex flex-col items-center gap-4 space-y-0 text-center pb-4">
+          <AppLogo size="md" layout="stacked" />
+          <div className="w-full space-y-1.5">
+            <CardTitle>HR Login</CardTitle>
+            <CardDescription>Sign in with your HR account</CardDescription>
           </div>
-          <CardTitle>HR Login</CardTitle>
-          <CardDescription>Sign in with your HR account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

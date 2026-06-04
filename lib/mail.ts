@@ -3,11 +3,12 @@ import nodemailer from "nodemailer";
 const appName = process.env.NEXT_PUBLIC_APP_NAME || "LMS Platform";
 
 export function getDefaultFromEmail(): string {
+  const smtpUser = getSmtpUser();
   return (
     process.env.MAIL_FROM?.trim() ||
     process.env.SMTP_FROM?.trim() ||
     process.env.RESEND_FROM_EMAIL?.trim() ||
-    `LMS Platform <info@lmsclasses.com>`
+    (smtpUser ? `LMS Platform <${smtpUser}>` : `LMS Platform <info@lmsclasses.com>`)
   );
 }
 
@@ -38,6 +39,26 @@ export function isEmailConfigured(): boolean {
   return isSmtpConfigured() || isResendConfigured();
 }
 
+function getSmtpAttempts(): { port: number; secure: boolean }[] {
+  const primaryPort = Number(process.env.SMTP_PORT || 465);
+  const primarySecure =
+    process.env.SMTP_SECURE === "true" ||
+    (process.env.SMTP_SECURE !== "false" && primaryPort === 465);
+
+  const attempts: { port: number; secure: boolean }[] = [
+    { port: primaryPort, secure: primarySecure },
+    { port: 465, secure: true },
+    { port: 587, secure: false },
+  ];
+  const seen = new Set<string>();
+  return attempts.filter(({ port, secure }) => {
+    const key = `${port}:${secure}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function createSmtpTransport(port: number, secure: boolean) {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST?.trim(),
@@ -50,22 +71,13 @@ function createSmtpTransport(port: number, secure: boolean) {
     tls: {
       minVersion: "TLSv1.2",
     },
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 20_000,
   });
 }
 
 let cachedTransport: nodemailer.Transporter | null = null;
-
-function getSmtpTransport(): nodemailer.Transporter {
-  if (cachedTransport) return cachedTransport;
-
-  const port = Number(process.env.SMTP_PORT || 465);
-  const secure =
-    process.env.SMTP_SECURE === "true" ||
-    (process.env.SMTP_SECURE !== "false" && port === 465);
-
-  cachedTransport = createSmtpTransport(port, secure);
-  return cachedTransport;
-}
 
 export type SendMailPayload = {
   to: string;
@@ -74,39 +86,66 @@ export type SendMailPayload = {
   from?: string;
 };
 
-export async function deliverEmail(payload: SendMailPayload): Promise<"smtp" | "resend" | "mock"> {
+export type DeliverEmailResult = {
+  ok: boolean;
+  mode: "smtp" | "resend" | "mock";
+  error?: string;
+  port?: number;
+};
+
+export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEmailResult> {
+  const to = payload.to.trim().toLowerCase();
   const from = payload.from || getDefaultFromEmail();
 
   if (isSmtpConfigured()) {
-    const transport = getSmtpTransport();
-    await transport.sendMail({
-      from,
-      to: payload.to,
-      subject: payload.subject,
-      html: payload.html,
-    });
-    return "smtp";
+    let lastError = "SMTP send failed";
+    for (const { port, secure } of getSmtpAttempts()) {
+      try {
+        const transport = createSmtpTransport(port, secure);
+        await transport.sendMail({
+          from,
+          to,
+          subject: payload.subject,
+          html: payload.html,
+        });
+        cachedTransport = transport;
+        console.log("[Email] Sent via SMTP", { to, port, secure });
+        return { ok: true, mode: "smtp", port };
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        console.error("[Email] SMTP attempt failed", { port, secure, error: lastError });
+        cachedTransport = null;
+      }
+    }
+    return { ok: false, mode: "smtp", error: lastError };
   }
 
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.RESEND_API_KEY?.trim();
   if (apiKey) {
-    const { Resend } = await import("resend");
-    const resend = new Resend(apiKey);
-    await resend.emails.send({
-      from,
-      to: payload.to,
-      subject: payload.subject,
-      html: payload.html,
-    });
-    return "resend";
+    try {
+      const { Resend } = await import("resend");
+      const resend = new Resend(apiKey);
+      await resend.emails.send({
+        from,
+        to,
+        subject: payload.subject,
+        html: payload.html,
+      });
+      console.log("[Email] Sent via Resend", { to });
+      return { ok: true, mode: "resend" };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, mode: "resend", error: msg };
+    }
   }
 
-  console.log("[Email] Mock send (configure SMTP or RESEND):", {
-    from,
-    to: payload.to,
-    subject: payload.subject,
-  });
-  return "mock";
+  console.warn("[Email] Mock — SMTP/Resend not configured", { to, subject: payload.subject });
+  return {
+    ok: false,
+    mode: "mock",
+    error:
+      "Email not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS (and SMTP_PORT=465, SMTP_SECURE=true) on Hostinger.",
+  };
 }
 
 export type SmtpVerifyResult = {
@@ -116,29 +155,13 @@ export type SmtpVerifyResult = {
   error?: string;
 };
 
-/** Try configured port, then common Hostinger fallback (587 TLS). */
 export async function verifySmtpConnection(): Promise<SmtpVerifyResult> {
   if (!isSmtpConfigured()) {
     return { ok: false, error: "SMTP not configured" };
   }
 
-  const primaryPort = Number(process.env.SMTP_PORT || 465);
-  const primarySecure =
-    process.env.SMTP_SECURE === "true" ||
-    (process.env.SMTP_SECURE !== "false" && primaryPort === 465);
-
-  const attempts: { port: number; secure: boolean }[] = [
-    { port: primaryPort, secure: primarySecure },
-  ];
-  if (primaryPort !== 587) {
-    attempts.push({ port: 587, secure: false });
-  }
-  if (primaryPort !== 465) {
-    attempts.push({ port: 465, secure: true });
-  }
-
   let lastError = "Unknown SMTP error";
-  for (const { port, secure } of attempts) {
+  for (const { port, secure } of getSmtpAttempts()) {
     try {
       const transport = createSmtpTransport(port, secure);
       await transport.verify();

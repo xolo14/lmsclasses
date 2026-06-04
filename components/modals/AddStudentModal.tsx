@@ -51,6 +51,7 @@ export function AddStudentModal({
   const [slotInfo, setSlotInfo] = useState({ total: 0, used: 0 });
   const [organisationId, setOrganisationId] = useState("");
   const [pickedCourseId, setPickedCourseId] = useState("");
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
 
   const activeCourseId = showCourseSelect ? pickedCourseId : (fixedCourseId ?? "");
 
@@ -131,9 +132,17 @@ export function AddStudentModal({
       }
       return json;
     },
-    onSuccess: () => {
+    onSuccess: (data: { emailSent?: boolean; emailWarning?: string }) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       queryClient.invalidateQueries({ queryKey: ["slots"] });
+      if (data.emailSent === false) {
+        setEmailNotice(
+          data.emailWarning ??
+            "Student created but welcome email was not sent. Configure SMTP on Hostinger (see /api/health)."
+        );
+        return;
+      }
+      setEmailNotice(null);
       onOpenChange(false);
     },
   });
@@ -153,6 +162,7 @@ export function AddStudentModal({
         batchId: undefined,
       });
       setOrganisationId("");
+      setEmailNotice(null);
       mutation.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,6 +187,11 @@ export function AddStudentModal({
           <DialogHeader>
             <DialogTitle>Add Student</DialogTitle>
           </DialogHeader>
+          {emailNotice ? (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3">
+              {emailNotice}
+            </p>
+          ) : null}
           <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
             <input type="hidden" {...register("courseId")} />
 

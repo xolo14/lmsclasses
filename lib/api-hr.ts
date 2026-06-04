@@ -28,6 +28,7 @@ import {
   sendHrWelcomeEmail,
   sendJobPostedEmail,
   sendNewApplicationEmail,
+  trySendWelcomeEmail,
 } from "@/lib/email";
 
 const FREE_EMAIL_DOMAINS = new Set([
@@ -183,7 +184,14 @@ export async function POSTHrCompleteRegistration(request: Request) {
     })
     .returning();
 
-  await sendHrWelcomeEmail({ email, hrName: hr.name, companyName: company.companyName });
+  await trySendWelcomeEmail("HR welcome", () =>
+    sendHrWelcomeEmail({
+      email,
+      hrName: hr.name,
+      companyName: company.companyName,
+      password: parsed.data.password,
+    })
+  );
   await logAction({
     userId: hr.id,
     role: "hr",

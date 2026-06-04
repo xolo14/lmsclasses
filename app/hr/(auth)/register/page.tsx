@@ -83,14 +83,14 @@ export default function HrRegisterPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       <Card className="w-full max-w-xl">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-3 flex justify-center">
-            <AppLogo size="md" />
+        <CardHeader className="flex flex-col items-center gap-4 space-y-0 text-center pb-4">
+          <AppLogo size="md" layout="stacked" />
+          <div className="w-full space-y-1.5">
+            <CardTitle>HR Registration</CardTitle>
+            <CardDescription>
+              Step {step} of 3 — {step === 1 ? "Company Email Verification" : step === 2 ? "OTP Verification" : "Company & HR Details"}
+            </CardDescription>
           </div>
-          <CardTitle>HR Registration</CardTitle>
-          <CardDescription>
-            Step {step} of 3 — {step === 1 ? "Company Email Verification" : step === 2 ? "OTP Verification" : "Company & HR Details"}
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {step === 1 && (

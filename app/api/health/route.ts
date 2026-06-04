@@ -78,8 +78,8 @@ export async function GET() {
         verifySmtpConnection(),
         new Promise<SmtpVerifyResult>((resolve) =>
           setTimeout(
-            () => resolve({ ok: false, error: "SMTP verify timeout (8s)" }),
-            8000
+            () => resolve({ ok: false, error: "SMTP verify timeout (20s)" }),
+            20000
           )
         ),
       ]);
@@ -87,9 +87,20 @@ export async function GET() {
       smtpPort = result.port ?? null;
       if (!result.ok) {
         smtpError = result.error ?? "SMTP connection failed";
-        warnings.push(
-          "SMTP login failed (535). In Hostinger: reset password for info@lmsclasses.com, set SMTP_USER=info@lmsclasses.com, SMTP_PASS=new password. Try SMTP_PORT=587 and SMTP_SECURE=false."
-        );
+        const err = smtpError.toLowerCase();
+        if (err.includes("timeout")) {
+          warnings.push(
+            "SMTP verify timed out. Hostinger panel: smtp.hostinger.com port 465 SSL — set SMTP_PORT=465, SMTP_SECURE=true, correct SMTP_PASS, restart app. If still timing out, try SMTP_PORT=587 and SMTP_SECURE=false, or use Resend."
+          );
+        } else if (err.includes("535") || err.includes("authentication")) {
+          warnings.push(
+            "SMTP auth failed (535). Reset mailbox password for info@lmsclasses.com in hPanel, set SMTP_USER=info@lmsclasses.com and SMTP_PASS to that password (no quotes)."
+          );
+        } else {
+          warnings.push(
+            "SMTP failed. Hostinger: SMTP_HOST=smtp.hostinger.com, SMTP_PORT=465, SMTP_SECURE=true, SMTP_USER=info@lmsclasses.com, valid SMTP_PASS."
+          );
+        }
       }
     } catch (err) {
       smtpError = err instanceof Error ? err.message : "SMTP connection failed";
@@ -139,6 +150,8 @@ export async function GET() {
       from: getDefaultFromEmail(),
       smtpHost: process.env.SMTP_HOST ?? null,
       smtpUser: getSmtpUser() || null,
+      smtpPortConfigured: Number(process.env.SMTP_PORT || 465),
+      smtpSecureConfigured: process.env.SMTP_SECURE ?? "(auto)",
       smtpPort,
       smtpConnected: isSmtpConfigured() ? smtpConnected : null,
       smtpError,

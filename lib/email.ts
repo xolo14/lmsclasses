@@ -4,7 +4,82 @@ import { getAppUrl } from "@/lib/app-url";
 const appUrl = getAppUrl();
 
 async function sendEmail(payload: { to: string; subject: string; html: string }) {
-  await deliverEmail(payload);
+  const result = await deliverEmail(payload);
+  if (!result.ok) {
+    throw new Error(result.error ?? "Failed to send email");
+  }
+  return result;
+}
+
+export type WelcomeEmailResult = {
+  sent: boolean;
+  mode?: string;
+  error?: string;
+};
+
+type CredentialField = { label: string; value: string };
+
+async function sendMemberCredentialsEmail({
+  email,
+  name,
+  roleLabel,
+  password,
+  loginPath,
+  introHtml,
+  extraFields = [],
+}: {
+  email: string;
+  name: string;
+  roleLabel: string;
+  password: string;
+  loginPath: string;
+  introHtml: string;
+  extraFields?: CredentialField[];
+}) {
+  const extras = extraFields
+    .map((f) => `<li><strong>${f.label}:</strong> ${f.value}</li>`)
+    .join("");
+
+  return sendEmail({
+    to: email,
+    subject: `Welcome to ${appName} — ${roleLabel} Account`,
+    html: `
+      <h2>Welcome, ${name}!</h2>
+      ${introHtml}
+      <p>Your login credentials:</p>
+      <ul>
+        ${extras}
+        <li><strong>Email:</strong> ${email}</li>
+        <li><strong>Password:</strong> ${password}</li>
+      </ul>
+      <p><a href="${appUrl}${loginPath}">Login here</a></p>
+      <p style="color:#64748b;font-size:12px;margin-top:24px">Please change your password after first login if your organisation requires it.</p>
+      <p style="color:#64748b;font-size:12px">— ${appName} (info@lmsclasses.com)</p>
+    `,
+  });
+}
+
+/** Send welcome email; never fails the API — returns status for the UI. */
+export async function trySendWelcomeEmail(
+  label: string,
+  fn: () => Promise<unknown>
+): Promise<WelcomeEmailResult> {
+  try {
+    const result = await fn();
+    if (result && typeof result === "object" && "ok" in result) {
+      const r = result as { ok: boolean; mode?: string; error?: string };
+      if (!r.ok) {
+        console.error(`[email] ${label} not sent:`, r.error);
+        return { sent: false, mode: r.mode, error: r.error };
+      }
+      return { sent: true, mode: r.mode };
+    }
+    return { sent: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[email] ${label} failed:`, msg);
+    return { sent: false, error: msg };
+  }
 }
 
 export async function sendStudentWelcomeEmail({
@@ -20,21 +95,94 @@ export async function sendStudentWelcomeEmail({
   password: string;
   courseName: string;
 }) {
-  await sendEmail({
-    to: email,
-    subject: `Welcome to ${appName} — Your Login Details`,
-    html: `
-      <h2>Welcome, ${studentName}!</h2>
-      <p>You have been enrolled in <strong>${courseName}</strong>.</p>
-      <p>Your login credentials:</p>
-      <ul>
-        <li><strong>LMS ID:</strong> ${lmsId}</li>
-        <li><strong>Email:</strong> ${email}</li>
-        <li><strong>Password:</strong> ${password}</li>
-      </ul>
-      <p><a href="${appUrl}/login">Login here</a></p>
-      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
-    `,
+  return sendMemberCredentialsEmail({
+    email,
+    name: studentName,
+    roleLabel: "Student",
+    password,
+    loginPath: "/login",
+    introHtml: `<p>You have been enrolled in <strong>${courseName}</strong>.</p>`,
+    extraFields: [{ label: "LMS ID", value: lmsId }],
+  });
+}
+
+export async function sendOrgAdminWelcomeEmail({
+  email,
+  adminName,
+  orgName,
+  password,
+}: {
+  email: string;
+  adminName: string;
+  orgName: string;
+  password: string;
+}) {
+  await sendMemberCredentialsEmail({
+    email,
+    name: adminName,
+    roleLabel: "Organisation Admin",
+    password,
+    loginPath: "/login",
+    introHtml: `<p>Your organisation <strong>${orgName}</strong> has been set up on ${appName}.</p>`,
+  });
+}
+
+export async function sendManagerWelcomeEmail({
+  email,
+  name,
+  password,
+}: {
+  email: string;
+  name: string;
+  password: string;
+}) {
+  await sendMemberCredentialsEmail({
+    email,
+    name,
+    roleLabel: "Manager",
+    password,
+    loginPath: "/login",
+    introHtml: `<p>Your <strong>Manager</strong> account has been created.</p>`,
+  });
+}
+
+export async function sendMentorWelcomeEmail({
+  email,
+  name,
+  password,
+}: {
+  email: string;
+  name: string;
+  password: string;
+}) {
+  await sendMemberCredentialsEmail({
+    email,
+    name,
+    roleLabel: "Mentor",
+    password,
+    loginPath: "/login",
+    introHtml: `<p>Your <strong>Mentor</strong> account has been created. You can view assigned live classes after login.</p>`,
+  });
+}
+
+export async function sendHrWelcomeEmail({
+  email,
+  hrName,
+  companyName,
+  password,
+}: {
+  email: string;
+  hrName: string;
+  companyName: string;
+  password: string;
+}) {
+  await sendMemberCredentialsEmail({
+    email,
+    name: hrName,
+    roleLabel: "HR",
+    password,
+    loginPath: "/hr/login",
+    introHtml: `<p>Your HR account for <strong>${companyName}</strong> is ready.</p>`,
   });
 }
 
@@ -73,34 +221,6 @@ export async function sendMentorLiveClassEmail({
   });
 }
 
-export async function sendOrgAdminWelcomeEmail({
-  email,
-  adminName,
-  orgName,
-  password,
-}: {
-  email: string;
-  adminName: string;
-  orgName: string;
-  password: string;
-}) {
-  await sendEmail({
-    to: email,
-    subject: `Welcome to ${appName} — Organisation Admin Account`,
-    html: `
-      <h2>Welcome, ${adminName}!</h2>
-      <p>Your organisation <strong>${orgName}</strong> has been created.</p>
-      <p>Login credentials:</p>
-      <ul>
-        <li><strong>Email:</strong> ${email}</li>
-        <li><strong>Password:</strong> ${password}</li>
-      </ul>
-      <p><a href="${appUrl}/login">Login here</a></p>
-      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
-    `,
-  });
-}
-
 export async function sendHrOtpEmail({
   email,
   otp,
@@ -116,27 +236,6 @@ export async function sendHrOtpEmail({
       <p>Your OTP is:</p>
       <p style="font-size:24px;font-weight:700;letter-spacing:2px">${otp}</p>
       <p>This code expires in 10 minutes.</p>
-      <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
-    `,
-  });
-}
-
-export async function sendHrWelcomeEmail({
-  email,
-  hrName,
-  companyName,
-}: {
-  email: string;
-  hrName: string;
-  companyName: string;
-}) {
-  await sendEmail({
-    to: email,
-    subject: "HR Account Successfully Created",
-    html: `
-      <h2>Welcome, ${hrName}!</h2>
-      <p>Your HR account for <strong>${companyName}</strong> is successfully created.</p>
-      <p><a href="${appUrl}/hr/login">Login here</a></p>
       <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
   });

@@ -16,7 +16,14 @@ import {
 import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { organisationSchema, editOrganisationSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, studentSchema } from "@/lib/validations";
-import { sendOrgAdminWelcomeEmail, sendStudentWelcomeEmail, sendMentorLiveClassEmail } from "@/lib/email";
+import {
+  sendOrgAdminWelcomeEmail,
+  sendStudentWelcomeEmail,
+  sendMentorLiveClassEmail,
+  sendManagerWelcomeEmail,
+  sendMentorWelcomeEmail,
+  trySendWelcomeEmail,
+} from "@/lib/email";
 import { generatePassword, generateLmsId } from "@/lib/razorpay";
 
 /** Mark scheduled/live classes as completed once end time (start + duration) has passed. */
@@ -136,7 +143,9 @@ export async function POSTOrganisation(request: Request) {
     ipAddress: getClientIp(request),
   });
 
-  await sendOrgAdminWelcomeEmail({ email, adminName, orgName, password });
+  await trySendWelcomeEmail("org admin welcome", () =>
+    sendOrgAdminWelcomeEmail({ email, adminName, orgName, password })
+  );
 
   return NextResponse.json({ org, admin }, { status: 201 });
 }
@@ -437,7 +446,8 @@ export async function POSTStudent(request: Request) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { name, email, phone, lmsId, password, collegeName, courseId, batchId } = parsed.data;
+    const { name, phone, lmsId, password, collegeName, courseId, batchId } = parsed.data;
+    const email = parsed.data.email.trim().toLowerCase();
     const organisationId =
       session!.user.role === "org_admin"
         ? session!.user.organisationId!
@@ -565,19 +575,29 @@ export async function POSTStudent(request: Request) {
       ipAddress: getClientIp(request),
     });
 
-    try {
-      await sendStudentWelcomeEmail({
+    const emailResult = await trySendWelcomeEmail("student welcome", () =>
+      sendStudentWelcomeEmail({
         email,
         studentName: name,
         lmsId: finalLmsId,
         password: plainPassword,
         courseName: course?.title || "Course",
-      });
-    } catch (emailErr) {
-      console.error("[POSTStudent] Welcome email failed:", emailErr);
-    }
+      })
+    );
 
-    return NextResponse.json({ ...student, password: plainPassword }, { status: 201 });
+    return NextResponse.json(
+      {
+        ...student,
+        email,
+        password: plainPassword,
+        emailSent: emailResult.sent,
+        emailWarning: emailResult.sent
+          ? undefined
+          : emailResult.error ??
+            "Welcome email was not sent. Check SMTP settings at /api/health.",
+      },
+      { status: 201 }
+    );
   } catch (err) {
     console.error("[POSTStudent]", err);
     const msg = err instanceof Error ? err.message : "Failed to create student";
@@ -742,6 +762,13 @@ export async function POSTUserByRole(request: Request, role: "manager" | "mentor
     entityId: user.id,
     ipAddress: getClientIp(request),
   });
+
+  const sendWelcome =
+    role === "manager"
+      ? () => sendManagerWelcomeEmail({ email, name, password })
+      : () => sendMentorWelcomeEmail({ email, name, password });
+
+  await trySendWelcomeEmail(`${role} welcome`, sendWelcome);
 
   return NextResponse.json(user, { status: 201 });
 }
