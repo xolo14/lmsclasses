@@ -4,12 +4,23 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const logoPath = [path.join(root, "public", "lms-logo.jpg"), path.join(root, "public", "lms-logo.png")].find(
-  (p) => fs.existsSync(p)
-);
+const icon32 = path.join(root, "app", "icon.png");
+const icon180 = path.join(root, "app", "apple-icon.png");
+
+const logoPath = [
+  path.join(root, "public", "lms-logo.jpg"),
+  path.join(root, "assets", "lms-logo.jpg"),
+  path.join(root, "public", "lms-logo.png"),
+].find((p) => fs.existsSync(p));
 
 if (!logoPath) {
-  console.error("Run: node scripts/copy-logo.mjs first (needs public/lms-logo.jpg)");
+  if (fs.existsSync(icon32) && fs.existsSync(icon180)) {
+    console.log("Using committed favicons (no logo file to regenerate from).");
+    process.exit(0);
+  }
+  console.error(
+    "Missing public/lms-logo.jpg and app/icon.png — commit logo or icons to the repo."
+  );
   process.exit(1);
 }
 
@@ -42,5 +53,5 @@ async function makeSquareIcon(size, outPath) {
   console.log("Wrote", outPath, size + "x" + size);
 }
 
-await makeSquareIcon(32, path.join(root, "app", "icon.png"));
-await makeSquareIcon(180, path.join(root, "app", "apple-icon.png"));
+await makeSquareIcon(32, icon32);
+await makeSquareIcon(180, icon180);
