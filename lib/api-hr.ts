@@ -12,7 +12,13 @@ import {
   users,
 } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
-import { getClientIp, logAction } from "@/lib/audit";
+import {
+  auditMetadataForSession,
+  auditUserIdForSession,
+  getClientIp,
+  logAction,
+} from "@/lib/audit";
+import { formatApiError } from "@/lib/utils";
 import {
   hrEmailSchema,
   hrOtpSchema,
@@ -193,12 +199,16 @@ export async function POSTHrCompleteRegistration(request: Request) {
     })
   );
   await logAction({
-    userId: hr.id,
+    userId: undefined,
     role: "hr",
     action: "HR_REGISTERED",
     entity: "HrUser",
     entityId: hr.id,
-    metadata: { companyId: company.id, companyName: company.companyName },
+    metadata: {
+      hrId: hr.id,
+      companyId: company.id,
+      companyName: company.companyName,
+    },
     ipAddress: getClientIp(request),
   });
 
@@ -277,60 +287,99 @@ export async function GETHrLiveJobs() {
 }
 
 export async function POSTHrJob(request: Request) {
-  const { error, session } = await requireAuth(["hr"]);
-  if (error) return error;
-  const body = await request.json();
-  const parsed = hrJobSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-
-  const [hr] = await db.select().from(hrUsers).where(eq(hrUsers.id, session!.user.id)).limit(1);
-  if (!hr) return NextResponse.json({ error: "HR account not found" }, { status: 404 });
-
-  const [job] = await db
-    .insert(jobPostings)
-    .values({
-      hrId: hr.id,
-      companyId: hr.companyId,
-      title: parsed.data.title,
-      organisationName: parsed.data.organisationName,
-      location: parsed.data.location || null,
-      employmentType: parsed.data.employmentType,
-      stipend: parsed.data.stipend || null,
-      salary: parsed.data.salary || null,
-      ctc: parsed.data.ctc || null,
-      experienceRequired: parsed.data.experienceRequired || null,
-      description: parsed.data.description,
-      responsibilities: parsed.data.responsibilities || null,
-      requiredSkills: parsed.data.requiredSkills || null,
-      eligibilityCriteria: parsed.data.eligibilityCriteria || null,
-      lastDateToApply: parsed.data.lastDateToApply ? new Date(parsed.data.lastDateToApply) : null,
-      applicationDeadline: new Date(parsed.data.applicationDeadline),
-      openings: parsed.data.openings,
-      status: parsed.data.active === false ? "closed" : "active",
-      active: parsed.data.active !== false,
-    })
-    .returning();
-
-  await logAction({
-    userId: session!.user.id,
-    role: "hr",
-    action: "HR_JOB_CREATED",
-    entity: "JobPosting",
-    entityId: job.id,
-    metadata: { title: job.title },
-    ipAddress: getClientIp(request),
-  });
   try {
-    await sendJobPostedEmail({
-      email: hr.email,
-      hrName: hr.name,
-      jobTitle: job.title,
-      companyName: job.organisationName,
-    });
-  } catch (e) {
-    console.error("[HR] job posted email failed", e);
+    const { error, session } = await requireAuth(["hr"]);
+    if (error) return error;
+
+    const body = await request.json();
+    const parsed = hrJobSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: formatApiError(parsed.error.flatten(), "Invalid job data") },
+        { status: 400 }
+      );
+    }
+
+    const deadline = new Date(parsed.data.applicationDeadline);
+    if (Number.isNaN(deadline.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid application closing date/time." },
+        { status: 400 }
+      );
+    }
+
+    const [hr] = await db
+      .select()
+      .from(hrUsers)
+      .where(eq(hrUsers.id, session!.user.id))
+      .limit(1);
+    if (!hr) {
+      return NextResponse.json({ error: "HR account not found" }, { status: 404 });
+    }
+
+    const lastDate = parsed.data.lastDateToApply
+      ? new Date(parsed.data.lastDateToApply)
+      : null;
+    if (lastDate && Number.isNaN(lastDate.getTime())) {
+      return NextResponse.json({ error: "Invalid last date to apply." }, { status: 400 });
+    }
+
+    const [job] = await db
+      .insert(jobPostings)
+      .values({
+        hrId: hr.id,
+        companyId: hr.companyId,
+        title: parsed.data.title.trim(),
+        organisationName: parsed.data.organisationName.trim(),
+        location: parsed.data.location?.trim() || null,
+        employmentType: parsed.data.employmentType,
+        stipend: parsed.data.stipend?.trim() || null,
+        salary: parsed.data.salary?.trim() || null,
+        ctc: parsed.data.ctc?.trim() || null,
+        experienceRequired: parsed.data.experienceRequired?.trim() || null,
+        description: parsed.data.description.trim(),
+        responsibilities: parsed.data.responsibilities?.trim() || null,
+        requiredSkills: parsed.data.requiredSkills?.trim() || null,
+        eligibilityCriteria: parsed.data.eligibilityCriteria?.trim() || null,
+        lastDateToApply: lastDate,
+        applicationDeadline: deadline,
+        openings: parsed.data.openings,
+        status: parsed.data.active === false ? "closed" : "active",
+        active: parsed.data.active !== false,
+      })
+      .returning();
+
+    try {
+      await logAction({
+        userId: auditUserIdForSession(session!.user),
+        role: "hr",
+        action: "HR_JOB_CREATED",
+        entity: "JobPosting",
+        entityId: job.id,
+        metadata: auditMetadataForSession(session!.user, { title: job.title }),
+        ipAddress: getClientIp(request),
+      });
+    } catch (auditErr) {
+      console.error("[POSTHrJob] Audit log failed:", auditErr);
+    }
+
+    try {
+      await sendJobPostedEmail({
+        email: hr.email,
+        hrName: hr.name,
+        jobTitle: job.title,
+        companyName: job.organisationName,
+      });
+    } catch (e) {
+      console.error("[HR] job posted email failed", e);
+    }
+
+    return NextResponse.json(job, { status: 201 });
+  } catch (err) {
+    console.error("[POSTHrJob]", err);
+    const msg = err instanceof Error ? err.message : "Failed to create job posting";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-  return NextResponse.json(job, { status: 201 });
 }
 
 export async function GETHrPreviousJobs() {
@@ -442,12 +491,12 @@ export async function PATCHHrApplicationStatus(request: Request) {
     console.error("[HR] application status email failed", e);
   }
   await logAction({
-    userId: session!.user.id,
+    userId: auditUserIdForSession(session!.user),
     role: "hr",
     action: "HR_APPLICATION_STATUS_UPDATED",
     entity: "JobApplication",
     entityId: id,
-    metadata: { status },
+    metadata: auditMetadataForSession(session!.user, { status }),
     ipAddress: getClientIp(request),
   });
   return NextResponse.json({ success: true });
@@ -825,15 +874,15 @@ export async function PATCHHrSettings(request: Request) {
   }
 
   await logAction({
-    userId: session!.user.id,
+    userId: auditUserIdForSession(session!.user),
     role: "hr",
     action: "HR_SETTINGS_UPDATED",
     entity: "HrUser",
     entityId: session!.user.id,
-    metadata: {
+    metadata: auditMetadataForSession(session!.user, {
       profileUpdated: nextName !== undefined || nextDesignation !== undefined || nextLogoUrl !== undefined,
       companyUpdated: nextCompanyName !== undefined || nextWebsite !== undefined,
-    },
+    }),
     ipAddress: getClientIp(request),
   });
 
@@ -860,12 +909,12 @@ export async function PATCHHrPassword(request: Request) {
   const newHash = await bcrypt.hash(parsed.data.newPassword, 12);
   await db.update(hrUsers).set({ passwordHash: newHash, updatedAt: new Date() }).where(eq(hrUsers.id, session!.user.id));
   await logAction({
-    userId: session!.user.id,
+    userId: auditUserIdForSession(session!.user),
     role: "hr",
     action: "HR_PASSWORD_CHANGED",
     entity: "HrUser",
     entityId: session!.user.id,
-    metadata: {},
+    metadata: auditMetadataForSession(session!.user, {}),
     ipAddress: getClientIp(request),
   });
   return NextResponse.json({ success: true });

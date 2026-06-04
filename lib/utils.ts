@@ -55,6 +55,22 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 /** Turn API `{ error: string | Zod flatten }` into a user-visible message. */
+export async function parseApiJson<T extends Record<string, unknown> = Record<string, unknown>>(
+  res: Response
+): Promise<T> {
+  const text = await res.text();
+  if (!text.trim()) {
+    return {} as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(
+      text.slice(0, 300) || res.statusText || "Invalid server response"
+    );
+  }
+}
+
 export function formatApiError(error: unknown, fallback = "Something went wrong"): string {
   if (typeof error === "string" && error.trim()) return error;
   if (error && typeof error === "object") {

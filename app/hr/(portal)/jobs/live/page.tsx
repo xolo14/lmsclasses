@@ -4,11 +4,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { hrJobSchema, type HrJobInput } from "@/lib/validations";
+import { formatApiError, parseApiJson } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function HrLiveJobsPage() {
   const queryClient = useQueryClient();
@@ -17,10 +25,12 @@ export default function HrLiveJobsPage() {
     queryFn: () => fetch("/api/hr/jobs/live").then((r) => r.json()),
   });
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<HrJobInput>({
+  const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<HrJobInput>({
     resolver: zodResolver(hrJobSchema),
     defaultValues: { employmentType: "full_time", openings: 1 },
   });
+
+  const employmentType = watch("employmentType");
 
   const createJob = useMutation({
     mutationFn: async (payload: HrJobInput) => {
@@ -29,8 +39,10 @@ export default function HrLiveJobsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to create job");
+      const json = await parseApiJson<{ error?: unknown }>(res);
+      if (!res.ok) {
+        throw new Error(formatApiError(json.error, "Failed to create job"));
+      }
       return json;
     },
     onSuccess: () => {
@@ -49,7 +61,29 @@ export default function HrLiveJobsPage() {
             <div className="space-y-1"><Label>Job Title</Label><Input {...register("title")} /></div>
             <div className="space-y-1"><Label>Organization Name</Label><Input {...register("organisationName")} /></div>
             <div className="space-y-1"><Label>Job Location</Label><Input {...register("location")} /></div>
-            <div className="space-y-1"><Label>Employment Type</Label><Input placeholder="internship | full_time | part_time" {...register("employmentType")} /></div>
+            <div className="space-y-1">
+              <Label>Employment Type</Label>
+              <Select
+                value={employmentType}
+                onValueChange={(v) =>
+                  setValue("employmentType", v as HrJobInput["employmentType"], {
+                    shouldValidate: true,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="internship">Internship</SelectItem>
+                  <SelectItem value="full_time">Full time</SelectItem>
+                  <SelectItem value="part_time">Part time</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.employmentType && (
+                <p className="text-sm text-destructive">{errors.employmentType.message}</p>
+              )}
+            </div>
             <div className="space-y-1"><Label>Stipend</Label><Input {...register("stipend")} /></div>
             <div className="space-y-1"><Label>Salary</Label><Input {...register("salary")} /></div>
             <div className="space-y-1"><Label>CTC</Label><Input {...register("ctc")} /></div>
@@ -60,7 +94,7 @@ export default function HrLiveJobsPage() {
             <div className="space-y-1 md:col-span-2"><Label>Eligibility Criteria</Label><Textarea {...register("eligibilityCriteria")} /></div>
             <div className="space-y-1"><Label>Last Date to Apply</Label><Input type="datetime-local" {...register("lastDateToApply")} /></div>
             <div className="space-y-1"><Label>Application Closing DateTime</Label><Input type="datetime-local" {...register("applicationDeadline")} /></div>
-            <div className="space-y-1"><Label>Openings</Label><Input type="number" {...register("openings")} /></div>
+            <div className="space-y-1"><Label>Openings</Label><Input type="number" min={1} {...register("openings")} /></div>
             <div className="md:col-span-2">
               <Button type="submit" disabled={createJob.isPending}>{createJob.isPending ? "Publishing..." : "Publish Job"}</Button>
               {createJob.isError && <p className="text-sm text-destructive mt-2">{(createJob.error as Error).message}</p>}
@@ -79,7 +113,7 @@ export default function HrLiveJobsPage() {
             <p className="text-muted-foreground">No active jobs.</p>
           ) : (
             <div className="space-y-2">
-              {jobs.map((job: any) => (
+              {jobs.map((job: { id: string; title: string; organisationName: string; location?: string | null }) => (
                 <div key={job.id} className="rounded border p-3">
                   <p className="font-medium">{job.title}</p>
                   <p className="text-sm text-muted-foreground">{job.organisationName} · {job.location || "—"}</p>
@@ -92,4 +126,3 @@ export default function HrLiveJobsPage() {
     </div>
   );
 }
-
