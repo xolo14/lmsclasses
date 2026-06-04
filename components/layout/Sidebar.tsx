@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { AppLogo } from "@/components/brand/AppLogo";
 import {
   LayoutDashboard,
   Building2,
@@ -46,21 +47,21 @@ export function Sidebar({ items, title, collapsed, onNavigate, brandLogoUrl }: S
         collapsed ? "lg:w-16" : "lg:w-64"
       )}
     >
-      <div className="flex h-16 items-center border-b border-border px-4">
-        {!collapsed && (
-          <div>
+      <div className="flex min-h-16 items-center border-b border-border px-3 py-3">
+        {!collapsed ? (
+          <div className="w-full space-y-2">
+            <AppLogo size="sm" />
             {brandLogoUrl ? (
               <img
                 src={brandLogoUrl}
-                alt={`${title} logo`}
-                className="h-8 w-8 rounded object-contain border border-border bg-muted/30 mb-2"
+                alt={`${title} organisation logo`}
+                className="h-8 w-8 rounded object-contain border border-border bg-muted/30"
               />
             ) : null}
-            <h1 className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-              {title}
-            </h1>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">LMS Platform</p>
+            <p className="text-sm font-semibold text-foreground leading-tight">{title}</p>
           </div>
+        ) : (
+          <AppLogo size="sm" className="mx-auto" />
         )}
       </div>
       <nav className="flex-1 space-y-1 p-3 overflow-y-auto">

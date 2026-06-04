@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, EyeOff, GraduationCap } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { AppLogo } from "@/components/brand/AppLogo";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -68,8 +69,8 @@ export default function LoginPage() {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-100 via-transparent to-transparent" />
       <Card className="w-full max-w-md relative z-10">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10">
-            <GraduationCap className="h-7 w-7 text-primary" />
+          <div className="mx-auto mb-4 flex justify-center">
+            <AppLogo size="lg" />
           </div>
           <CardTitle className="text-2xl">LMS Platform</CardTitle>
           <CardDescription>Sign in to your account</CardDescription>

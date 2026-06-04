@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { AppLogo } from "@/components/brand/AppLogo";
 
 type HrEmailInput = z.infer<typeof hrEmailSchema>;
 type HrOtpInput = z.infer<typeof hrOtpSchema>;
@@ -82,7 +83,10 @@ export default function HrRegisterPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       <Card className="w-full max-w-xl">
-        <CardHeader>
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-3 flex justify-center">
+            <AppLogo size="md" />
+          </div>
           <CardTitle>HR Registration</CardTitle>
           <CardDescription>
             Step {step} of 3 — {step === 1 ? "Company Email Verification" : step === 2 ? "OTP Verification" : "Company & HR Details"}

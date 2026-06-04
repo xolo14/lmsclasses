@@ -7,6 +7,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "LMS Platform",
   description: "Learning Management System",
+  icons: {
+    icon: "/lms-logo.png",
+    apple: "/lms-logo.png",
+  },
 };
 
 export const viewport = {

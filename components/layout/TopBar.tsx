@@ -4,6 +4,7 @@ import { signOut } from "next-auth/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { LogOut, Menu } from "lucide-react";
+import { AppLogo } from "@/components/brand/AppLogo";
 import { ROLE_LABELS } from "@/lib/utils";
 
 interface TopBarProps {
@@ -26,6 +27,9 @@ export function TopBar({ userName, userRole, onMenuClick }: TopBarProps) {
         <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={onMenuClick} aria-label="Open menu">
           <Menu className="h-5 w-5" />
         </Button>
+        <div className="lg:hidden shrink-0">
+          <AppLogo size="sm" />
+        </div>
         <div className="min-w-0">
           <h2 className="text-base sm:text-lg font-semibold truncate">{ROLE_LABELS[userRole] || userRole}</h2>
           <p className="text-xs text-muted-foreground truncate hidden sm:block">
