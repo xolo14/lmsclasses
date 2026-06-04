@@ -20,6 +20,7 @@ import {
   History,
   Trash2,
   Film,
+  ClipboardList,
   type LucideIcon,
 } from "lucide-react";
 
@@ -152,6 +153,7 @@ export function StudentSidebar(props: Omit<SidebarProps, "items" | "title">) {
   const items: NavItem[] = [
     { label: "My Courses", href: "/student/courses", icon: BookOpen },
     { label: "Job Portal", href: "/student/job-portal", icon: Building2 },
+    { label: "Applications", href: "/student/applications", icon: ClipboardList },
     { label: "Recording Classes", href: "/student/recording-classes", icon: Film },
     { label: "Settings", href: "/student/settings", icon: Settings },
   ];

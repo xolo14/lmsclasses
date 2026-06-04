@@ -1,26 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { hrJobSchema, type HrJobInput } from "@/lib/validations";
-import { formatApiError, parseApiJson } from "@/lib/utils";
+import { formatApiError, formatDateTime, parseApiJson } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { HrJobFormFields } from "@/components/hr/HrJobFormFields";
+import { EditHrJobModal, type HrJobRecord } from "@/components/modals/EditHrJobModal";
+import { Pencil, Trash2 } from "lucide-react";
 
 export default function HrLiveJobsPage() {
   const queryClient = useQueryClient();
-  const { data: jobs = [], isLoading } = useQuery({
+  const [editingJob, setEditingJob] = useState<HrJobRecord | null>(null);
+
+  const { data: jobs = [], isLoading } = useQuery<HrJobRecord[]>({
     queryKey: ["hr-jobs-live"],
     queryFn: () => fetch("/api/hr/jobs/live").then((r) => r.json()),
   });
@@ -29,8 +25,6 @@ export default function HrLiveJobsPage() {
     resolver: zodResolver(hrJobSchema),
     defaultValues: { employmentType: "full_time", openings: 1 },
   });
-
-  const employmentType = watch("employmentType");
 
   const createJob = useMutation({
     mutationFn: async (payload: HrJobInput) => {
@@ -51,54 +45,48 @@ export default function HrLiveJobsPage() {
     },
   });
 
+  const deleteJob = useMutation({
+    mutationFn: async (jobId: string) => {
+      const res = await fetch(`/api/hr/jobs/${jobId}`, { method: "DELETE" });
+      const json = await parseApiJson<{ error?: unknown }>(res);
+      if (!res.ok) {
+        throw new Error(formatApiError(json.error, "Failed to delete job"));
+      }
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["hr-jobs-live"] });
+      queryClient.invalidateQueries({ queryKey: ["hr-jobs-previous"] });
+    },
+  });
+
+  const handleDelete = (job: HrJobRecord) => {
+    const ok = window.confirm(
+      `Delete "${job.title}"? It will move to Previous Job Postings and stop accepting applications.`
+    );
+    if (ok) deleteJob.mutate(job.id);
+  };
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Live Job Postings</h1>
       <Card>
         <CardHeader><CardTitle>New Job Posting</CardTitle></CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit((d) => createJob.mutate(d))} className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1"><Label>Job Title</Label><Input {...register("title")} /></div>
-            <div className="space-y-1"><Label>Organization Name</Label><Input {...register("organisationName")} /></div>
-            <div className="space-y-1"><Label>Job Location</Label><Input {...register("location")} /></div>
-            <div className="space-y-1">
-              <Label>Employment Type</Label>
-              <Select
-                value={employmentType}
-                onValueChange={(v) =>
-                  setValue("employmentType", v as HrJobInput["employmentType"], {
-                    shouldValidate: true,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="internship">Internship</SelectItem>
-                  <SelectItem value="full_time">Full time</SelectItem>
-                  <SelectItem value="part_time">Part time</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.employmentType && (
-                <p className="text-sm text-destructive">{errors.employmentType.message}</p>
+          <form onSubmit={handleSubmit((d) => createJob.mutate(d))} className="space-y-4">
+            <HrJobFormFields
+              register={register}
+              errors={errors}
+              setValue={setValue}
+              watch={watch}
+            />
+            <div>
+              <Button type="submit" disabled={createJob.isPending}>
+                {createJob.isPending ? "Publishing..." : "Publish Job"}
+              </Button>
+              {createJob.isError && (
+                <p className="text-sm text-destructive mt-2">{(createJob.error as Error).message}</p>
               )}
-            </div>
-            <div className="space-y-1"><Label>Stipend</Label><Input {...register("stipend")} /></div>
-            <div className="space-y-1"><Label>Salary</Label><Input {...register("salary")} /></div>
-            <div className="space-y-1"><Label>CTC</Label><Input {...register("ctc")} /></div>
-            <div className="space-y-1"><Label>Experience Required</Label><Input {...register("experienceRequired")} /></div>
-            <div className="space-y-1 md:col-span-2"><Label>Description</Label><Textarea {...register("description")} /></div>
-            <div className="space-y-1 md:col-span-2"><Label>Roles and Responsibilities</Label><Textarea {...register("responsibilities")} /></div>
-            <div className="space-y-1 md:col-span-2"><Label>Required Skills</Label><Textarea {...register("requiredSkills")} /></div>
-            <div className="space-y-1 md:col-span-2"><Label>Eligibility Criteria</Label><Textarea {...register("eligibilityCriteria")} /></div>
-            <div className="space-y-1"><Label>Last Date to Apply</Label><Input type="datetime-local" {...register("lastDateToApply")} /></div>
-            <div className="space-y-1"><Label>Application Closing DateTime</Label><Input type="datetime-local" {...register("applicationDeadline")} /></div>
-            <div className="space-y-1"><Label>Openings</Label><Input type="number" min={1} {...register("openings")} /></div>
-            <div className="md:col-span-2">
-              <Button type="submit" disabled={createJob.isPending}>{createJob.isPending ? "Publishing..." : "Publish Job"}</Button>
-              {createJob.isError && <p className="text-sm text-destructive mt-2">{(createJob.error as Error).message}</p>}
-              {errors.title && <p className="text-sm text-destructive mt-2">{errors.title.message}</p>}
             </div>
           </form>
         </CardContent>
@@ -113,16 +101,57 @@ export default function HrLiveJobsPage() {
             <p className="text-muted-foreground">No active jobs.</p>
           ) : (
             <div className="space-y-2">
-              {jobs.map((job: { id: string; title: string; organisationName: string; location?: string | null }) => (
-                <div key={job.id} className="rounded border p-3">
-                  <p className="font-medium">{job.title}</p>
-                  <p className="text-sm text-muted-foreground">{job.organisationName} · {job.location || "—"}</p>
+              {jobs.map((job) => (
+                <div
+                  key={job.id}
+                  className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium">{job.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {job.organisationName} · {job.location || "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Closes {formatDateTime(job.applicationDeadline)}
+                      {job.openings != null ? ` · ${job.openings} opening(s)` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditingJob(job)}
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      disabled={deleteJob.isPending}
+                      onClick={() => handleDelete(job)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
+          {deleteJob.isError && (
+            <p className="text-sm text-destructive mt-2">{(deleteJob.error as Error).message}</p>
+          )}
         </CardContent>
       </Card>
+
+      <EditHrJobModal
+        open={!!editingJob}
+        onOpenChange={(open) => !open && setEditingJob(null)}
+        job={editingJob}
+      />
     </div>
   );
 }

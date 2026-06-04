@@ -26,6 +26,7 @@ import {
   hrJobSchema,
   changePasswordSchema,
   studentJobApplicationSchema,
+  type HrJobInput,
 } from "@/lib/validations";
 import {
   sendApplicationRejectedEmail,
@@ -270,20 +271,161 @@ export async function GETHrLiveJobs() {
   const { error, session } = await requireAuth(["hr"]);
   if (error) return error;
   const jobs = await db
-    .select({
-      id: jobPostings.id,
-      title: jobPostings.title,
-      organisationName: jobPostings.organisationName,
-      location: jobPostings.location,
-      status: jobPostings.status,
-      applicationDeadline: jobPostings.applicationDeadline,
-      createdAt: jobPostings.createdAt,
-      openings: jobPostings.openings,
-    })
+    .select()
     .from(jobPostings)
     .where(and(eq(jobPostings.hrId, session!.user.id), eq(jobPostings.status, "active")))
     .orderBy(desc(jobPostings.createdAt));
   return NextResponse.json(jobs);
+}
+
+async function getHrOwnedJob(jobId: string, hrId: string) {
+  const [job] = await db
+    .select()
+    .from(jobPostings)
+    .where(and(eq(jobPostings.id, jobId), eq(jobPostings.hrId, hrId)))
+    .limit(1);
+  return job ?? null;
+}
+
+function parseHrJobDates(data: HrJobInput) {
+  const deadline = new Date(data.applicationDeadline);
+  if (Number.isNaN(deadline.getTime())) {
+    return { error: "Invalid application closing date/time." } as const;
+  }
+  const lastDate = data.lastDateToApply ? new Date(data.lastDateToApply) : null;
+  if (lastDate && Number.isNaN(lastDate.getTime())) {
+    return { error: "Invalid last date to apply." } as const;
+  }
+  return { deadline, lastDate } as const;
+}
+
+function hrJobValuesFromParsed(data: HrJobInput, deadline: Date, lastDate: Date | null) {
+  return {
+    title: data.title.trim(),
+    organisationName: data.organisationName.trim(),
+    location: data.location?.trim() || null,
+    employmentType: data.employmentType,
+    stipend: data.stipend?.trim() || null,
+    salary: data.salary?.trim() || null,
+    ctc: data.ctc?.trim() || null,
+    experienceRequired: data.experienceRequired?.trim() || null,
+    description: data.description.trim(),
+    responsibilities: data.responsibilities?.trim() || null,
+    requiredSkills: data.requiredSkills?.trim() || null,
+    eligibilityCriteria: data.eligibilityCriteria?.trim() || null,
+    lastDateToApply: lastDate,
+    applicationDeadline: deadline,
+    openings: data.openings,
+    status: data.active === false ? ("closed" as const) : ("active" as const),
+    active: data.active !== false,
+    updatedAt: new Date(),
+  };
+}
+
+export async function GETHrJobById(_request: Request, id: string) {
+  const { error, session } = await requireAuth(["hr"]);
+  if (error) return error;
+
+  const job = await getHrOwnedJob(id, session!.user.id);
+  if (!job) {
+    return NextResponse.json({ error: "Job posting not found" }, { status: 404 });
+  }
+  return NextResponse.json(job);
+}
+
+export async function PATCHHrJob(request: Request, id: string) {
+  try {
+    const { error, session } = await requireAuth(["hr"]);
+    if (error) return error;
+
+    const existing = await getHrOwnedJob(id, session!.user.id);
+    if (!existing) {
+      return NextResponse.json({ error: "Job posting not found" }, { status: 404 });
+    }
+
+    const body = await request.json();
+    const parsed = hrJobSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: formatApiError(parsed.error.flatten(), "Invalid job data") },
+        { status: 400 }
+      );
+    }
+
+    const dates = parseHrJobDates(parsed.data);
+    if ("error" in dates && dates.error) {
+      return NextResponse.json({ error: dates.error }, { status: 400 });
+    }
+    const { deadline, lastDate } = dates;
+
+    const [job] = await db
+      .update(jobPostings)
+      .set(hrJobValuesFromParsed(parsed.data, deadline, lastDate))
+      .where(eq(jobPostings.id, id))
+      .returning();
+
+    try {
+      await logAction({
+        userId: auditUserIdForSession(session!.user),
+        role: "hr",
+        action: "HR_JOB_UPDATED",
+        entity: "JobPosting",
+        entityId: job.id,
+        metadata: auditMetadataForSession(session!.user, { title: job.title }),
+        ipAddress: getClientIp(request),
+      });
+    } catch (auditErr) {
+      console.error("[PATCHHrJob] Audit log failed:", auditErr);
+    }
+
+    return NextResponse.json(job);
+  } catch (err) {
+    console.error("[PATCHHrJob]", err);
+    const msg = err instanceof Error ? err.message : "Failed to update job posting";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function DELETEHrJob(request: Request, id: string) {
+  try {
+    const { error, session } = await requireAuth(["hr"]);
+    if (error) return error;
+
+    const existing = await getHrOwnedJob(id, session!.user.id);
+    if (!existing) {
+      return NextResponse.json({ error: "Job posting not found" }, { status: 404 });
+    }
+
+    if (existing.status !== "active") {
+      return NextResponse.json({ error: "Job is already closed" }, { status: 400 });
+    }
+
+    const [job] = await db
+      .update(jobPostings)
+      .set({ status: "closed", active: false, updatedAt: new Date() })
+      .where(eq(jobPostings.id, id))
+      .returning();
+
+    try {
+      await logAction({
+        userId: auditUserIdForSession(session!.user),
+        role: "hr",
+        action: "HR_JOB_DELETED",
+        entity: "JobPosting",
+        entityId: job.id,
+        metadata: auditMetadataForSession(session!.user, { title: job.title }),
+        ipAddress: getClientIp(request),
+      });
+    } catch (auditErr) {
+      console.error("[DELETEHrJob] Audit log failed:", auditErr);
+    }
+
+    return NextResponse.json({ success: true, job });
+  } catch (err) {
+    console.error("[DELETEHrJob]", err);
+    const msg = err instanceof Error ? err.message : "Failed to delete job posting";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
 
 export async function POSTHrJob(request: Request) {
@@ -540,6 +682,30 @@ export async function GETStudentJobPortal(request: Request) {
       )
     )
     .orderBy(desc(jobPostings.createdAt));
+  return NextResponse.json(rows);
+}
+
+export async function GETStudentJobApplications(request: Request) {
+  const { error, session } = await requireAuth(["student"]);
+  if (error) return error;
+
+  const rows = await db
+    .select({
+      id: jobApplications.id,
+      jobId: jobApplications.jobId,
+      jobTitle: jobPostings.title,
+      organisationName: jobPostings.organisationName,
+      location: jobPostings.location,
+      employmentType: jobPostings.employmentType,
+      status: jobApplications.status,
+      appliedAt: jobApplications.appliedAt,
+      updatedAt: jobApplications.updatedAt,
+    })
+    .from(jobApplications)
+    .innerJoin(jobPostings, eq(jobApplications.jobId, jobPostings.id))
+    .where(eq(jobApplications.studentId, session!.user.id))
+    .orderBy(desc(jobApplications.appliedAt));
+
   return NextResponse.json(rows);
 }
 
