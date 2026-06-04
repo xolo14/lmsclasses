@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Eye, EyeOff } from "lucide-react";
-import { AppLogo } from "@/components/brand/AppLogo";
+import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -67,15 +67,13 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-background p-4 safe-top safe-bottom">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-100 via-transparent to-transparent" />
-      <Card className="w-full max-w-md relative z-10">
-        <CardHeader className="flex flex-col items-center gap-4 space-y-0 text-center pb-4">
-          <AppLogo size="lg" layout="stacked" />
-          <div className="w-full space-y-1.5">
-            <CardTitle className="text-2xl">LMS Platform</CardTitle>
-            <CardDescription>Sign in to your account</CardDescription>
-          </div>
+      <Card className="w-full max-w-md relative z-10 overflow-hidden p-0">
+        <AuthPageBrand />
+        <CardHeader className="space-y-1.5 px-6 pt-6 pb-4 text-center">
+          <CardTitle className="text-2xl">LMS Platform</CardTitle>
+          <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-6 pb-6">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

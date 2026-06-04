@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { AppLogo } from "@/components/brand/AppLogo";
+import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
 
 type HrEmailInput = z.infer<typeof hrEmailSchema>;
 type HrOtpInput = z.infer<typeof hrOtpSchema>;
@@ -82,17 +82,15 @@ export default function HrRegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-xl">
-        <CardHeader className="flex flex-col items-center gap-4 space-y-0 text-center pb-4">
-          <AppLogo size="md" layout="stacked" />
-          <div className="w-full space-y-1.5">
-            <CardTitle>HR Registration</CardTitle>
-            <CardDescription>
-              Step {step} of 3 — {step === 1 ? "Company Email Verification" : step === 2 ? "OTP Verification" : "Company & HR Details"}
-            </CardDescription>
-          </div>
+      <Card className="w-full max-w-xl overflow-hidden p-0">
+        <AuthPageBrand />
+        <CardHeader className="space-y-1.5 px-6 pt-6 pb-4 text-center">
+          <CardTitle>HR Registration</CardTitle>
+          <CardDescription>
+            Step {step} of 3 — {step === 1 ? "Company Email Verification" : step === 2 ? "OTP Verification" : "Company & HR Details"}
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 px-6 pb-6">
           {step === 1 && (
             <form onSubmit={emailForm.handleSubmit(requestOtp)} className="space-y-4">
               <div className="space-y-2">

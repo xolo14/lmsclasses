@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AppLogo } from "@/components/brand/AppLogo";
+import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
 
 export default function HrLoginPage() {
   const [error, setError] = useState("");
@@ -43,15 +43,13 @@ export default function HrLoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-md">
-        <CardHeader className="flex flex-col items-center gap-4 space-y-0 text-center pb-4">
-          <AppLogo size="md" layout="stacked" />
-          <div className="w-full space-y-1.5">
-            <CardTitle>HR Login</CardTitle>
-            <CardDescription>Sign in with your HR account</CardDescription>
-          </div>
+      <Card className="w-full max-w-md overflow-hidden p-0">
+        <AuthPageBrand />
+        <CardHeader className="space-y-1.5 px-6 pt-6 pb-4 text-center">
+          <CardTitle>HR Login</CardTitle>
+          <CardDescription>Sign in with your HR account</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-6 pb-6">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label>Email</Label>

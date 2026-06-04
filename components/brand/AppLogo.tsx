@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { LMS_APP_NAME, LMS_LOGO_SRC } from "@/lib/branding";
 
 type AppLogoProps = {
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "auth";
   /** inline = sidebar/top bar; stacked = auth cards (logo centered above text) */
   layout?: "inline" | "stacked";
   showName?: boolean;
@@ -17,6 +17,7 @@ const sizeMap = {
   sm: { box: "h-9 w-24", imgW: 96, imgH: 36 },
   md: { box: "h-10 w-32", imgW: 128, imgH: 40 },
   lg: { box: "h-12 w-40", imgW: 160, imgH: 48 },
+  auth: { box: "h-14 w-56 max-w-full", imgW: 224, imgH: 56 },
 };
 
 export function AppLogo({
@@ -32,7 +33,7 @@ export function AppLogo({
   const image = (
     <div
       className={cn(
-        "relative shrink-0 overflow-hidden",
+        "relative shrink-0",
         s.box,
         layout === "stacked" && "mx-auto"
       )}
@@ -46,7 +47,7 @@ export function AppLogo({
           "h-full w-full object-contain",
           layout === "stacked" ? "object-center" : "object-left"
         )}
-        priority={size === "lg"}
+        priority={size === "lg" || size === "auth"}
       />
     </div>
   );
