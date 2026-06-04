@@ -10,6 +10,12 @@ export const metadata: Metadata = {
     template: "%s | LMS Platform",
   },
   description: "Learning Management System",
+  icons: {
+    icon: [
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   manifest: "/site.webmanifest",
 };
 

@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const icon32 = path.join(root, "app", "icon.png");
-const icon180 = path.join(root, "app", "apple-icon.png");
+const iconPath = path.join(root, "app", "icon.png");
+const applePath = path.join(root, "app", "apple-icon.png");
+const publicIcon = path.join(root, "public", "favicon.png");
 
 const logoPath = [
   path.join(root, "public", "lms-logo.jpg"),
@@ -14,7 +15,7 @@ const logoPath = [
 ].find((p) => fs.existsSync(p));
 
 if (!logoPath) {
-  if (fs.existsSync(icon32) && fs.existsSync(icon180)) {
+  if (fs.existsSync(iconPath) && fs.existsSync(applePath)) {
     console.log("Using committed favicons (no logo file to regenerate from).");
     process.exit(0);
   }
@@ -24,19 +25,31 @@ if (!logoPath) {
   process.exit(1);
 }
 
+/** Square favicon: logo scaled to fill ~88% of canvas, white background. */
 async function makeSquareIcon(size, outPath) {
-  const pad = Math.round(size * 0.12);
-  const logoW = size - pad * 2;
-  const logoH = Math.round(logoW * 0.4);
+  const pad = Math.max(2, Math.round(size * 0.06));
+  const inner = size - pad * 2;
+
+  const meta = await sharp(logoPath).metadata();
+  const aspect = (meta.width || 3) / (meta.height || 1);
+
+  let logoW = inner;
+  let logoH = Math.round(inner / aspect);
+  if (logoH > inner) {
+    logoH = inner;
+    logoW = Math.round(inner * aspect);
+  }
 
   const logo = await sharp(logoPath)
-    .resize(logoW, logoH, { fit: "inside", withoutEnlargement: false })
+    .resize(logoW, logoH, { fit: "inside", kernel: sharp.kernel.lanczos3 })
     .png()
     .toBuffer();
 
-  const meta = await sharp(logo).metadata();
-  const left = Math.round((size - (meta.width ?? logoW)) / 2);
-  const top = Math.round((size - (meta.height ?? logoH)) / 2);
+  const logoMeta = await sharp(logo).metadata();
+  const w = logoMeta.width ?? logoW;
+  const h = logoMeta.height ?? logoH;
+  const left = Math.round((size - w) / 2);
+  const top = Math.round((size - h) / 2);
 
   await sharp({
     create: {
@@ -47,11 +60,14 @@ async function makeSquareIcon(size, outPath) {
     },
   })
     .composite([{ input: logo, left, top }])
-    .png()
+    .png({ compressionLevel: 9 })
     .toFile(outPath);
 
   console.log("Wrote", outPath, size + "x" + size);
 }
 
-await makeSquareIcon(32, icon32);
-await makeSquareIcon(180, icon180);
+// 48px source — browsers scale down sharper than a native 32px export
+await makeSquareIcon(48, iconPath);
+await makeSquareIcon(180, applePath);
+await makeSquareIcon(32, publicIcon);
+fs.copyFileSync(applePath, path.join(root, "public", "apple-icon.png"));
