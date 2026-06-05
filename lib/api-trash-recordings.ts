@@ -13,7 +13,7 @@ import {
 import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { classRecordingSchema } from "@/lib/validations";
-import { purgeExpiredTrash, clearAllTrash, TRASH_RETENTION_DAYS, type TrashEntityType } from "@/lib/trash";
+import { purgeExpiredTrash, TRASH_RETENTION_DAYS, type TrashEntityType } from "@/lib/trash";
 
 const TRASH_TABLES = {
   organisation: { table: organisations, id: organisations.id, label: organisations.name },
@@ -346,27 +346,4 @@ export async function GETStudentRecordings(studentId: string) {
     .orderBy(desc(classRecordings.createdAt));
 
   return NextResponse.json(recordings);
-}
-
-export async function DELETETrashClear(request: Request) {
-  const { error, session } = await requireAuth(["super_admin", "manager"]);
-  if (error) return error;
-
-  try {
-    await clearAllTrash();
-
-    await logAction({
-      userId: session!.user.id,
-      role: session!.user.role,
-      action: "CLEARED_TRASH",
-      entity: "Trash",
-      entityId: "all",
-      ipAddress: getClientIp(request),
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error("[DELETETrashClear] error:", err);
-    return NextResponse.json({ error: "Failed to clear trash" }, { status: 500 });
-  }
 }
