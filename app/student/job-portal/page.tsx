@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function StudentJobPortalPage() {
   const queryClient = useQueryClient();
@@ -103,10 +110,16 @@ export default function StudentJobPortalPage() {
         </div>
       )}
 
-      {selectedJobId && (
-        <Card>
-          <CardHeader><CardTitle>Apply for Job</CardTitle></CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
+      <Dialog open={!!selectedJobId} onOpenChange={(open) => !open && setSelectedJobId(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Apply for Job</DialogTitle>
+            <DialogDescription>
+              Provide your details and upload your resume to apply.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 md:grid-cols-2 mt-4">
             {[
               ["Full Name", "fullName"],
               ["Email", "email"],
@@ -125,7 +138,7 @@ export default function StudentJobPortalPage() {
                 />
               </div>
             ))}
-            <div className="space-y-1">
+            <div className="space-y-1 md:col-span-2">
               <Label>Resume (PDF/DOC/DOCX, max 10MB)</Label>
               <Input
                 type="file"
@@ -137,7 +150,7 @@ export default function StudentJobPortalPage() {
                   uploadResume.mutate(file);
                 }}
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground mt-1">
                 {uploadResume.isPending
                   ? "Uploading resume..."
                   : form.resumeUrl
@@ -148,16 +161,19 @@ export default function StudentJobPortalPage() {
                 <p className="text-xs text-destructive">{(uploadResume.error as Error).message}</p>
               )}
             </div>
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 mt-4 flex justify-end gap-2">
+              <Button variant="outline" type="button" onClick={() => setSelectedJobId(null)}>
+                Cancel
+              </Button>
               <Button onClick={() => apply.mutate()} disabled={apply.isPending || uploadResume.isPending || !form.resumeUrl}>
                 {apply.isPending ? "Submitting..." : "Submit Application"}
               </Button>
-              {apply.isError && <p className="text-sm text-destructive mt-2">{(apply.error as Error).message}</p>}
-              {apply.isSuccess && <p className="text-sm text-emerald-500 mt-2">Application submitted!</p>}
             </div>
-          </CardContent>
-        </Card>
-      )}
+            {apply.isError && <p className="text-sm text-destructive md:col-span-2 mt-2">{(apply.error as Error).message}</p>}
+            {apply.isSuccess && <p className="text-sm text-emerald-500 md:col-span-2 mt-2">Application submitted!</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

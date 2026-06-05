@@ -11,6 +11,13 @@ import { AddStudentModal } from "@/components/modals/AddStudentModal";
 import { AddBatchModal } from "@/components/modals/AddBatchModal";
 import { ColumnDef } from "@tanstack/react-table";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Course = { id: string; title: string; price: string };
 type Student = { id: string; name: string; email: string; lmsId: string; batchName: string; isActive: boolean };
@@ -91,55 +98,68 @@ export default function OrgAdminStudentsPage() {
         ))}
       </div>
 
-      {selectedCourse && (
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-base">Batches — {selectedCourse.title}</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => setBatchModalOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" /> Create Batch
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {batchesLoading ? (
-                <p className="text-sm text-muted-foreground">Loading batches...</p>
-              ) : batches.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No batches yet. Create a batch before adding students to one.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {batches.map((batch) => (
-                    <div
-                      key={batch.id}
-                      className="flex flex-col gap-1 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div>
-                        <p className="font-medium">{batch.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDate(batch.startDate)} — {formatDate(batch.endDate)}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 text-xs">
-                        <Badge variant="outline">Max: {batch.maxSlots}</Badge>
-                        <Badge variant="outline">Enrolled: {batch.enrolledCount}</Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      <Dialog open={!!selectedCourse} onOpenChange={(open) => !open && setSelectedCourse(null)}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">{selectedCourse?.title} Details</DialogTitle>
+            <DialogDescription>
+              Manage batches and enrolled students for {selectedCourse?.title}.
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">{selectedCourse.title} — Students</h2>
-            <Button onClick={() => setStudentModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" /> Add Student
-            </Button>
-          </div>
-          <DataTable columns={columns} data={students} searchPlaceholder="Search students..." />
-        </div>
-      )}
+          {selectedCourse && (
+            <div className="space-y-6 mt-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-base">Batches — {selectedCourse.title}</CardTitle>
+                  <Button variant="outline" size="sm" onClick={() => setBatchModalOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" /> Create Batch
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {batchesLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading batches...</p>
+                  ) : batches.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No batches yet. Create a batch before adding students to one.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {batches.map((batch) => (
+                        <div
+                          key={batch.id}
+                          className="flex flex-col gap-1 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div>
+                            <p className="font-medium">{batch.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatDate(batch.startDate)} — {formatDate(batch.endDate)}
+                            </p>
+                          </div>
+                          <div className="flex gap-2 text-xs">
+                            <Badge variant="outline">Max: {batch.maxSlots}</Badge>
+                            <Badge variant="outline">Enrolled: {batch.enrolledCount}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">{selectedCourse.title} — Students</h2>
+                  <Button size="sm" onClick={() => setStudentModalOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" /> Add Student
+                  </Button>
+                </div>
+                <DataTable columns={columns} data={students} searchPlaceholder="Search students..." />
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {selectedCourse && (
         <>
