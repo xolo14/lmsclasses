@@ -37,8 +37,46 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
   const [error, setError] = useState("");
   const [showAssignPrompt, setShowAssignPrompt] = useState(false);
 
+  // Coupon states
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [discount, setDiscount] = useState(0);
+  const [couponError, setCouponError] = useState("");
+  const [checkingCoupon, setCheckingCoupon] = useState(false);
+
   const unitPrice = parseFloat(course.price);
   const total = unitPrice * slotsCount;
+  const finalTotal = Math.max(0, total - discount);
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) return;
+    setCheckingCoupon(true);
+    setCouponError("");
+    setAppliedCoupon(null);
+    setDiscount(0);
+
+    try {
+      const res = await fetch("/api/payments/redeem-coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseId: course.id,
+          slotsCount,
+          couponCode: couponCode.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Invalid coupon");
+      }
+      setAppliedCoupon(data.code);
+      setDiscount(data.discountAmount);
+    } catch (err: any) {
+      setCouponError(err.message || "Failed to apply coupon");
+    } finally {
+      setCheckingCoupon(false);
+    }
+  };
 
   const completePurchase = async (paymentId: string, payload: Record<string, unknown>) => {
     const verifyRes = await fetch("/api/payments/verify", {
@@ -62,12 +100,24 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
       const res = await fetch("/api/payments/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseId: course.id, slotsCount }),
+        body: JSON.stringify({
+          courseId: course.id,
+          slotsCount,
+          couponCode: appliedCoupon || undefined,
+        }),
       });
       const data = await res.json();
 
       if (!res.ok) {
         throw new Error(data.error || "Could not start payment");
+      }
+
+      if (data.zeroAmount) {
+        // Zero-amount checkout (coupon gave 100% discount)
+        onOpenChange(false);
+        setShowAssignPrompt(true);
+        router.refresh();
+        return;
       }
 
       if (data.mock) {
@@ -86,7 +136,7 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
 
       const options = {
         key: data.key,
-        amount: data.amount * 100,
+        amount: Math.round(data.amount * 100),
         currency: data.currency,
         name: process.env.NEXT_PUBLIC_APP_NAME || "LMS Platform",
         description: `${slotsCount} slot(s) for ${course.title}`,
@@ -121,9 +171,21 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
     }
   };
 
+  const resetModalState = () => {
+    setSlotsCount(1);
+    setCouponCode("");
+    setAppliedCoupon(null);
+    setDiscount(0);
+    setCouponError("");
+    setError("");
+  };
+
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={(val) => {
+        if (!val) resetModalState();
+        onOpenChange(val);
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Buy Slots — {course.title}</DialogTitle>
@@ -138,15 +200,55 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
                 type="number"
                 min={1}
                 value={slotsCount}
-                onChange={(e) => setSlotsCount(parseInt(e.target.value) || 1)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 1;
+                  setSlotsCount(val);
+                  // Reset applied coupon when count changes to force re-validation
+                  setAppliedCoupon(null);
+                  setDiscount(0);
+                  setCouponError("");
+                }}
               />
             </div>
+
+            <div className="space-y-2">
+              <Label>Coupon Redeem</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="e.g. SUMMER25"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value)}
+                  disabled={loading}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loading || checkingCoupon || !couponCode.trim()}
+                  onClick={handleApplyCoupon}
+                >
+                  {checkingCoupon ? "Checking..." : "Apply"}
+                </Button>
+              </div>
+              {couponError && <p className="text-xs text-destructive">{couponError}</p>}
+              {appliedCoupon && (
+                <p className="text-xs text-emerald-500 font-medium">
+                  Coupon &quot;{appliedCoupon}&quot; applied!
+                </p>
+              )}
+            </div>
+
             <div className="rounded-lg bg-muted p-4 space-y-1">
               <p className="text-sm text-muted-foreground">
-                {formatCurrency(unitPrice)} × {slotsCount} slots
+                {formatCurrency(unitPrice)} × {slotsCount} slots = {formatCurrency(total)}
               </p>
-              <p className="text-xl font-bold font-mono text-primary">
-                Total: {formatCurrency(total)}
+              {discount > 0 && (
+                <p className="text-sm text-emerald-500">
+                  Discount: -{formatCurrency(discount)}
+                </p>
+              )}
+              <p className="text-xl font-bold font-mono text-primary pt-2 border-t border-border mt-2">
+                Final Total: {formatCurrency(finalTotal)}
               </p>
             </div>
             {error && <p className="text-sm text-destructive text-center">{error}</p>}
@@ -154,7 +256,7 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button onClick={handlePurchase} disabled={loading}>
-              {loading ? "Processing..." : "Pay with Razorpay"}
+              {loading ? "Processing..." : finalTotal === 0 ? "Fulfill for Free" : "Pay with Razorpay"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { payments, slots } from "@/lib/db/schema";
+import { payments, slots, coupons } from "@/lib/db/schema";
 import { logAction } from "@/lib/audit";
 import type { Role } from "@/lib/db/schema";
 
@@ -36,6 +36,15 @@ export async function fulfillSlotPurchase(
       razorpayPaymentId: opts.razorpayPaymentId,
     })
     .where(eq(payments.id, paymentId));
+
+  if (payment.couponId) {
+    await db
+      .update(coupons)
+      .set({
+        usesCount: sql`COALESCE(${coupons.usesCount}, 0) + 1`
+      })
+      .where(eq(coupons.id, payment.couponId));
+  }
 
   await db.insert(slots).values({
     organisationId: payment.organisationId,

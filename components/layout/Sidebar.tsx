@@ -21,6 +21,7 @@ import {
   Trash2,
   Film,
   ClipboardList,
+  Tag,
   type LucideIcon,
 } from "lucide-react";
 
@@ -102,6 +103,7 @@ export function SuperAdminSidebar(props: Omit<SidebarProps, "items" | "title">) 
     { label: "Courses", href: "/super-admin/courses", icon: BookOpen },
     { label: "Batches", href: "/super-admin/batches", icon: Layers },
     { label: "Payments", href: "/super-admin/payments", icon: CreditCard },
+    { label: "Coupons", href: "/super-admin/coupons", icon: Tag },
     { label: "Mentors", href: "/super-admin/mentors", icon: UserCheck },
     { label: "Live Classes", href: "/super-admin/live-classes", icon: Video },
     { label: "Recording Classes", href: "/super-admin/recording-classes", icon: Film },
@@ -136,6 +138,7 @@ export function OrgAdminSidebar(props: Omit<SidebarProps, "items" | "title">) {
     { label: "Courses", href: "/org-admin/courses", icon: BookOpen },
     { label: "Students", href: "/org-admin/students", icon: GraduationCap },
     { label: "History", href: "/org-admin/history", icon: History },
+    { label: "Coupons", href: "/org-admin/coupons", icon: Tag },
     { label: "Settings", href: "/org-admin/settings", icon: Settings },
   ];
   return <Sidebar items={items} title="Org Admin" {...props} />;
