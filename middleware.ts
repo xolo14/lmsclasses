@@ -21,9 +21,21 @@ export default auth((req) => {
   );
 
   if (isPublic) {
-    if (role && pathname === "/login") {
-      const redirect = ROLE_ROUTES[role] || "/login";
-      return NextResponse.redirect(new URL(`${redirect}/dashboard`, req.url));
+    if (role && (pathname === "/login" || pathname === "/")) {
+      let dest = "/login";
+      if (role === "mentor") {
+        dest = "/mentor/live-classes";
+      } else if (role === "student") {
+        dest = "/student/courses";
+      } else if (role === "hr") {
+        dest = "/hr/dashboard";
+      } else if (ROLE_ROUTES[role]) {
+        dest = `${ROLE_ROUTES[role]}/dashboard`;
+      }
+      return NextResponse.redirect(new URL(dest, req.url));
+    }
+    if (!role && pathname === "/") {
+      return NextResponse.redirect(new URL("/login", req.url));
     }
     if (role === "hr" && (pathname === "/hr/login" || pathname === "/hr/register")) {
       return NextResponse.redirect(new URL("/hr/dashboard", req.url));
