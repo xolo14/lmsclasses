@@ -94,7 +94,7 @@ export const courses = pgTable("courses", {
   title: text("title").notNull(),
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  thumbnailUrl: text("thumbnail_url"),
+  demoUrl: text("demo_url"),
   isActive: boolean("is_active").default(true),
   deletedAt: timestamp("deleted_at"),
   createdBy: uuid("created_by").references(() => users.id),

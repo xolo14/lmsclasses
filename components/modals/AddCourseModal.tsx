@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 interface AddCourseModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  course?: { id: string; title: string; description?: string | null; price: string; thumbnailUrl?: string | null };
+  course?: { id: string; title: string; description?: string | null; price: string; demoUrl?: string | null };
 }
 
 export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalProps) {
@@ -33,13 +33,13 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
             title: course.title,
             description: course.description ?? "",
             price: Number(course.price),
-            thumbnailUrl: course.thumbnailUrl ?? "",
+            demoUrl: course.demoUrl ?? "",
           }
         : {
             title: "",
             description: "",
             price: 0,
-            thumbnailUrl: "",
+            demoUrl: "",
           },
     [course]
   );
@@ -69,7 +69,7 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["courses"] });
-      if (!course) reset({ title: "", description: "", price: 0, thumbnailUrl: "" });
+      if (!course) reset({ title: "", description: "", price: 0, demoUrl: "" });
       onOpenChange(false);
     },
     onError: () => setError("Failed to save course"),
@@ -97,8 +97,8 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
             {errors.price && <p className="text-sm text-destructive">{errors.price.message}</p>}
           </div>
           <div className="space-y-2">
-            <Label>Thumbnail URL</Label>
-            <Input {...register("thumbnailUrl")} placeholder="https://..." />
+            <Label>Demo URL</Label>
+            <Input {...register("demoUrl")} placeholder="https://..." />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>

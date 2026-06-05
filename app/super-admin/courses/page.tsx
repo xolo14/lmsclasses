@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, FileSpreadsheet } from "lucide-react";
+import { Plus, Pencil, Trash2, FileSpreadsheet, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddCourseModal } from "@/components/modals/AddCourseModal";
 import { BulkImportModal } from "@/components/modals/BulkImportModal";
+import { DemoVideoModal } from "@/components/modals/DemoVideoModal";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 
@@ -16,7 +17,7 @@ type Course = {
   title: string;
   description: string;
   price: string;
-  thumbnailUrl: string;
+  demoUrl?: string | null;
   isActive: boolean;
   enrolledCount: number;
 };
@@ -26,6 +27,11 @@ export default function CoursesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editCourse, setEditCourse] = useState<Course | undefined>();
+
+  // Demo Video Modal states
+  const [demoVideoUrl, setDemoVideoUrl] = useState("");
+  const [demoCourseTitle, setDemoCourseTitle] = useState("");
+  const [demoModalOpen, setDemoModalOpen] = useState(false);
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
     queryKey: ["courses"],
@@ -54,11 +60,22 @@ export default function CoursesPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {courses.map((course) => (
           <Card key={course.id}>
-            {course.thumbnailUrl && (
-              <div className="h-40 overflow-hidden rounded-t-xl">
-                <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
+            <div className="h-28 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center justify-between px-6 rounded-t-xl border-b border-border/40">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-cyan-950 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <Play className="h-5 w-5 fill-cyan-400/20" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Course Module</p>
+                  <p className="text-sm font-semibold text-foreground">Interactive Learning</p>
+                </div>
               </div>
-            )}
+              {course.demoUrl && (
+                <Badge variant="secondary" className="bg-cyan-950/40 text-cyan-400 border border-cyan-500/20 text-[10px]">
+                  Demo Available
+                </Badge>
+              )}
+            </div>
             <CardHeader>
               <div className="flex items-start justify-between">
                 <CardTitle className="text-lg">{course.title}</CardTitle>
@@ -69,17 +86,33 @@ export default function CoursesPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{course.description}</p>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between animate-fade-in">
                 <span className="font-mono text-primary">{formatCurrency(course.price)}</span>
                 <span className="text-sm text-muted-foreground">{course.enrolledCount} enrolled</span>
               </div>
-              <div className="flex gap-2 mt-4">
-                <Button variant="outline" size="sm" onClick={() => { setEditCourse(course); setModalOpen(true); }}>
-                  <Pencil className="h-3 w-3 mr-1" /> Edit
-                </Button>
-                <Button variant="destructive" size="sm" onClick={() => deleteCourse.mutate(course.id)}>
-                  <Trash2 className="h-3 w-3 mr-1" /> Delete
-                </Button>
+              <div className="flex items-center justify-between gap-2 mt-4">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => { setEditCourse(course); setModalOpen(true); }}>
+                    <Pencil className="h-3 w-3 mr-1" /> Edit
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => deleteCourse.mutate(course.id)}>
+                    <Trash2 className="h-3 w-3 mr-1" /> Delete
+                  </Button>
+                </div>
+                {course.demoUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-cyan-500/30 text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/20"
+                    onClick={() => {
+                      setDemoVideoUrl(course.demoUrl || "");
+                      setDemoCourseTitle(course.title);
+                      setDemoModalOpen(true);
+                    }}
+                  >
+                    <Play className="h-3 w-3 mr-1 fill-cyan-400/20" /> Demo
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -98,16 +131,16 @@ export default function CoursesPage() {
         onOpenChange={setImportModalOpen}
         title="Bulk Import Courses"
         description="Upload an Excel or CSV file containing course details. The table below shows a preview of parsed records."
-        templateHeaders={["Title", "Description", "Price", "Thumbnail URL"]}
+        templateHeaders={["Title", "Description", "Price", "Demo URL"]}
         templateSampleRows={[
-          ["Python for Beginners", "Learn programming basics from scratch.", "1999", "https://images.unsplash.com/photo-1515879218367-8466d910aaa4"],
+          ["Python for Beginners", "Learn programming basics from scratch.", "1999", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
           ["Web Design Principles", "Visual composition, typography, grids, and layouts.", "2999", ""]
         ]}
         headerMapping={{
           title: "Title",
           description: "Description",
           price: "Price",
-          thumbnailUrl: "Thumbnail URL"
+          demoUrl: "Demo URL"
         }}
         onImport={async (data) => {
           const res = await fetch("/api/courses/bulk", {
@@ -125,6 +158,14 @@ export default function CoursesPage() {
           queryClient.invalidateQueries({ queryKey: ["courses"] });
         }}
       />
+      {demoVideoUrl && (
+        <DemoVideoModal
+          open={demoModalOpen}
+          onOpenChange={setDemoModalOpen}
+          videoUrl={demoVideoUrl}
+          courseTitle={demoCourseTitle}
+        />
+      )}
     </div>
   );
 }

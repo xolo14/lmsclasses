@@ -15,7 +15,7 @@ export const courseSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
   price: z.coerce.number().min(0, "Price must be positive"),
-  thumbnailUrl: z.string().url().optional().or(z.literal("")),
+  demoUrl: z.string().url().optional().or(z.literal("")),
 });
 
 export const organisationSchema = z.object({

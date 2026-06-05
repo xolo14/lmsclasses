@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Play } from "lucide-react";
 
 type EnrolledCourse = {
   courseId: string;
   title: string;
   description: string;
-  thumbnailUrl: string;
+  demoUrl?: string | null;
   batchName: string;
 };
 
@@ -37,11 +37,17 @@ export default function StudentCoursesPage() {
           {courses.map((course) => (
             <Link key={course.courseId} href={`/student/courses/${course.courseId}`}>
               <Card className="hover:border-cyan-400/30 transition-all cursor-pointer h-full">
-                {course.thumbnailUrl && (
-                  <div className="h-40 overflow-hidden rounded-t-xl">
-                    <img src={course.thumbnailUrl} alt={course.title} className="w-full h-full object-cover" />
+                <div className="h-28 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center justify-between px-6 rounded-t-xl border-b border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-cyan-950 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                      <Play className="h-5 w-5 fill-cyan-400/20" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Course Module</p>
+                      <p className="text-sm font-semibold text-foreground font-sans">Interactive Learning</p>
+                    </div>
                   </div>
-                )}
+                </div>
                 <CardHeader>
                   <CardTitle className="text-lg">{course.title}</CardTitle>
                 </CardHeader>

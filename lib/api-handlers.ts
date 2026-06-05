@@ -1408,7 +1408,7 @@ export async function GETStudentCourses(studentId: string) {
       title: courses.title,
       description: courses.description,
       price: courses.price,
-      thumbnailUrl: courses.thumbnailUrl,
+      demoUrl: courses.demoUrl,
       batchName: batches.name,
       enrolledAt: studentCourses.enrolledAt,
     })
