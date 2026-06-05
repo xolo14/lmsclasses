@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,24 @@ export default function TrashPage() {
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trash"] }),
   });
+
+  const clearTrash = useMutation({
+    mutationFn: () =>
+      fetch("/api/trash", {
+        method: "DELETE",
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trash"] }),
+  });
+
+  const handleClearTrash = () => {
+    if (
+      confirm(
+        "Are you sure you want to permanently delete all items in the trash? This action cannot be undone."
+      )
+    ) {
+      clearTrash.mutate();
+    }
+  };
 
   const columns: ColumnDef<TrashItem>[] = [
     {
@@ -73,11 +91,23 @@ export default function TrashPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold">Trash</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Deleted items are kept for {data?.retentionDays ?? 30} days, then permanently removed.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold">Trash</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Deleted items are kept for {data?.retentionDays ?? 30} days, then permanently removed.
+          </p>
+        </div>
+        {data?.items && data.items.length > 0 && (
+          <Button
+            variant="destructive"
+            onClick={handleClearTrash}
+            disabled={clearTrash.isPending}
+            className="sm:w-auto w-full shadow-lg shadow-destructive/10"
+          >
+            <Trash2 className="h-4 w-4 mr-2" /> Clear Trash
+          </Button>
+        )}
       </div>
       <DataTable
         columns={columns}

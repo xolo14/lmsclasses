@@ -65,4 +65,15 @@ export async function purgeExpiredTrash() {
     );
 }
 
+export async function clearAllTrash() {
+  await db.delete(classRecordings).where(isNotNull(classRecordings.deletedAt));
+  await db.delete(liveClasses).where(isNotNull(liveClasses.deletedAt));
+  await db.delete(batches).where(isNotNull(batches.deletedAt));
+  await db.delete(courses).where(isNotNull(courses.deletedAt));
+  await db.delete(organisations).where(isNotNull(organisations.deletedAt));
+  await db.delete(users).where(and(isNotNull(users.deletedAt), eq(users.role, "student")));
+  await db.delete(users).where(and(isNotNull(users.deletedAt), eq(users.role, "manager")));
+  await db.delete(users).where(and(isNotNull(users.deletedAt), eq(users.role, "mentor")));
+}
+
 export { isNull as notDeleted };
