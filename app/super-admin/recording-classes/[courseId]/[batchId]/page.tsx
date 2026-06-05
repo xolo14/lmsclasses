@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Trash2, ArrowLeft, ExternalLink } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, ExternalLink, FileSpreadsheet } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
 import { AddClassRecordingModal } from "@/components/modals/AddClassRecordingModal";
+import { BulkImportModal } from "@/components/modals/BulkImportModal";
 import { formatDateTime } from "@/lib/utils";
 
 type Recording = {
@@ -28,6 +29,7 @@ export default function BatchRecordingsPage() {
   const batchId = params.batchId as string;
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   const { data: recordings = [], isLoading } = useQuery<Recording[]>({
     queryKey: ["class-recordings", batchId],
@@ -91,9 +93,14 @@ export default function BatchRecordingsPage() {
           </Button>
           <h1 className="text-2xl font-bold">Batch Recordings</h1>
         </div>
-        <Button onClick={() => setModalOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> Upload Recording
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button variant="outline" onClick={() => setImportModalOpen(true)} className="w-full sm:w-auto">
+            <FileSpreadsheet className="h-4 w-4 mr-2" /> Bulk Import
+          </Button>
+          <Button onClick={() => setModalOpen(true)} className="w-full sm:w-auto">
+            <Plus className="h-4 w-4 mr-2" /> Upload Recording
+          </Button>
+        </div>
       </div>
       <DataTable columns={columns} data={recordings} searchPlaceholder="Search recordings..." />
       <AddClassRecordingModal
@@ -101,6 +108,41 @@ export default function BatchRecordingsPage() {
         onOpenChange={setModalOpen}
         courseId={courseId}
         batchId={batchId}
+      />
+      <BulkImportModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        title="Bulk Import Class Recordings"
+        description="Upload an Excel or CSV file containing recording details for this batch. The table below shows a preview of parsed records."
+        templateHeaders={["Week Name", "Topic Name", "Video URL"]}
+        templateSampleRows={[
+          ["Week 1", "Introduction to React and JSX", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+          ["Week 2", "React Hooks & State Management", "https://vimeo.com/83949210"]
+        ]}
+        headerMapping={{
+          weekName: "Week Name",
+          topicName: "Topic Name",
+          videoUrl: "Video URL"
+        }}
+        onImport={async (data) => {
+          const res = await fetch("/api/class-recordings/bulk", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              courseId,
+              batchId,
+              recordings: data
+            }),
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            return { successCount: 0, error: json.error || "Failed to bulk import recordings." };
+          }
+          return { successCount: json.successCount };
+        }}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["class-recordings", batchId] });
+        }}
       />
     </div>
   );

@@ -19,6 +19,8 @@ export const roleEnum = pgEnum("role", [
   "hr",
 ]);
 
+export const discountTypeEnum = pgEnum("discount_type", ["percent", "fixed"]);
+
 export const paymentStatusEnum = pgEnum("payment_status", [
   "pending",
   "success",
@@ -115,6 +117,24 @@ export const batches = pgTable("batches", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const coupons = pgTable("coupons", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  code: text("code").notNull().unique(),
+  description: text("description"),
+  discountType: discountTypeEnum("discount_type").notNull().default("percent"),
+  discountValue: decimal("discount_value", { precision: 10, scale: 2 }).notNull(),
+  minOrderAmount: decimal("min_order_amount", { precision: 10, scale: 2 }).default("0.00"),
+  maxUses: integer("max_uses"),
+  usesCount: integer("uses_count").default(0),
+  startsAt: timestamp("starts_at"),
+  expiresAt: timestamp("expires_at"),
+  organisationId: uuid("organisation_id").references(() => organisations.id),
+  isActive: boolean("is_active").default(true),
+  deletedAt: timestamp("deleted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const payments = pgTable("payments", {
   id: uuid("id").primaryKey().defaultRandom(),
   organisationId: uuid("organisation_id")
@@ -128,6 +148,8 @@ export const payments = pgTable("payments", {
     .notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   slotsCount: integer("slots_count").notNull(),
+  couponId: uuid("coupon_id").references(() => coupons.id),
+  discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }),
   razorpayOrderId: text("razorpay_order_id"),
   razorpayPaymentId: text("razorpay_payment_id"),
   status: paymentStatusEnum("status").default("pending"),
@@ -312,4 +334,5 @@ export type HrUser = typeof hrUsers.$inferSelect;
 export type HrEmailVerification = typeof hrEmailVerifications.$inferSelect;
 export type JobPosting = typeof jobPostings.$inferSelect;
 export type JobApplication = typeof jobApplications.$inferSelect;
+export type Coupon = typeof coupons.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];

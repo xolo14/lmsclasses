@@ -191,3 +191,23 @@ export type ClassRecordingInput = z.infer<typeof classRecordingSchema>;
 export type HrRegistrationInput = z.infer<typeof hrRegistrationSchema>;
 export type HrJobInput = z.infer<typeof hrJobSchema>;
 export type StudentJobApplicationInput = z.infer<typeof studentJobApplicationSchema>;
+
+export const couponSchema = z.object({
+  code: z
+    .string()
+    .min(3, "Code must be at least 3 characters")
+    .max(20, "Code must be at most 20 characters")
+    .regex(/^[a-zA-Z0-9_-]+$/, "Code can only contain alphanumeric characters, underscores, or hyphens")
+    .transform((val) => val.toUpperCase().trim()),
+  description: z.preprocess(emptyToUndefined, z.string().optional()),
+  discountType: z.enum(["percent", "fixed"]),
+  discountValue: z.coerce.number().min(0, "Value must be positive"),
+  minOrderAmount: z.coerce.number().min(0, "Min order must be positive").default(0),
+  maxUses: z.preprocess(emptyToUndefined, z.coerce.number().min(1, "Max uses must be at least 1").optional()),
+  startsAt: z.preprocess(emptyToUndefined, z.string().optional()),
+  expiresAt: z.preprocess(emptyToUndefined, z.string().optional()),
+  organisationId: z.preprocess(emptyToUndefined, z.string().uuid("Invalid organization ID").optional()),
+  isActive: z.boolean().default(true),
+});
+
+export type CouponInput = z.infer<typeof couponSchema>;

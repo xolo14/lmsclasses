@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddCourseModal } from "@/components/modals/AddCourseModal";
+import { BulkImportModal } from "@/components/modals/BulkImportModal";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 
@@ -23,6 +24,7 @@ type Course = {
 export default function CoursesPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [editCourse, setEditCourse] = useState<Course | undefined>();
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
@@ -40,9 +42,14 @@ export default function CoursesPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Courses">
-        <Button onClick={() => { setEditCourse(undefined); setModalOpen(true); }} className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" /> Add Course
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button variant="outline" onClick={() => setImportModalOpen(true)} className="w-full sm:w-auto">
+            <FileSpreadsheet className="h-4 w-4 mr-2" /> Bulk Import
+          </Button>
+          <Button onClick={() => { setEditCourse(undefined); setModalOpen(true); }} className="w-full sm:w-auto">
+            <Plus className="h-4 w-4 mr-2" /> Add Course
+          </Button>
+        </div>
       </PageHeader>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {courses.map((course) => (
@@ -85,6 +92,38 @@ export default function CoursesPage() {
           if (!open) setEditCourse(undefined);
         }}
         course={editCourse}
+      />
+      <BulkImportModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        title="Bulk Import Courses"
+        description="Upload an Excel or CSV file containing course details. The table below shows a preview of parsed records."
+        templateHeaders={["Title", "Description", "Price", "Thumbnail URL"]}
+        templateSampleRows={[
+          ["Python for Beginners", "Learn programming basics from scratch.", "1999", "https://images.unsplash.com/photo-1515879218367-8466d910aaa4"],
+          ["Web Design Principles", "Visual composition, typography, grids, and layouts.", "2999", ""]
+        ]}
+        headerMapping={{
+          title: "Title",
+          description: "Description",
+          price: "Price",
+          thumbnailUrl: "Thumbnail URL"
+        }}
+        onImport={async (data) => {
+          const res = await fetch("/api/courses/bulk", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            return { successCount: 0, error: json.error || "Failed to bulk import courses." };
+          }
+          return { successCount: json.successCount };
+        }}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["courses"] });
+        }}
       />
     </div>
   );
