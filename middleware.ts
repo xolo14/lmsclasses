@@ -35,7 +35,7 @@ export default auth((req) => {
       return NextResponse.redirect(new URL(dest, req.url));
     }
     if (!role && pathname === "/") {
-      return NextResponse.redirect(new URL("/login", req.url));
+      return NextResponse.rewrite(new URL("/login", req.url));
     }
     if (role === "hr" && (pathname === "/hr/login" || pathname === "/hr/register")) {
       return NextResponse.redirect(new URL("/hr/dashboard", req.url));
