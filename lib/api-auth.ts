@@ -1,8 +1,11 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import type { Role } from "@/lib/db/schema";
+import type { Session } from "next-auth";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { users, type Role } from "@/lib/db/schema";
 
-type Session = Awaited<ReturnType<typeof auth>>;
+export type AuthSession = Session;
 
 export async function requireAuth(allowedRoles?: Role[]) {
   const session = await auth();
@@ -18,4 +21,16 @@ export async function requireAuth(allowedRoles?: Role[]) {
   return { error: null, session };
 }
 
-export type AuthSession = NonNullable<Session>;
+/** JWT may omit organisationId — resolve from DB for org admins. */
+export async function resolveOrganisationId(session: Session): Promise<string | null> {
+  if (session.user.organisationId) return session.user.organisationId;
+  if (session.user.role !== "org_admin") return null;
+
+  const [row] = await db
+    .select({ organisationId: users.organisationId })
+    .from(users)
+    .where(eq(users.id, session.user.id))
+    .limit(1);
+
+  return row?.organisationId ?? null;
+}

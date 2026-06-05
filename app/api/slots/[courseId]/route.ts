@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
 import { GETSlots } from "@/lib/api-handlers";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 
 export async function GET(
   _request: Request,
@@ -10,5 +9,10 @@ export async function GET(
   if (error) return error;
   const { courseId } = await params;
 
-  return GETSlots(courseId, session!.user.organisationId!);
+  const organisationId = await resolveOrganisationId(session!);
+  if (!organisationId) {
+    return Response.json({ error: "Organisation not linked to your account" }, { status: 403 });
+  }
+
+  return GETSlots(courseId, organisationId);
 }

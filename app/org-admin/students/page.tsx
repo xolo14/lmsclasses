@@ -10,11 +10,19 @@ import { DataTable } from "@/components/tables/DataTable";
 import { AddStudentModal } from "@/components/modals/AddStudentModal";
 import { AddBatchModal } from "@/components/modals/AddBatchModal";
 import { ColumnDef } from "@tanstack/react-table";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 type Course = { id: string; title: string; price: string };
 type Student = { id: string; name: string; email: string; lmsId: string; batchName: string; isActive: boolean };
 type SlotInfo = { totalSlots: number; usedSlots: number; remaining: number };
+type Batch = {
+  id: string;
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+  maxSlots: number;
+  enrolledCount: number;
+};
 
 export default function OrgAdminStudentsPage() {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
@@ -30,6 +38,17 @@ export default function OrgAdminStudentsPage() {
     queryKey: ["students", selectedCourse?.id],
     queryFn: async () => {
       const res = await fetch(`/api/students?courseId=${selectedCourse!.id}`);
+      const data = await res.json();
+      if (!res.ok) return [];
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!selectedCourse,
+  });
+
+  const { data: batches = [], isLoading: batchesLoading } = useQuery<Batch[]>({
+    queryKey: ["batches", selectedCourse?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/batches?courseId=${selectedCourse!.id}`);
       const data = await res.json();
       if (!res.ok) return [];
       return Array.isArray(data) ? data : [];
@@ -74,16 +93,49 @@ export default function OrgAdminStudentsPage() {
 
       {selectedCourse && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">{selectedCourse.title} — Students</h2>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setBatchModalOpen(true)}>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-base">Batches — {selectedCourse.title}</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => setBatchModalOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" /> Create Batch
               </Button>
-              <Button onClick={() => setStudentModalOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" /> Add Student
-              </Button>
-            </div>
+            </CardHeader>
+            <CardContent>
+              {batchesLoading ? (
+                <p className="text-sm text-muted-foreground">Loading batches...</p>
+              ) : batches.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No batches yet. Create a batch before adding students to one.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {batches.map((batch) => (
+                    <div
+                      key={batch.id}
+                      className="flex flex-col gap-1 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <p className="font-medium">{batch.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(batch.startDate)} — {formatDate(batch.endDate)}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 text-xs">
+                        <Badge variant="outline">Max: {batch.maxSlots}</Badge>
+                        <Badge variant="outline">Enrolled: {batch.enrolledCount}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">{selectedCourse.title} — Students</h2>
+            <Button onClick={() => setStudentModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" /> Add Student
+            </Button>
           </div>
           <DataTable columns={columns} data={students} searchPlaceholder="Search students..." />
         </div>

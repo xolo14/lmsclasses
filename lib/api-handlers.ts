@@ -13,7 +13,7 @@ import {
   liveClasses,
   auditLogs,
 } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { organisationSchema, editOrganisationSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, studentSchema } from "@/lib/validations";
 import {
@@ -403,7 +403,10 @@ export async function GETStudents(request: Request) {
   } else if (orgId) {
     conditions.push(eq(users.organisationId, orgId));
   }
-  if (courseId) conditions.push(eq(studentCourses.courseId, courseId));
+  if (courseId) {
+    conditions.push(eq(studentCourses.courseId, courseId));
+    conditions.push(eq(studentCourses.isActive, true));
+  }
   if (batchId) conditions.push(eq(studentCourses.batchId, batchId));
 
   const students = await db
@@ -450,21 +453,29 @@ export async function POSTStudent(request: Request) {
     const email = parsed.data.email.trim().toLowerCase();
     const organisationId =
       session!.user.role === "org_admin"
-        ? session!.user.organisationId!
+        ? (await resolveOrganisationId(session!))!
         : body.organisationId;
 
     if (!organisationId) {
       return NextResponse.json(
-        { error: "Organisation required — select an organisation from the dropdown." },
+        { error: "Organisation required — your admin account is not linked to an organisation." },
         { status: 400 }
       );
     }
 
     if (batchId) {
+      const batchConditions = [
+        eq(batches.id, batchId),
+        eq(batches.courseId, courseId),
+        isNull(batches.deletedAt),
+      ];
+      if (session!.user.role === "org_admin") {
+        batchConditions.push(eq(batches.organisationId, organisationId));
+      }
       const [batch] = await db
         .select({ id: batches.id })
         .from(batches)
-        .where(and(eq(batches.id, batchId), eq(batches.courseId, courseId), isNull(batches.deletedAt)))
+        .where(and(...batchConditions))
         .limit(1);
       if (!batch) {
         return NextResponse.json(
@@ -865,14 +876,23 @@ export async function GETBatches(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const courseId = searchParams.get("courseId");
-  const organisationId = searchParams.get("organisationId");
+  const organisationIdParam = searchParams.get("organisationId");
 
   const conditions = [isNull(batches.deletedAt)];
-  if (session!.user.role === "org_admin" && session!.user.organisationId) {
-    conditions.push(eq(batches.organisationId, session!.user.organisationId));
-  } else if (organisationId) {
-    conditions.push(eq(batches.organisationId, organisationId));
+
+  if (session!.user.role === "org_admin") {
+    const orgId = await resolveOrganisationId(session!);
+    if (!orgId) {
+      return NextResponse.json(
+        { error: "Your account is not linked to an organisation." },
+        { status: 403 }
+      );
+    }
+    conditions.push(eq(batches.organisationId, orgId));
+  } else if (organisationIdParam) {
+    conditions.push(eq(batches.organisationId, organisationIdParam));
   }
+
   if (courseId) conditions.push(eq(batches.courseId, courseId));
 
   const result = await db
@@ -919,15 +939,22 @@ export async function POSTBatch(request: Request) {
 
   const organisationId =
     session!.user.role === "org_admin"
-      ? session!.user.organisationId!
+      ? await resolveOrganisationId(session!)
       : parsed.data.organisationId;
+
+  if (session!.user.role === "org_admin" && !organisationId) {
+    return NextResponse.json(
+      { error: "Your account is not linked to an organisation." },
+      { status: 403 }
+    );
+  }
 
   const [batch] = await db
     .insert(batches)
     .values({
       name: parsed.data.name,
       courseId: parsed.data.courseId,
-      organisationId,
+      organisationId: organisationId ?? null,
       startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : null,
       endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : null,
       maxSlots: parsed.data.maxSlots,

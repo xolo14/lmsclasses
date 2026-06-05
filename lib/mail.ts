@@ -97,6 +97,7 @@ export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEma
   const to = payload.to.trim().toLowerCase();
   const from = payload.from || getDefaultFromEmail();
 
+  let smtpError: string | undefined;
   if (isSmtpConfigured()) {
     let lastError = "SMTP send failed";
     for (const { port, secure } of getSmtpAttempts()) {
@@ -117,7 +118,8 @@ export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEma
         cachedTransport = null;
       }
     }
-    return { ok: false, mode: "smtp", error: lastError };
+    smtpError = lastError;
+    console.warn("[Email] SMTP failed, trying Resend if configured", { error: smtpError });
   }
 
   const apiKey = process.env.RESEND_API_KEY?.trim();
@@ -135,7 +137,11 @@ export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEma
       return { ok: true, mode: "resend" };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { ok: false, mode: "resend", error: msg };
+      return {
+        ok: false,
+        mode: "resend",
+        error: smtpError ? `SMTP failed (${smtpError}). Resend failed (${msg}).` : msg,
+      };
     }
   }
 
@@ -144,6 +150,7 @@ export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEma
     ok: false,
     mode: "mock",
     error:
+      smtpError ??
       "Email not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS (and SMTP_PORT=465, SMTP_SECURE=true) on Hostinger.",
   };
 }

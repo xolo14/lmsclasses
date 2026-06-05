@@ -64,8 +64,11 @@ export function AddBatchModal({ open, onOpenChange, defaultCourseId, orgAdminMod
       if (!res.ok) throw new Error("Failed to create batch");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["batches"] });
+      if (variables.courseId) {
+        queryClient.invalidateQueries({ queryKey: ["batches", variables.courseId] });
+      }
       reset();
       onOpenChange(false);
     },

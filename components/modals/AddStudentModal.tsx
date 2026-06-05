@@ -53,7 +53,26 @@ export function AddStudentModal({
   const [pickedCourseId, setPickedCourseId] = useState("");
   const [emailNotice, setEmailNotice] = useState<string | null>(null);
 
-  const activeCourseId = showCourseSelect ? pickedCourseId : (fixedCourseId ?? "");
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<StudentInput>({
+    resolver: zodResolver(studentSchema),
+    defaultValues: { courseId: fixedCourseId ?? "", lmsId: generateLmsId() },
+  });
+
+  const selectedBatchId = watch("batchId");
+  const formCourseId = watch("courseId");
+
+  const activeCourseId = showCourseSelect
+    ? pickedCourseId
+    : (fixedCourseId || formCourseId || "");
+
+  const batchOrgScope = requireOrganisation ? organisationId : undefined;
 
   const { data: courses = [] } = useQuery<{ id: string; title: string }[]>({
     queryKey: ["courses"],
@@ -78,30 +97,28 @@ export function AddStudentModal({
     enabled: open && !!requireOrganisation,
   });
 
-  const { data: batches = [] } = useQuery({
-    queryKey: ["batches", activeCourseId],
+  const {
+    data: batches = [],
+    isLoading: batchesLoading,
+    isError: batchesError,
+    error: batchesFetchError,
+  } = useQuery({
+    queryKey: ["batches", activeCourseId, batchOrgScope],
     queryFn: async () => {
-      const res = await fetch(`/api/batches?courseId=${activeCourseId}`);
+      const params = new URLSearchParams();
+      if (activeCourseId) params.set("courseId", activeCourseId);
+      if (batchOrgScope) params.set("organisationId", batchOrgScope);
+      const res = await fetch(`/api/batches?${params}`);
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          typeof data?.error === "string" ? data.error : "Failed to load batches"
+        );
+      }
       return Array.isArray(data) ? data : [];
     },
-    enabled: open && !!activeCourseId,
+    enabled: open && !!activeCourseId && (!requireOrganisation || !!organisationId),
   });
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<StudentInput>({
-    resolver: zodResolver(studentSchema),
-    defaultValues: { courseId: fixedCourseId ?? "", lmsId: generateLmsId() },
-  });
-
-  const selectedBatchId = watch("batchId");
-  const formCourseId = watch("courseId");
 
   const mutation = useMutation({
     mutationFn: async (data: StudentInput) => {
@@ -138,8 +155,10 @@ export function AddStudentModal({
       if (data.emailSent === false) {
         setEmailNotice(
           data.emailWarning ??
-            "Student created but welcome email was not sent. Configure SMTP on Hostinger (see /api/health)."
+            "Student created but welcome email was not sent. Check SMTP at /api/health (SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_PORT=465)."
         );
+        queryClient.invalidateQueries({ queryKey: ["students"] });
+        queryClient.invalidateQueries({ queryKey: ["slots"] });
         return;
       }
       setEmailNotice(null);
@@ -167,6 +186,12 @@ export function AddStudentModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, fixedCourseId]);
+
+  useEffect(() => {
+    if (open && activeCourseId) {
+      setValue("courseId", activeCourseId, { shouldValidate: true });
+    }
+  }, [open, activeCourseId, setValue]);
 
   useEffect(() => {
     if (open && requireOrganisation && orgs.length === 1 && !organisationId) {
@@ -274,14 +299,21 @@ export function AddStudentModal({
             <div className="space-y-2">
               <Label>Batch (optional)</Label>
               <Select
+                key={`batch-${activeCourseId}`}
                 value={selectedBatchId}
                 onValueChange={(v) => setValue("batchId", v, { shouldValidate: true })}
-                disabled={!activeCourseId && !formCourseId}
+                disabled={!activeCourseId || (requireOrganisation && !organisationId)}
               >
                 <SelectTrigger>
                   <SelectValue
                     placeholder={
-                      activeCourseId ? "Select batch (optional)" : "Select a course first"
+                      !activeCourseId
+                        ? "Select a course first"
+                        : requireOrganisation && !organisationId
+                          ? "Select an organisation first"
+                          : batchesLoading
+                            ? "Loading batches..."
+                            : "Select batch (optional)"
                     }
                   />
                 </SelectTrigger>
@@ -293,6 +325,19 @@ export function AddStudentModal({
                   ))}
                 </SelectContent>
               </Select>
+              {batchesLoading && activeCourseId && (
+                <p className="text-xs text-muted-foreground">Loading batches for this course...</p>
+              )}
+              {batchesError && (
+                <p className="text-xs text-destructive">
+                  {(batchesFetchError as Error)?.message || "Could not load batches."}
+                </p>
+              )}
+              {!batchesLoading && !batchesError && activeCourseId && batches.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No batches for this course yet. Create one with &quot;Create Batch&quot; first.
+                </p>
+              )}
               {errors.batchId && (
                 <p className="text-sm text-destructive">{errors.batchId.message}</p>
               )}
