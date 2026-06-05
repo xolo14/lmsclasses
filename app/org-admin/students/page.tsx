@@ -63,6 +63,12 @@ export default function OrgAdminStudentsPage() {
     enabled: !!selectedCourse,
   });
 
+  const { data: selectedCourseSlots } = useQuery<SlotInfo>({
+    queryKey: ["slots", selectedCourse?.id],
+    queryFn: () => fetch(`/api/slots/${selectedCourse!.id}`).then((r) => r.json()),
+    enabled: !!selectedCourse,
+  });
+
   const columns: ColumnDef<Student>[] = [
     { accessorKey: "name", header: "Name" },
     { accessorKey: "lmsId", header: "LMS ID" },
@@ -112,9 +118,28 @@ export default function OrgAdminStudentsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-base">Batches — {selectedCourse.title}</CardTitle>
-                  <Button variant="outline" size="sm" onClick={() => setBatchModalOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" /> Create Batch
-                  </Button>
+                  <div className="flex flex-col items-end gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBatchModalOpen(true)}
+                      disabled={
+                        selectedCourse.title.toLowerCase() === "autocad" &&
+                        selectedCourseSlots
+                          ? selectedCourseSlots.remaining <= 10
+                          : false
+                      }
+                    >
+                      <Plus className="h-4 w-4 mr-2" /> Create Batch
+                    </Button>
+                    {selectedCourse.title.toLowerCase() === "autocad" &&
+                      selectedCourseSlots &&
+                      selectedCourseSlots.remaining <= 10 && (
+                        <span className="text-[10px] text-destructive font-medium">
+                          Requires &gt;10 slots (Remaining: {selectedCourseSlots.remaining})
+                        </span>
+                      )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {batchesLoading ? (
