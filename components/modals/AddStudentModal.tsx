@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { studentSchema, type StudentInput } from "@/lib/validations";
-import { formatApiError } from "@/lib/utils";
+import { formatApiError, formatDate } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -202,7 +202,7 @@ export function AddStudentModal({
   const handleCourseChange = (id: string) => {
     setPickedCourseId(id);
     setValue("courseId", id, { shouldValidate: true });
-    setValue("batchId", undefined);
+    setValue("batchId", "", { shouldValidate: true });
   };
 
   return (
@@ -297,7 +297,7 @@ export function AddStudentModal({
               <Input {...register("collegeName")} />
             </div>
             <div className="space-y-2">
-              <Label>Batch (optional)</Label>
+              <Label>Batch</Label>
               <Select
                 key={`batch-${activeCourseId}`}
                 value={selectedBatchId}
@@ -313,14 +313,15 @@ export function AddStudentModal({
                           ? "Select an organisation first"
                           : batchesLoading
                             ? "Loading batches..."
-                            : "Select batch (optional)"
+                            : "Select batch"
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {batches.map((b: { id: string; name: string }) => (
+                  {batches.map((b: { id: string; name: string; startDate?: string | null }) => (
                     <SelectItem key={b.id} value={b.id}>
                       {b.name}
+                      {b.startDate ? ` (${formatDate(b.startDate)})` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>

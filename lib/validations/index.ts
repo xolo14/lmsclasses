@@ -94,10 +94,7 @@ export const studentSchema = z.object({
   password: z.preprocess(emptyToUndefined, z.string().optional()),
   collegeName: z.preprocess(emptyToUndefined, z.string().optional()),
   courseId: z.string().uuid("Select a course"),
-  batchId: z.preprocess(
-    emptyToUndefined,
-    z.string().uuid("Select a valid batch").optional()
-  ),
+  batchId: z.string().uuid("Batch is required"),
 });
 
 export const buySlotsSchema = z.object({
