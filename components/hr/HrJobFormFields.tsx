@@ -62,18 +62,24 @@ export function HrJobFormFields({ register, errors, setValue, watch }: HrJobForm
           <p className="text-sm text-destructive">{errors.employmentType.message}</p>
         )}
       </div>
-      <div className="space-y-1">
-        <Label>Stipend</Label>
-        <Input {...register("stipend")} />
-      </div>
-      <div className="space-y-1">
-        <Label>Salary</Label>
-        <Input {...register("salary")} />
-      </div>
-      <div className="space-y-1">
-        <Label>CTC</Label>
-        <Input {...register("ctc")} />
-      </div>
+      {employmentType === "internship" && (
+        <div className="space-y-1">
+          <Label>Stipend</Label>
+          <Input {...register("stipend")} />
+        </div>
+      )}
+      {employmentType === "part_time" && (
+        <div className="space-y-1">
+          <Label>Salary per Month</Label>
+          <Input {...register("salary")} />
+        </div>
+      )}
+      {(!employmentType || employmentType === "full_time") && (
+        <div className="space-y-1">
+          <Label>CTC</Label>
+          <Input {...register("ctc")} />
+        </div>
+      )}
       <div className="space-y-1">
         <Label>Experience Required</Label>
         <Input {...register("experienceRequired")} />

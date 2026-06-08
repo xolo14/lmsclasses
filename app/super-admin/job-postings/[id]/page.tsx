@@ -85,7 +85,20 @@ export default function SuperAdminJobPostingDetailPage() {
           <p><span className="text-muted-foreground">Description:</span> {job.description}</p>
           <p><span className="text-muted-foreground">Responsibilities:</span> {job.responsibilities || "—"}</p>
           <p><span className="text-muted-foreground">Experience:</span> {job.experience || "—"}</p>
-          <p><span className="text-muted-foreground">Salary/Stipend/CTC:</span> {job.salary || "—"} / {job.stipend || "—"} / {job.ctc || "—"}</p>
+          <p>
+            <span className="text-muted-foreground">
+              {job.employmentType === "internship"
+                ? "Stipend:"
+                : job.employmentType === "part_time"
+                ? "Salary per Month:"
+                : "CTC:"}
+            </span>{" "}
+            {job.employmentType === "internship"
+              ? job.stipend || "—"
+              : job.employmentType === "part_time"
+              ? job.salary || "—"
+              : job.ctc || "—"}
+          </p>
           <p><span className="text-muted-foreground">Employment Type:</span> {job.employmentType?.replaceAll("_", " ")}</p>
           <p><span className="text-muted-foreground">Posted Date:</span> {formatDateTime(job.postedDate)}</p>
           <p><span className="text-muted-foreground">Last Date to Apply:</span> {formatDateTime(job.applicationDeadline)}</p>

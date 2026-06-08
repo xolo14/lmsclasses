@@ -101,7 +101,13 @@ export default function StudentJobPortalPage() {
               <CardContent className="space-y-2">
                 <p className="text-sm text-muted-foreground">{job.organisationName} · {job.location || "—"}</p>
                 <p className="text-sm">Experience: {job.experienceRequired || "—"}</p>
-                <p className="text-sm">Salary: {job.salary || job.ctc || "—"}</p>
+                <p className="text-sm">
+                  {job.employmentType === "internship"
+                    ? `Stipend: ${job.stipend || "—"}`
+                    : job.employmentType === "part_time"
+                    ? `Salary per Month: ${job.salary || "—"}`
+                    : `CTC: ${job.ctc || "—"}`}
+                </p>
                 <p className="text-sm">Last Date: {formatDate(job.applicationDeadline)}</p>
                 <Button size="sm" onClick={() => setSelectedJobId(job.id)}>Apply Now</Button>
               </CardContent>
