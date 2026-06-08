@@ -95,7 +95,21 @@ export type DeliverEmailResult = {
 
 export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEmailResult> {
   const to = payload.to.trim().toLowerCase();
-  const from = payload.from || getDefaultFromEmail();
+  let from = payload.from || getDefaultFromEmail();
+
+  const smtpUser = getSmtpUser();
+  const configuredFrom = process.env.MAIL_FROM?.trim() || process.env.SMTP_FROM?.trim() || smtpUser;
+
+  if (isSmtpConfigured() && configuredFrom) {
+    const emailRegex = /<([^>]+)>/;
+    const customMatch = from.match(emailRegex);
+    const displayName = customMatch ? from.split("<")[0].trim() : (from.includes("@") ? "" : from.trim());
+    
+    const configMatch = configuredFrom.match(emailRegex);
+    const configEmail = configMatch ? configMatch[1].trim() : configuredFrom.trim();
+    
+    from = displayName ? `${displayName} <${configEmail}>` : configEmail;
+  }
 
   let smtpError: string | undefined;
   if (isSmtpConfigured()) {
