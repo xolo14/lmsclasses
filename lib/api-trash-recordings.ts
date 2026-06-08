@@ -13,7 +13,7 @@ import {
 import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { classRecordingSchema } from "@/lib/validations";
-import { purgeExpiredTrash, TRASH_RETENTION_DAYS, type TrashEntityType } from "@/lib/trash";
+import { purgeExpiredTrash, clearAllTrashImmediate, TRASH_RETENTION_DAYS, type TrashEntityType } from "@/lib/trash";
 
 const TRASH_TABLES = {
   organisation: { table: organisations, id: organisations.id, label: organisations.name },
@@ -130,6 +130,24 @@ export async function POSTTrashRestore(request: Request) {
     action: "RESTORED_FROM_TRASH",
     entity: entityType,
     entityId: id,
+    ipAddress: getClientIp(request),
+  });
+
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETETrashClearAll(request: Request) {
+  const { error, session } = await requireAuth(["super_admin", "manager"]);
+  if (error) return error;
+
+  await clearAllTrashImmediate();
+
+  await logAction({
+    userId: session!.user.id,
+    role: session!.user.role,
+    action: "CLEARED_ALL_TRASH",
+    entity: "Trash",
+    entityId: session!.user.id,
     ipAddress: getClientIp(request),
   });
 

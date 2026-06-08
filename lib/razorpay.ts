@@ -17,6 +17,11 @@ export function getRazorpayKeySecret(): string | null {
   return secret || null;
 }
 
+export function getRazorpayWebhookSecret(): string | null {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim() || "";
+  return secret || null;
+}
+
 export function isRazorpayConfigured(): boolean {
   return !!(getRazorpayKeyId() && getRazorpayKeySecret());
 }
@@ -39,7 +44,7 @@ export function verifyRazorpaySignature(
   paymentId: string,
   signature: string
 ): boolean {
-  const secret = process.env.RAZORPAY_KEY_SECRET;
+  const secret = getRazorpayKeySecret();
   if (!secret) return false;
 
   const body = `${orderId}|${paymentId}`;
@@ -55,7 +60,7 @@ export function verifyRazorpayWebhookSignature(
   rawBody: string,
   signature: string | null
 ): boolean {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  const secret = getRazorpayWebhookSecret();
   if (!secret || !signature) return false;
 
   const expected = crypto

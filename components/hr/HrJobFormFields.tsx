@@ -99,10 +99,6 @@ export function HrJobFormFields({ register, errors, setValue, watch }: HrJobForm
       </div>
       <div className="space-y-1">
         <Label>Last Date to Apply</Label>
-        <Input type="datetime-local" {...register("lastDateToApply")} />
-      </div>
-      <div className="space-y-1">
-        <Label>Application Closing DateTime</Label>
         <Input type="datetime-local" {...register("applicationDeadline")} />
         {errors.applicationDeadline && (
           <p className="text-sm text-destructive">{errors.applicationDeadline.message}</p>

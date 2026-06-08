@@ -88,8 +88,7 @@ export default function SuperAdminJobPostingDetailPage() {
           <p><span className="text-muted-foreground">Salary/Stipend/CTC:</span> {job.salary || "—"} / {job.stipend || "—"} / {job.ctc || "—"}</p>
           <p><span className="text-muted-foreground">Employment Type:</span> {job.employmentType?.replaceAll("_", " ")}</p>
           <p><span className="text-muted-foreground">Posted Date:</span> {formatDateTime(job.postedDate)}</p>
-          <p><span className="text-muted-foreground">Last Date to Apply:</span> {formatDate(job.lastDateToApply)}</p>
-          <p><span className="text-muted-foreground">Application Deadline:</span> {formatDateTime(job.applicationDeadline)}</p>
+          <p><span className="text-muted-foreground">Last Date to Apply:</span> {formatDateTime(job.applicationDeadline)}</p>
         </CardContent>
       </Card>
 

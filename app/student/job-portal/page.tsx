@@ -102,7 +102,7 @@ export default function StudentJobPortalPage() {
                 <p className="text-sm text-muted-foreground">{job.organisationName} · {job.location || "—"}</p>
                 <p className="text-sm">Experience: {job.experienceRequired || "—"}</p>
                 <p className="text-sm">Salary: {job.salary || job.ctc || "—"}</p>
-                <p className="text-sm">Last Date: {formatDate(job.lastDateToApply || job.applicationDeadline)}</p>
+                <p className="text-sm">Last Date: {formatDate(job.applicationDeadline)}</p>
                 <Button size="sm" onClick={() => setSelectedJobId(job.id)}>Apply Now</Button>
               </CardContent>
             </Card>

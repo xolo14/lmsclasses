@@ -18,44 +18,68 @@ export const courseSchema = z.object({
   demoUrl: z.string().url().optional().or(z.literal("")),
 });
 
-export const organisationSchema = z.object({
-  orgName: z.string().min(1, "Organisation name is required"),
-  adminName: z.string().min(1, "Admin name is required"),
-  email: z.string().email("Invalid email"),
-  phone: z.preprocess(emptyToUndefined, z.string().optional()),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  address: z.preprocess(emptyToUndefined, z.string().optional()),
-});
+export const organisationSchema = z
+  .object({
+    orgName: z.string().min(1, "Organisation name is required"),
+    adminName: z.string().min(1, "Admin name is required"),
+    email: z.string().email("Invalid email"),
+    phone: z.preprocess(emptyToUndefined, z.string().optional()),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirmPassword: z.string().min(1, "Confirm password is required"),
+    address: z.preprocess(emptyToUndefined, z.string().optional()),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
-export const editOrganisationSchema = z.object({
-  orgName: z.string().min(1, "Organisation name is required"),
-  adminName: z.string().min(1, "Admin name is required"),
-  email: z.string().email("Invalid email"),
-  phone: z.preprocess(emptyToUndefined, z.string().optional()),
-  password: z.preprocess(emptyToUndefined, z.string().min(6, "Password must be at least 6 characters").optional()),
-  address: z.preprocess(emptyToUndefined, z.string().optional()),
-  isActive: z.boolean().optional(),
-});
+export const editOrganisationSchema = z
+  .object({
+    orgName: z.string().min(1, "Organisation name is required"),
+    adminName: z.string().min(1, "Admin name is required"),
+    email: z.string().email("Invalid email"),
+    phone: z.preprocess(emptyToUndefined, z.string().optional()),
+    password: z.preprocess(emptyToUndefined, z.string().min(6, "Password must be at least 6 characters").optional()),
+    confirmPassword: z.preprocess(emptyToUndefined, z.string().optional()),
+    address: z.preprocess(emptyToUndefined, z.string().optional()),
+    isActive: z.boolean().optional(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
-export const managerSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email"),
-  phone: z.string().optional(),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
+export const managerSchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    email: z.string().email("Invalid email"),
+    phone: z.string().optional(),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirmPassword: z.string().min(1, "Confirm password is required"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 export const mentorSchema = managerSchema;
 
-export const editManagerSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email"),
-  phone: z.string().optional(),
-  password: z
-    .string()
-    .min(6, "Password must be at least 6 characters")
-    .optional()
-    .or(z.literal("")),
-});
+export const editManagerSchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    email: z.string().email("Invalid email"),
+    phone: z.string().optional(),
+    password: z
+      .string()
+      .min(6, "Password must be at least 6 characters")
+      .optional()
+      .or(z.literal("")),
+    confirmPassword: z.string().optional().or(z.literal("")),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 export const batchSchema = z.object({
   name: z.string().min(1, "Batch name is required"),
@@ -86,16 +110,22 @@ export const classRecordingSchema = z.object({
   videoUrl: z.string().url("Valid video URL is required"),
 });
 
-export const studentSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email"),
-  phone: z.preprocess(emptyToUndefined, z.string().optional()),
-  lmsId: z.preprocess(emptyToUndefined, z.string().optional()),
-  password: z.preprocess(emptyToUndefined, z.string().optional()),
-  collegeName: z.preprocess(emptyToUndefined, z.string().optional()),
-  courseId: z.string().uuid("Select a course"),
-  batchId: z.string().uuid("Batch is required"),
-});
+export const studentSchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    email: z.string().email("Invalid email"),
+    phone: z.preprocess(emptyToUndefined, z.string().optional()),
+    lmsId: z.preprocess(emptyToUndefined, z.string().optional()),
+    password: z.preprocess(emptyToUndefined, z.string().optional()),
+    confirmPassword: z.preprocess(emptyToUndefined, z.string().optional()),
+    collegeName: z.preprocess(emptyToUndefined, z.string().optional()),
+    courseId: z.string().uuid("Select a course"),
+    batchId: z.string().uuid("Batch is required"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 export const buySlotsSchema = z.object({
   courseId: z.string().uuid(),
@@ -161,7 +191,6 @@ export const hrJobSchema = z.object({
   responsibilities: z.string().optional(),
   requiredSkills: z.string().optional(),
   eligibilityCriteria: z.string().optional(),
-  lastDateToApply: z.string().optional(),
   applicationDeadline: z.string().min(1, "Application deadline is required"),
   openings: z.coerce.number().min(1).default(1),
   active: z.boolean().optional(),

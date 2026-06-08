@@ -65,7 +65,6 @@ export function EditHrJobModal({ open, onOpenChange, job }: EditHrJobModalProps)
         responsibilities: job.responsibilities ?? "",
         requiredSkills: job.requiredSkills ?? "",
         eligibilityCriteria: job.eligibilityCriteria ?? "",
-        lastDateToApply: toDatetimeLocalValue(job.lastDateToApply),
         applicationDeadline: toDatetimeLocalValue(job.applicationDeadline),
         openings: job.openings ?? 1,
       });

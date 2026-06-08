@@ -290,13 +290,9 @@ async function getHrOwnedJob(jobId: string, hrId: string) {
 function parseHrJobDates(data: HrJobInput) {
   const deadline = new Date(data.applicationDeadline);
   if (Number.isNaN(deadline.getTime())) {
-    return { error: "Invalid application closing date/time." } as const;
-  }
-  const lastDate = data.lastDateToApply ? new Date(data.lastDateToApply) : null;
-  if (lastDate && Number.isNaN(lastDate.getTime())) {
     return { error: "Invalid last date to apply." } as const;
   }
-  return { deadline, lastDate } as const;
+  return { deadline, lastDate: deadline } as const;
 }
 
 function hrJobValuesFromParsed(data: HrJobInput, deadline: Date, lastDate: Date | null) {
@@ -313,7 +309,7 @@ function hrJobValuesFromParsed(data: HrJobInput, deadline: Date, lastDate: Date 
     responsibilities: data.responsibilities?.trim() || null,
     requiredSkills: data.requiredSkills?.trim() || null,
     eligibilityCriteria: data.eligibilityCriteria?.trim() || null,
-    lastDateToApply: lastDate,
+    lastDateToApply: deadline,
     applicationDeadline: deadline,
     openings: data.openings,
     status: data.active === false ? ("closed" as const) : ("active" as const),
@@ -459,13 +455,6 @@ export async function POSTHrJob(request: Request) {
       return NextResponse.json({ error: "HR account not found" }, { status: 404 });
     }
 
-    const lastDate = parsed.data.lastDateToApply
-      ? new Date(parsed.data.lastDateToApply)
-      : null;
-    if (lastDate && Number.isNaN(lastDate.getTime())) {
-      return NextResponse.json({ error: "Invalid last date to apply." }, { status: 400 });
-    }
-
     const [job] = await db
       .insert(jobPostings)
       .values({
@@ -483,7 +472,7 @@ export async function POSTHrJob(request: Request) {
         responsibilities: parsed.data.responsibilities?.trim() || null,
         requiredSkills: parsed.data.requiredSkills?.trim() || null,
         eligibilityCriteria: parsed.data.eligibilityCriteria?.trim() || null,
-        lastDateToApply: lastDate,
+        lastDateToApply: deadline,
         applicationDeadline: deadline,
         openings: parsed.data.openings,
         status: parsed.data.active === false ? "closed" : "active",

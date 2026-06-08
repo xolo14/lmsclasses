@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Eye, EyeOff } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -52,6 +53,8 @@ export function AddOrganisationAdminModal({
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [statusActive, setStatusActive] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const isEdit = !!organisation;
 
   const formValues = useMemo<EditOrgInput>(
@@ -63,6 +66,7 @@ export function AddOrganisationAdminModal({
             email: organisation.adminEmail ?? organisation.email ?? "",
             phone: organisation.phone ?? "",
             password: "",
+            confirmPassword: "",
             address: organisation.address ?? "",
             isActive: organisation.isActive,
           }
@@ -72,6 +76,7 @@ export function AddOrganisationAdminModal({
             email: "",
             phone: "",
             password: "",
+            confirmPassword: "",
             address: "",
           },
     [organisation]
@@ -145,8 +150,41 @@ export function AddOrganisationAdminModal({
           </div>
           <div className="space-y-2">
             <Label>{isEdit ? "New Password (optional)" : "Password"}</Label>
-            <Input type="password" {...register("password")} />
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                className="pr-10"
+                {...register("password")}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label>{isEdit ? "Confirm New Password" : "Confirm Password"}</Label>
+            <div className="relative">
+              <Input
+                type={showConfirmPassword ? "text" : "password"}
+                className="pr-10"
+                {...register("confirmPassword")}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {errors.confirmPassword && (
+              <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Address</Label>

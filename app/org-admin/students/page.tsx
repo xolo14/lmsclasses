@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/tables/DataTable";
 import { AddStudentModal } from "@/components/modals/AddStudentModal";
+import { EditStudentModal } from "@/components/modals/EditStudentModal";
 import { AddBatchModal } from "@/components/modals/AddBatchModal";
 import { ColumnDef } from "@tanstack/react-table";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -20,7 +21,16 @@ import {
 } from "@/components/ui/dialog";
 
 type Course = { id: string; title: string; price: string };
-type Student = { id: string; name: string; email: string; lmsId: string; batchName: string; isActive: boolean };
+type Student = {
+  id: string;
+  name: string;
+  email: string;
+  lmsId: string;
+  batchName: string;
+  isActive: boolean;
+  phone?: string | null;
+  collegeName?: string | null;
+};
 type SlotInfo = { totalSlots: number; usedSlots: number; remaining: number };
 type Batch = {
   id: string;
@@ -32,9 +42,11 @@ type Batch = {
 };
 
 export default function OrgAdminStudentsPage() {
+  const queryClient = useQueryClient();
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [studentModalOpen, setStudentModalOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [editStudent, setEditStudent] = useState<Student | undefined>();
 
   const { data: courses = [] } = useQuery<Course[]>({
     queryKey: ["courses"],
@@ -50,6 +62,11 @@ export default function OrgAdminStudentsPage() {
       return Array.isArray(data) ? data : [];
     },
     enabled: !!selectedCourse,
+  });
+
+  const deleteStudent = useMutation({
+    mutationFn: (id: string) => fetch(`/api/students/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["students"] }),
   });
 
   const { data: batches = [], isLoading: batchesLoading } = useQuery<Batch[]>({
@@ -85,6 +102,29 @@ export default function OrgAdminStudentsPage() {
         <Badge variant={row.original.isActive ? "success" : "destructive"}>
           {row.original.isActive ? "Active" : "Inactive"}
         </Badge>
+      ),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => (
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditStudent(row.original)}>
+            <Pencil className="h-3 w-3 mr-1" /> Edit
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => {
+              if (confirm(`Move "${row.original.name}" to trash?`)) {
+                deleteStudent.mutate(row.original.id);
+              }
+            }}
+            disabled={deleteStudent.isPending}
+          >
+            <Trash2 className="h-3 w-3 mr-1" /> Delete
+          </Button>
+        </div>
       ),
     },
   ];
@@ -193,6 +233,11 @@ export default function OrgAdminStudentsPage() {
             courseId={selectedCourse.id}
             courseName={selectedCourse.title}
             showCourseSelect={false}
+          />
+          <EditStudentModal
+            open={!!editStudent}
+            onOpenChange={(o) => !o && setEditStudent(undefined)}
+            student={editStudent}
           />
           <AddBatchModal
             open={batchModalOpen}

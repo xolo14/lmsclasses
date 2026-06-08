@@ -1,4 +1,4 @@
-import { isNull, isNotNull, lt, and, eq } from "drizzle-orm";
+import { isNull, isNotNull, lt, and, eq, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   organisations,
@@ -7,6 +7,7 @@ import {
   batches,
   liveClasses,
   classRecordings,
+  coupons,
 } from "@/lib/db/schema";
 
 export const TRASH_RETENTION_DAYS = 30;
@@ -61,6 +62,27 @@ export async function purgeExpiredTrash() {
         isNotNull(users.deletedAt),
         lt(users.deletedAt, cutoff),
         eq(users.role, "mentor")
+      )
+    );
+}
+
+export async function clearAllTrashImmediate() {
+  await db.delete(classRecordings).where(isNotNull(classRecordings.deletedAt));
+  await db.delete(liveClasses).where(isNotNull(liveClasses.deletedAt));
+  await db.delete(batches).where(isNotNull(batches.deletedAt));
+  await db.delete(courses).where(isNotNull(courses.deletedAt));
+  await db.delete(organisations).where(isNotNull(organisations.deletedAt));
+  await db.delete(coupons).where(isNotNull(coupons.deletedAt));
+  await db
+    .delete(users)
+    .where(
+      and(
+        isNotNull(users.deletedAt),
+        or(
+          eq(users.role, "student"),
+          eq(users.role, "manager"),
+          eq(users.role, "mentor")
+        )
       )
     );
 }
