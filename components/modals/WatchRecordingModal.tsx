@@ -10,14 +10,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Play } from "lucide-react";
 
-interface DemoVideoModalProps {
+interface WatchRecordingModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   videoUrl: string;
-  courseTitle: string;
+  title: string;
 }
 
-export function DemoVideoModal({ open, onOpenChange, videoUrl, courseTitle }: DemoVideoModalProps) {
+export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: WatchRecordingModalProps) {
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const [isDirectVideo, setIsDirectVideo] = useState(false);
 
@@ -67,7 +67,7 @@ export function DemoVideoModal({ open, onOpenChange, videoUrl, courseTitle }: De
         <DialogHeader className="p-4 border-b border-slate-800/60 bg-slate-950/40">
           <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-cyan-400">
             <Play className="h-5 w-5 fill-cyan-400 text-cyan-400" />
-            <span>Demo: {courseTitle}</span>
+            <span>Recording: {title}</span>
           </DialogTitle>
         </DialogHeader>
 
@@ -75,7 +75,7 @@ export function DemoVideoModal({ open, onOpenChange, videoUrl, courseTitle }: De
           {embedUrl && !isDirectVideo ? (
             <iframe
               src={embedUrl}
-              title={`Demo video for ${courseTitle}`}
+              title={`Class recording: ${title}`}
               className="absolute inset-0 w-full h-full border-0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
@@ -95,17 +95,17 @@ export function DemoVideoModal({ open, onOpenChange, videoUrl, courseTitle }: De
                 <ExternalLink className="h-8 w-8" />
               </div>
               <p className="text-base text-slate-300 font-medium mb-2">
-                External Media Link
+                External Link
               </p>
               <p className="text-sm text-slate-400 mb-6">
-                This demo video link is external and cannot be embedded directly in the player.
+                This recording link is external and cannot be embedded directly in the player.
               </p>
               <Button
                 asChild
                 className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold shadow-lg shadow-cyan-500/10 flex items-center gap-2"
               >
                 <a href={videoUrl} target="_blank" rel="noopener noreferrer">
-                  <span>Open Demo Video</span>
+                  <span>Open Link</span>
                   <ExternalLink className="h-4 w-4" />
                 </a>
               </Button>

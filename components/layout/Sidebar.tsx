@@ -22,6 +22,7 @@ import {
   Film,
   ClipboardList,
   Tag,
+  Play,
   type LucideIcon,
 } from "lucide-react";
 
@@ -101,6 +102,7 @@ export function SuperAdminSidebar(props: Omit<SidebarProps, "items" | "title">) 
     { label: "Job Postings", href: "/super-admin/job-postings", icon: Briefcase },
     { label: "Students", href: "/super-admin/students", icon: GraduationCap },
     { label: "Courses", href: "/super-admin/courses", icon: BookOpen },
+    { label: "Course Demos", href: "/super-admin/demos", icon: Play },
     { label: "Batches", href: "/super-admin/batches", icon: Layers },
     { label: "Payments", href: "/super-admin/payments", icon: CreditCard },
     { label: "Coupons", href: "/super-admin/coupons", icon: Tag },
@@ -136,6 +138,7 @@ export function OrgAdminSidebar(props: Omit<SidebarProps, "items" | "title">) {
   const items: NavItem[] = [
     { label: "Dashboard", href: "/org-admin/dashboard", icon: LayoutDashboard },
     { label: "Courses", href: "/org-admin/courses", icon: BookOpen },
+    { label: "Course Demos", href: "/org-admin/demos", icon: Play },
     { label: "Students", href: "/org-admin/students", icon: GraduationCap },
     { label: "History", href: "/org-admin/history", icon: History },
     { label: "Coupons", href: "/org-admin/coupons", icon: Tag },

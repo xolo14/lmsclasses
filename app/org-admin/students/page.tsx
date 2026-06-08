@@ -124,7 +124,6 @@ export default function OrgAdminStudentsPage() {
                       size="sm"
                       onClick={() => setBatchModalOpen(true)}
                       disabled={
-                        selectedCourse.title.toLowerCase() === "autocad" &&
                         selectedCourseSlots
                           ? selectedCourseSlots.remaining <= 10
                           : false
@@ -132,8 +131,7 @@ export default function OrgAdminStudentsPage() {
                     >
                       <Plus className="h-4 w-4 mr-2" /> Create Batch
                     </Button>
-                    {selectedCourse.title.toLowerCase() === "autocad" &&
-                      selectedCourseSlots &&
+                    {selectedCourseSlots &&
                       selectedCourseSlots.remaining <= 10 && (
                         <span className="text-[10px] text-destructive font-medium">
                           Requires &gt;10 slots (Remaining: {selectedCourseSlots.remaining})

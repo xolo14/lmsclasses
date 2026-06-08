@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
 import { ExternalLink, Video } from "lucide-react";
+import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 
 type Recording = {
   id: string;
@@ -18,6 +20,9 @@ type Recording = {
 };
 
 export default function StudentRecordingClassesPage() {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState({ url: "", title: "" });
+
   const { data: recordings = [], isLoading } = useQuery<Recording[]>({
     queryKey: ["student-recordings"],
     queryFn: async () => {
@@ -64,16 +69,28 @@ export default function StudentRecordingClassesPage() {
                     </p>
                   </div>
                 </div>
-                <Button asChild variant="outline" size="sm">
-                  <a href={rec.videoUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-3 w-3 mr-1" /> Watch
-                  </a>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedVideo({ url: rec.videoUrl, title: rec.topicName });
+                    setModalOpen(true);
+                  }}
+                >
+                  <ExternalLink className="h-3 w-3 mr-1" /> Watch
                 </Button>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      <WatchRecordingModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        videoUrl={selectedVideo.url}
+        title={selectedVideo.title}
+      />
     </div>
   );
 }
