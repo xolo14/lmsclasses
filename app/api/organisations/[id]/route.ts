@@ -29,6 +29,7 @@ export async function GET(
       address: organisations.address,
       logoUrl: organisations.logoUrl,
       isActive: organisations.isActive,
+      jobPortalAccess: organisations.jobPortalAccess,
       createdAt: organisations.createdAt,
       adminName: users.name,
       adminEmail: users.email,

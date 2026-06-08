@@ -10,6 +10,7 @@ import {
   jobApplications,
   jobPostings,
   users,
+  organisations,
 } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import {
@@ -634,8 +635,21 @@ export async function PATCHHrApplicationStatus(request: Request) {
 }
 
 export async function GETStudentJobPortal(request: Request) {
-  const { error } = await requireAuth(["student"]);
+  const { error, session } = await requireAuth(["student"]);
   if (error) return error;
+
+  if (session?.user?.organisationId) {
+    const [org] = await db
+      .select({ jobPortalAccess: organisations.jobPortalAccess })
+      .from(organisations)
+      .where(eq(organisations.id, session.user.organisationId))
+      .limit(1);
+
+    if (org && !org.jobPortalAccess) {
+      return NextResponse.json({ error: "Job portal access is disabled for your organisation." }, { status: 403 });
+    }
+  }
+
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim();
 
@@ -678,6 +692,18 @@ export async function GETStudentJobApplications(request: Request) {
   const { error, session } = await requireAuth(["student"]);
   if (error) return error;
 
+  if (session?.user?.organisationId) {
+    const [org] = await db
+      .select({ jobPortalAccess: organisations.jobPortalAccess })
+      .from(organisations)
+      .where(eq(organisations.id, session.user.organisationId))
+      .limit(1);
+
+    if (org && !org.jobPortalAccess) {
+      return NextResponse.json({ error: "Job portal access is disabled for your organisation." }, { status: 403 });
+    }
+  }
+
   const rows = await db
     .select({
       id: jobApplications.id,
@@ -701,6 +727,19 @@ export async function GETStudentJobApplications(request: Request) {
 export async function POSTStudentJobApplication(request: Request) {
   const { error, session } = await requireAuth(["student"]);
   if (error) return error;
+
+  if (session?.user?.organisationId) {
+    const [org] = await db
+      .select({ jobPortalAccess: organisations.jobPortalAccess })
+      .from(organisations)
+      .where(eq(organisations.id, session.user.organisationId))
+      .limit(1);
+
+    if (org && !org.jobPortalAccess) {
+      return NextResponse.json({ error: "Job portal access is disabled for your organisation." }, { status: 403 });
+    }
+  }
+
   const body = await request.json();
   const parsed = studentJobApplicationSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });

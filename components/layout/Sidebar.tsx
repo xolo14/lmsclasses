@@ -154,11 +154,18 @@ export function MentorSidebar(props: Omit<SidebarProps, "items" | "title">) {
   return <Sidebar items={items} title="Mentor" {...props} />;
 }
 
-export function StudentSidebar(props: Omit<SidebarProps, "items" | "title">) {
+export function StudentSidebar({
+  jobPortalAccess = true,
+  ...props
+}: Omit<SidebarProps, "items" | "title"> & { jobPortalAccess?: boolean }) {
   const items: NavItem[] = [
     { label: "My Courses", href: "/student/courses", icon: BookOpen },
-    { label: "Job Portal", href: "/student/job-portal", icon: Building2 },
-    { label: "Applications", href: "/student/applications", icon: ClipboardList },
+    ...(jobPortalAccess
+      ? [
+          { label: "Job Portal", href: "/student/job-portal", icon: Building2 },
+          { label: "Applications", href: "/student/applications", icon: ClipboardList },
+        ]
+      : []),
     { label: "Recording Classes", href: "/student/recording-classes", icon: Film },
     { label: "Settings", href: "/student/settings", icon: Settings },
   ];

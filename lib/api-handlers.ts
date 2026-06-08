@@ -54,6 +54,7 @@ export async function GETOrganisations() {
       logoUrl: organisations.logoUrl,
       address: organisations.address,
       isActive: organisations.isActive,
+      jobPortalAccess: organisations.jobPortalAccess,
       createdAt: organisations.createdAt,
       adminId: organisations.adminId,
       adminName: users.name,
@@ -103,7 +104,7 @@ export async function POSTOrganisation(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { orgName, adminName, email, phone, password, address } = parsed.data;
+  const { orgName, adminName, email, phone, password, address, jobPortalAccess } = parsed.data;
 
   const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (existing.length) {
@@ -114,7 +115,7 @@ export async function POSTOrganisation(request: Request) {
 
   const [org] = await db
     .insert(organisations)
-    .values({ name: orgName, email, phone, address })
+    .values({ name: orgName, email, phone, address, jobPortalAccess })
     .returning();
 
   const [admin] = await db
@@ -171,7 +172,7 @@ export async function PATCHOrganisation(request: Request, id: string) {
     return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
   }
 
-  const { orgName, adminName, email, phone, password, address, isActive } = parsed.data;
+  const { orgName, adminName, email, phone, password, address, isActive, jobPortalAccess } = parsed.data;
 
   let currentAdminEmail: string | null = null;
   if (existing.adminId) {
@@ -197,6 +198,7 @@ export async function PATCHOrganisation(request: Request, id: string) {
       phone: phone || null,
       address: address || null,
       ...(isActive !== undefined && { isActive }),
+      ...(jobPortalAccess !== undefined && { jobPortalAccess }),
       updatedAt: new Date(),
     })
     .where(eq(organisations.id, id))

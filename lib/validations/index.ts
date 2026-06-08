@@ -27,6 +27,7 @@ export const organisationSchema = z
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(1, "Confirm password is required"),
     address: z.preprocess(emptyToUndefined, z.string().optional()),
+    jobPortalAccess: z.boolean().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
@@ -43,6 +44,7 @@ export const editOrganisationSchema = z
     confirmPassword: z.preprocess(emptyToUndefined, z.string().optional()),
     address: z.preprocess(emptyToUndefined, z.string().optional()),
     isActive: z.boolean().optional(),
+    jobPortalAccess: z.boolean().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",

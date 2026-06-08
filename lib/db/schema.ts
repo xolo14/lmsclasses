@@ -68,6 +68,7 @@ export const organisations = pgTable("organisations", {
   address: text("address"),
   logoUrl: text("logo_url"),
   isActive: boolean("is_active").default(true),
+  jobPortalAccess: boolean("job_portal_access").default(true),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

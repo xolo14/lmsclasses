@@ -16,19 +16,24 @@ export default async function StudentLayout({
     redirect("/login");
   }
 
-  const organisationLogoUrl = session.user.organisationId
+  const orgSettings = session.user.organisationId
     ? (
         await db
-          .select({ logoUrl: organisations.logoUrl })
+          .select({ logoUrl: organisations.logoUrl, jobPortalAccess: organisations.jobPortalAccess })
           .from(organisations)
           .where(eq(organisations.id, session.user.organisationId))
           .limit(1)
-      )[0]?.logoUrl ?? null
+      )[0] ?? null
     : null;
 
   return (
     <PortalLayout
-      sidebar={<StudentSidebar brandLogoUrl={organisationLogoUrl} />}
+      sidebar={
+        <StudentSidebar
+          brandLogoUrl={orgSettings?.logoUrl}
+          jobPortalAccess={orgSettings?.jobPortalAccess ?? true}
+        />
+      }
       userName={session.user.name}
       userRole={session.user.role}
     >

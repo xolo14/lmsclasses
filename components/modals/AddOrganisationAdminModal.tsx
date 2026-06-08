@@ -37,6 +37,7 @@ export type OrganisationRow = {
   isActive: boolean;
   adminName?: string | null;
   adminEmail?: string | null;
+  jobPortalAccess?: boolean;
 };
 
 interface AddOrganisationAdminModalProps {
@@ -53,6 +54,7 @@ export function AddOrganisationAdminModal({
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [statusActive, setStatusActive] = useState(true);
+  const [jobPortalAccess, setJobPortalAccess] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const isEdit = !!organisation;
@@ -91,17 +93,18 @@ export function AddOrganisationAdminModal({
     if (open) {
       reset(formValues);
       setStatusActive(organisation?.isActive ?? true);
+      setJobPortalAccess(organisation?.jobPortalAccess ?? true);
       setError("");
     }
-  }, [open, formValues, reset, organisation?.isActive]);
+  }, [open, formValues, reset, organisation]);
 
   const mutation = useMutation({
     mutationFn: async (data: EditOrgInput) => {
       const url = isEdit ? `/api/organisations/${organisation!.id}` : "/api/organisations";
       const method = isEdit ? "PATCH" : "POST";
       const payload = isEdit
-        ? { ...data, isActive: statusActive, ...(data.password ? {} : { password: undefined }) }
-        : data;
+        ? { ...data, isActive: statusActive, jobPortalAccess, ...(data.password ? {} : { password: undefined }) }
+        : { ...data, jobPortalAccess };
 
       const res = await fetch(url, {
         method,
@@ -189,6 +192,27 @@ export function AddOrganisationAdminModal({
           <div className="space-y-2">
             <Label>Address</Label>
             <Input {...register("address")} />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-border p-3 shadow-sm bg-muted/10">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">Job Portal & Applications Access</Label>
+              <p className="text-xs text-muted-foreground">
+                Allow all students of this organisation to view jobs and submit applications.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setJobPortalAccess(!jobPortalAccess)}
+              className={`${
+                jobPortalAccess ? "bg-primary" : "bg-muted"
+              } relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2`}
+            >
+              <span
+                className={`${
+                  jobPortalAccess ? "translate-x-5" : "translate-x-0"
+                } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-background shadow-lg ring-0 transition duration-200 ease-in-out`}
+              />
+            </button>
           </div>
           {isEdit && (
             <div className="space-y-2">
