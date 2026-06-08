@@ -1217,7 +1217,7 @@ export async function GETPayments(request: Request) {
 
 // ============ AUDIT LOGS ============
 export async function GETAuditLogs(request: Request) {
-  const { error } = await requireAuth(["super_admin", "manager"]);
+  const { error } = await requireAuth(["super_admin"]);
   if (error) return error;
 
   const { searchParams } = new URL(request.url);

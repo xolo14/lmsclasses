@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { KpiCard } from "@/components/charts/KpiCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/fetch-json";
 
 const RevenueChart = dynamic(
@@ -24,6 +24,7 @@ const RevenueChart = dynamic(
 
 interface DashboardPageProps {
   scope?: "org" | "global";
+  userRole?: string;
 }
 
 type DashboardStats = {
@@ -52,7 +53,7 @@ type AuditRow = {
   createdAt: string;
 };
 
-export function DashboardPage({ scope = "global" }: DashboardPageProps) {
+export function DashboardPage({ scope = "global", userRole }: DashboardPageProps) {
   const { data: stats } = useQuery<DashboardStats>({
     queryKey: ["dashboard", scope],
     queryFn: () => fetchJson<DashboardStats>(`/api/dashboard?scope=${scope}`),
@@ -67,7 +68,7 @@ export function DashboardPage({ scope = "global" }: DashboardPageProps) {
   const { data: auditLogs = [] } = useQuery<AuditRow[]>({
     queryKey: ["audit-logs", "dashboard"],
     queryFn: () => fetchJson<AuditRow[]>("/api/audit-logs"),
-    enabled: scope === "global",
+    enabled: scope === "global" && userRole === "super_admin",
     staleTime: 2 * 60 * 1000,
   });
 
@@ -113,7 +114,7 @@ export function DashboardPage({ scope = "global" }: DashboardPageProps) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card className={cn(userRole !== "super_admin" && "lg:col-span-2")}>
           <CardHeader>
             <CardTitle className="text-lg">Revenue by Month</CardTitle>
           </CardHeader>
@@ -122,29 +123,31 @@ export function DashboardPage({ scope = "global" }: DashboardPageProps) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3 max-h-[300px] overflow-y-auto">
-              {auditLogs.slice(0, 10).map((log) => (
-                <div key={log.id} className="flex items-start gap-3 text-sm border-b border-border pb-3">
-                  <div className="h-2 w-2 rounded-full bg-primary mt-1.5 shrink-0" />
-                  <div>
-                    <p>
-                      <span className="font-medium">{log.userName || "System"}</span> — {log.action}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</p>
+        {userRole === "super_admin" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Recent Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                {auditLogs.slice(0, 10).map((log) => (
+                  <div key={log.id} className="flex items-start gap-3 text-sm border-b border-border pb-3">
+                    <div className="h-2 w-2 rounded-full bg-primary mt-1.5 shrink-0" />
+                    <div>
+                      <p>
+                        <span className="font-medium">{log.userName || "System"}</span> — {log.action}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {!auditLogs.length && (
-                <p className="text-sm text-muted-foreground">No activity yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+                {!auditLogs.length && (
+                  <p className="text-sm text-muted-foreground">No activity yet</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Card>

@@ -128,7 +128,6 @@ export function ManagerSidebar(props: Omit<SidebarProps, "items" | "title">) {
     { label: "Live Classes", href: "/manager/live-classes", icon: Video },
     { label: "Recording Classes", href: "/manager/recording-classes", icon: Film },
     { label: "Trash", href: "/manager/trash", icon: Trash2 },
-    { label: "Audit Logs", href: "/manager/audit-logs", icon: ScrollText },
     { label: "Settings", href: "/manager/settings", icon: Settings },
   ];
   return <Sidebar items={items} title="Manager" {...props} />;

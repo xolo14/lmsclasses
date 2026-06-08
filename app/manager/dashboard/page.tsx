@@ -1,2 +1,6 @@
+import { auth } from "@/lib/auth";
 import { DashboardPage } from "@/components/pages/DashboardPage";
-export default function Page() { return <DashboardPage scope="global" />; }
+export default async function Page() {
+  const session = await auth();
+  return <DashboardPage scope="global" userRole={session?.user.role} />;
+}
