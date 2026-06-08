@@ -12,6 +12,7 @@ import {
   studentCourses,
   liveClasses,
   auditLogs,
+  jobApplications,
 } from "@/lib/db/schema";
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
@@ -716,16 +717,38 @@ export async function DELETEStudent(request: Request, id: string) {
         .where(eq(slots.id, slotToUpdate.id));
     }
 
-    await db
-      .update(studentCourses)
-      .set({ isActive: false })
-      .where(eq(studentCourses.studentId, id));
+    if (session!.user.role === "org_admin") {
+      await db
+        .delete(studentCourses)
+        .where(eq(studentCourses.studentId, id));
+    } else {
+      await db
+        .update(studentCourses)
+        .set({ isActive: false })
+        .where(eq(studentCourses.studentId, id));
+    }
   }
 
-  await db
-    .update(users)
-    .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
-    .where(eq(users.id, id));
+  if (session!.user.role === "org_admin") {
+    await db
+      .update(jobApplications)
+      .set({ studentId: null, updatedAt: new Date() })
+      .where(eq(jobApplications.studentId, id));
+
+    await db
+      .update(auditLogs)
+      .set({ userId: null })
+      .where(eq(auditLogs.userId, id));
+
+    await db
+      .delete(users)
+      .where(eq(users.id, id));
+  } else {
+    await db
+      .update(users)
+      .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(users.id, id));
+  }
 
   await logAction({
     userId: session!.user.id,
