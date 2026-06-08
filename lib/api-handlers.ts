@@ -692,44 +692,11 @@ export async function DELETEStudent(request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager", "org_admin"]);
   if (error) return error;
 
-  const [enrollment] = await db
-    .select()
-    .from(studentCourses)
-    .where(eq(studentCourses.studentId, id))
-    .limit(1);
-
-  if (enrollment) {
-    const slotRecords = await db
-      .select()
-      .from(slots)
-      .where(
-        and(
-          eq(slots.organisationId, enrollment.organisationId!),
-          eq(slots.courseId, enrollment.courseId)
-        )
-      );
-
-    const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) > 0);
-    if (slotToUpdate) {
-      await db
-        .update(slots)
-        .set({ usedSlots: Math.max(0, (slotToUpdate.usedSlots ?? 0) - 1) })
-        .where(eq(slots.id, slotToUpdate.id));
-    }
-
-    if (session!.user.role === "org_admin") {
-      await db
-        .delete(studentCourses)
-        .where(eq(studentCourses.studentId, id));
-    } else {
-      await db
-        .update(studentCourses)
-        .set({ isActive: false })
-        .where(eq(studentCourses.studentId, id));
-    }
-  }
-
   if (session!.user.role === "org_admin") {
+    await db
+      .delete(studentCourses)
+      .where(eq(studentCourses.studentId, id));
+
     await db
       .update(jobApplications)
       .set({ studentId: null, updatedAt: new Date() })
@@ -744,6 +711,11 @@ export async function DELETEStudent(request: Request, id: string) {
       .delete(users)
       .where(eq(users.id, id));
   } else {
+    await db
+      .update(studentCourses)
+      .set({ isActive: false })
+      .where(eq(studentCourses.studentId, id));
+
     await db
       .update(users)
       .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
