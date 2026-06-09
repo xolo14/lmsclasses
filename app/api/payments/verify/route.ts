@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   if (error) return error;
 
   const body = await request.json();
-  const { paymentId, razorpayOrderId, razorpayPaymentId, razorpaySignature, mock } = body;
+  const { paymentId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = body;
 
   const [payment] = await db
     .select()
@@ -34,31 +34,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, alreadyProcessed: true });
   }
 
-  if (mock) {
-    if (process.env.NODE_ENV === "production") {
-      return NextResponse.json(
-        { error: "Mock payments are disabled in production" },
-        { status: 400 }
-      );
-    }
-  } else {
-    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
-      return NextResponse.json({ error: "Missing payment details" }, { status: 400 });
-    }
-    const isValid = verifyRazorpaySignature(
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature
-    );
-    if (!isValid) {
-      await db.update(payments).set({ status: "failed" }).where(eq(payments.id, paymentId));
-      return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
-    }
+  if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+    return NextResponse.json({ error: "Missing payment details" }, { status: 400 });
+  }
+
+  const isValid = verifyRazorpaySignature(
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature
+  );
+
+  if (!isValid) {
+    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, paymentId));
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
   const result = await fulfillSlotPurchase(paymentId, {
-    razorpayOrderId: razorpayOrderId || payment.razorpayOrderId || "",
-    razorpayPaymentId: razorpayPaymentId || `mock_${Date.now()}`,
+    razorpayOrderId,
+    razorpayPaymentId,
     userId: session!.user.id,
     role: session!.user.role,
     ipAddress: getClientIp(request),

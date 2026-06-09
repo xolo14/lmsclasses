@@ -130,7 +130,6 @@ export async function POST(request: Request) {
         paymentId: payment.id,
         amount: 0,
         slotsCount,
-        mock: true,
         zeroAmount: true,
         message: "Order placed for free via coupon discount!",
       });
@@ -140,24 +139,14 @@ export async function POST(request: Request) {
     const keyId = getRazorpayKeyId();
 
     if (!razorpay || !keyId || !getRazorpayKeySecret()) {
-      if (process.env.NODE_ENV === "production") {
-        await db.update(payments).set({ status: "failed" }).where(eq(payments.id, payment.id));
-        return NextResponse.json(
-          {
-            error:
-              "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the server.",
-          },
-          { status: 503 }
-        );
-      }
-
-      return NextResponse.json({
-        paymentId: payment.id,
-        amount: finalAmount,
-        slotsCount,
-        mock: true,
-        message: "Razorpay not configured — dev mock mode only",
-      });
+      await db.update(payments).set({ status: "failed" }).where(eq(payments.id, payment.id));
+      return NextResponse.json(
+        {
+          error:
+            "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the server.",
+        },
+        { status: 503 }
+      );
     }
 
     const order = await razorpay.orders.create({
