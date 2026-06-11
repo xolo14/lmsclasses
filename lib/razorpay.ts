@@ -1,8 +1,16 @@
 import Razorpay from "razorpay";
 import crypto from "crypto";
 
+function assertRazorpayEnv(): void {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    throw new Error(
+      "RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required. Add them to .env.local."
+    );
+  }
+}
+
 /** Bump when payment/env behavior changes — visible at /api/health */
-export const PAYMENTS_DEPLOY_VERSION = "razorpay-v3";
+export const PAYMENTS_DEPLOY_VERSION = "razorpay-v4-public";
 
 export function getRazorpayKeyId(): string | null {
   const id =
@@ -27,6 +35,7 @@ export function isRazorpayConfigured(): boolean {
 }
 
 export function getRazorpayInstance() {
+  assertRazorpayEnv();
   const keyId = getRazorpayKeyId();
   const keySecret = getRazorpayKeySecret();
   if (!keyId || !keySecret) {
@@ -54,6 +63,38 @@ export function verifyRazorpaySignature(
     .digest("hex");
 
   return expected === signature;
+}
+
+/** Alias used by public enrollment and payment verification flows */
+export const verifySignature = verifyRazorpaySignature;
+
+export type RazorpayOrderResult = {
+  id: string;
+  amount: number;
+  currency: string;
+};
+
+export async function createPublicOrder(
+  amount: number,
+  courseId: string
+): Promise<RazorpayOrderResult> {
+  assertRazorpayEnv();
+  const razorpay = getRazorpayInstance();
+  if (!razorpay) {
+    throw new Error("Razorpay is not configured");
+  }
+
+  const order = await razorpay.orders.create({
+    amount: Math.round(amount * 100),
+    currency: "INR",
+    notes: { source: "public", courseId },
+  });
+
+  return {
+    id: order.id,
+    amount: Number(order.amount),
+    currency: order.currency,
+  };
 }
 
 export function verifyRazorpayWebhookSignature(

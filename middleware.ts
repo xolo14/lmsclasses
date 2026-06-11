@@ -10,15 +10,16 @@ export default auth((req) => {
   const role = req.auth?.user?.role;
 
   const publicPaths = ["/login", "/hr/login", "/hr/register", "/"];
-  const isPublic = publicPaths.some(
-    (p) =>
-      pathname === p ||
-      pathname.startsWith("/api/auth") ||
-      pathname.startsWith("/api/hr/register") ||
-      pathname.startsWith("/api/health") ||
-      pathname.startsWith("/api/bootstrap") ||
-      pathname.startsWith("/api/payments/webhook")
-  );
+  const isPublic =
+    publicPaths.some((p) => pathname === p) ||
+    pathname.startsWith("/courses") ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/public") ||
+    pathname.startsWith("/api/hr/register") ||
+    pathname.startsWith("/api/health") ||
+    pathname.startsWith("/api/bootstrap") ||
+    pathname.startsWith("/api/payments/webhook") ||
+    pathname === "/api/payments/create-order";
 
   if (isPublic) {
     if (role && (pathname === "/login" || pathname === "/")) {
@@ -29,13 +30,11 @@ export default auth((req) => {
         dest = "/student/courses";
       } else if (role === "hr") {
         dest = "/hr/dashboard";
-      } else if (ROLE_ROUTES[role]) {
-        dest = `${ROLE_ROUTES[role]}/dashboard`;
+      } else if (role && ROLE_ROUTES[role as keyof typeof ROLE_ROUTES]) {
+        dest = `${ROLE_ROUTES[role as keyof typeof ROLE_ROUTES]}/dashboard`;
       }
+      // BUG FIX: unknown roles stay on /login — avoid redirect loop
       return NextResponse.redirect(new URL(dest, req.url));
-    }
-    if (!role && pathname === "/") {
-      return NextResponse.rewrite(new URL("/login", req.url));
     }
     if (role === "hr" && (pathname === "/hr/login" || pathname === "/hr/register")) {
       return NextResponse.redirect(new URL("/hr/dashboard", req.url));

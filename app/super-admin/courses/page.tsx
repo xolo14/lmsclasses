@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, FileSpreadsheet, Play } from "lucide-react";
+import Link from "next/link";
+import { Plus, Pencil, Trash2, FileSpreadsheet, Play, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,7 +92,12 @@ export default function CoursesPage() {
                 <span className="text-sm text-muted-foreground">{course.enrolledCount} enrolled</span>
               </div>
               <div className="flex items-center justify-between gap-2 mt-4">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/super-admin/courses/${course.id}/recordings`}>
+                      <Film className="h-3 w-3 mr-1" /> Manage Recordings
+                    </Link>
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => { setEditCourse(course); setModalOpen(true); }}>
                     <Pencil className="h-3 w-3 mr-1" /> Edit
                   </Button>

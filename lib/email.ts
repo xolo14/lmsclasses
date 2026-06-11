@@ -11,7 +11,13 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-async function sendEmail(payload: { to: string; subject: string; html: string; from?: string }) {
+async function sendEmail(payload: {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  from?: string;
+}) {
   const result = await deliverEmail(payload);
   if (!result.ok) {
     throw new Error(result.error ?? "Failed to send email");
@@ -112,6 +118,91 @@ export async function trySendWelcomeEmail(
   }
 }
 
+export async function sendWelcomeEmail({
+  to,
+  name,
+  lmsId,
+  password,
+  courseTitle,
+  loginUrl: loginUrlOverride,
+}: {
+  to: string;
+  name: string;
+  lmsId: string;
+  password: string;
+  courseTitle?: string;
+  loginUrl?: string;
+}) {
+  const safeEmail = to.trim().toLowerCase();
+  const loginUrl = loginUrlOverride ?? `${appUrl}/login`;
+  const subject = courseTitle
+    ? `Welcome to LMSClasses — Your ${courseTitle} enrollment is confirmed!`
+    : `Welcome to LMSClasses — Your student account is ready!`;
+
+  const courseBlock = courseTitle
+    ? `
+        <div style="background-color: #f8fafc; border-left: 4px solid #0284c7; padding: 16px; margin: 20px 0; border-radius: 6px;">
+          <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px;">Course Details</h3>
+          <ul style="margin: 0; padding-left: 20px; color: #475569; line-height: 1.6;">
+            <li><strong>You've been enrolled in:</strong> ${escapeHtml(courseTitle)}</li>
+          </ul>
+        </div>`
+    : `
+        <p style="font-size: 16px; line-height: 1.5; color: #334155;">
+          You can log in and browse available courses at any time.
+        </p>`;
+
+  const intro = courseTitle
+    ? `<p style="font-size: 16px; line-height: 1.5; color: #334155;">
+          You have been successfully registered for your course. Below are your course details and login credentials:
+        </p>`
+    : `<p style="font-size: 16px; line-height: 1.5; color: #334155;">
+          Your student account has been created. Below are your login credentials:
+        </p>`;
+
+  const textBody = courseTitle
+    ? `Welcome, ${name}!\n\nYou've been enrolled in: ${courseTitle}\n\nLMS ID: ${lmsId}\nEmail: ${safeEmail}\nPassword: ${password}\n\nLogin: ${loginUrl}`
+    : `Welcome, ${name}!\n\nYour student account is ready. Log in and browse courses at any time.\n\nLMS ID: ${lmsId}\nEmail: ${safeEmail}\nPassword: ${password}\n\nLogin: ${loginUrl}`;
+
+  return sendEmail({
+    to: safeEmail,
+    subject,
+    text: textBody,
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1a202c;">
+        <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
+          <h2 style="color: #0284c7; margin: 0; font-size: 24px;">Welcome, ${escapeHtml(name)}!</h2>
+        </div>
+        
+        ${intro}
+        ${courseBlock}
+
+        <div style="background-color: #f8fafc; border-left: 4px solid #0f766e; padding: 16px; margin: 20px 0; border-radius: 6px;">
+          <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px;">Student Credentials</h3>
+          <ul style="margin: 0; padding-left: 20px; color: #475569; line-height: 1.6; font-family: monospace;">
+            <li><strong>LMS ID:</strong> ${escapeHtml(lmsId)}</li>
+            <li><strong>Email:</strong> ${safeEmail}</li>
+            <li><strong>Password:</strong> ${escapeHtml(password)}</li>
+          </ul>
+        </div>
+
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${loginUrl}" style="background-color: #0284c7; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">Login here</a>
+        </div>
+
+        <div style="color: #64748b; font-size: 13px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 32px; line-height: 1.6;">
+          Please change your password after logging in for the first time if your organization requires it.<br/>
+          If you have any questions, feel free to contact us.
+        </div>
+        <div style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 12px;">
+          — LMS Classes (info@lmsclasses.com)
+        </div>
+      </div>
+    `,
+  });
+}
+
+/** @deprecated Use sendWelcomeEmail */
 export async function sendStudentWelcomeEmail({
   email,
   studentName,
@@ -125,51 +216,12 @@ export async function sendStudentWelcomeEmail({
   password: string;
   courseName: string;
 }) {
-  const safeEmail = email.trim().toLowerCase();
-  const loginUrl = `${appUrl}/login`;
-
-  return sendEmail({
-    to: safeEmail,
-    subject: `Welcome to LMS Classes — Course Details & Credentials`,
-    html: `
-      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1a202c;">
-        <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
-          <h2 style="color: #0284c7; margin: 0; font-size: 24px;">Welcome, ${escapeHtml(studentName)}!</h2>
-        </div>
-        
-        <p style="font-size: 16px; line-height: 1.5; color: #334155;">
-          You have been successfully registered for your course. Below are your course details and login credentials:
-        </p>
-
-        <div style="background-color: #f8fafc; border-left: 4px solid #0284c7; padding: 16px; margin: 20px 0; border-radius: 6px;">
-          <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px;">Course Details</h3>
-          <ul style="margin: 0; padding-left: 20px; color: #475569; line-height: 1.6;">
-            <li><strong>Course Name:</strong> ${escapeHtml(courseName)}</li>
-          </ul>
-        </div>
-
-        <div style="background-color: #f8fafc; border-left: 4px solid #0f766e; padding: 16px; margin: 20px 0; border-radius: 6px;">
-          <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px;">Student Credentials</h3>
-          <ul style="margin: 0; padding-left: 20px; color: #475569; line-height: 1.6; font-family: monospace;">
-            <li><strong>LMS ID:</strong> ${escapeHtml(lmsId)}</li>
-            <li><strong>Email:</strong> ${safeEmail}</li>
-            <li><strong>Password:</strong> ${escapeHtml(password)}</li>
-          </ul>
-        </div>
-
-        <div style="text-align: center; margin: 32px 0;">
-          <a href="${loginUrl}" style="background-color: #0284c7; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">Click here</a>
-        </div>
-
-        <div style="color: #64748b; font-size: 13px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 32px; line-height: 1.6;">
-          Please change your password after logging in for the first time if your organization requires it.<br/>
-          If you have any questions, feel free to contact us.
-        </div>
-        <div style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 12px;">
-          — LMS Classes (info@lmsclasses.com)
-        </div>
-      </div>
-    `,
+  return sendWelcomeEmail({
+    to: email,
+    name: studentName,
+    lmsId,
+    password,
+    courseTitle: courseName,
   });
 }
 

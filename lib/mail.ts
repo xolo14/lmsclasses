@@ -83,6 +83,7 @@ export type SendMailPayload = {
   to: string;
   subject: string;
   html: string;
+  text?: string;
   from?: string;
 };
 
@@ -122,6 +123,7 @@ export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEma
           to,
           subject: payload.subject,
           html: payload.html,
+          text: payload.text,
         });
         cachedTransport = transport;
         console.log("[Email] Sent via SMTP", { to, port, secure });
@@ -141,12 +143,16 @@ export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEma
     try {
       const { Resend } = await import("resend");
       const resend = new Resend(apiKey);
-      await resend.emails.send({
+      const res = await resend.emails.send({
         from,
         to,
         subject: payload.subject,
         html: payload.html,
+        text: payload.text,
       });
+      if (res.error) {
+        throw new Error(res.error.message || "Resend failed to send email");
+      }
       console.log("[Email] Sent via Resend", { to });
       return { ok: true, mode: "resend" };
     } catch (err) {

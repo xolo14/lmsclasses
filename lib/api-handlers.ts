@@ -311,10 +311,14 @@ export async function POSTCourse(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const { ensureUniqueCourseSlug } = await import("@/lib/slug");
+  const slug = await ensureUniqueCourseSlug(parsed.data.title);
+
   const [course] = await db
     .insert(courses)
     .values({
       ...parsed.data,
+      slug,
       price: parsed.data.price.toString(),
       createdBy: session!.user.id,
     })
@@ -424,6 +428,8 @@ export async function GETStudents(request: Request) {
       createdAt: users.createdAt,
       organisationId: users.organisationId,
       orgName: organisations.name,
+      enrollmentSource: studentCourses.enrollmentSource,
+      source: studentCourses.enrollmentSource,
       enrollmentId: studentCourses.id,
       courseId: studentCourses.courseId,
       courseTitle: courses.title,
@@ -431,12 +437,67 @@ export async function GETStudents(request: Request) {
       batchName: batches.name,
     })
     .from(users)
-    .leftJoin(studentCourses, eq(studentCourses.studentId, users.id))
+    .leftJoin(
+      studentCourses,
+      and(eq(studentCourses.studentId, users.id), eq(studentCourses.isActive, true))
+    )
     .leftJoin(organisations, eq(users.organisationId, organisations.id))
     .leftJoin(courses, eq(studentCourses.courseId, courses.id))
     .leftJoin(batches, eq(studentCourses.batchId, batches.id))
     .where(and(...conditions))
     .orderBy(desc(users.createdAt));
+
+  // BUG FIX: Super admin — one row per student with course count (not per enrollment)
+  if (session!.user.role === "super_admin" && !courseId && !batchId) {
+    const byStudent = new Map<
+      string,
+      (typeof students)[number] & { courseCount: number; enrollmentSources: Set<string> }
+    >();
+
+    for (const row of students) {
+      const existing = byStudent.get(row.id);
+      if (!existing) {
+        byStudent.set(row.id, {
+          ...row,
+          courseCount: row.courseId ? 1 : 0,
+          enrollmentSources: new Set(row.enrollmentSource ? [row.enrollmentSource] : []),
+        });
+      } else {
+        if (row.courseId) existing.courseCount += 1;
+        if (row.enrollmentSource) existing.enrollmentSources.add(row.enrollmentSource);
+      }
+    }
+
+    return NextResponse.json(
+      Array.from(byStudent.values()).map((r) => {
+        const source =
+          r.enrollmentSources.has("public")
+            ? "public"
+            : r.enrollmentSources.has("super_admin") || !r.organisationId
+              ? "super_admin"
+              : "org_admin";
+        return {
+          id: r.id,
+          name: r.name,
+          email: r.email,
+          phone: r.phone,
+          lmsId: r.lmsId,
+          collegeName: r.collegeName,
+          isActive: r.isActive,
+          createdAt: r.createdAt,
+          organisationId: r.organisationId,
+          orgName: r.orgName,
+          enrollmentSource: source,
+          source,
+          courseTitle:
+            r.courseCount > 0
+              ? `${r.courseCount} course${r.courseCount === 1 ? "" : "s"}`
+              : "—",
+          batchName: "—",
+        };
+      })
+    );
+  }
 
   return NextResponse.json(students);
 }
@@ -466,23 +527,37 @@ export async function POSTStudent(request: Request) {
       );
     }
 
+    const isOrgAdmin = session!.user.role === "org_admin";
+
+    // BUG FIX: Org Admin must assign a batch — live content is batch-gated
+    if (isOrgAdmin && !batchId) {
+      return NextResponse.json(
+        {
+          error:
+            "Batch is required. Please create a batch for this course before adding students.",
+        },
+        { status: 400 }
+      );
+    }
+
     if (batchId) {
       const batchConditions = [
         eq(batches.id, batchId),
         eq(batches.courseId, courseId),
         isNull(batches.deletedAt),
       ];
-      if (session!.user.role === "org_admin") {
+      if (isOrgAdmin) {
         batchConditions.push(eq(batches.organisationId, organisationId));
       }
       const [batch] = await db
-        .select({ id: batches.id })
+        .select({ id: batches.id, courseId: batches.courseId })
         .from(batches)
         .where(and(...batchConditions))
         .limit(1);
-      if (!batch) {
+      // BUG FIX: batch must belong to the enrolled course
+      if (!batch || batch.courseId !== courseId) {
         return NextResponse.json(
-          { error: "Selected batch does not belong to this course. Pick a batch again." },
+          { error: "Batch does not belong to this course" },
           { status: 400 }
         );
       }
@@ -539,30 +614,63 @@ export async function POSTStudent(request: Request) {
       }
     }
 
-    const [student] = await db
-      .insert(users)
-      .values({
-        name,
-        email,
-        phone: phone || null,
-        password: hashedPassword,
-        role: "student",
-        lmsId: finalLmsId,
-        collegeName: collegeName || null,
-        organisationId,
-      })
-      .returning();
+    const enrollmentSource = isOrgAdmin ? "org_admin" : "org_admin";
 
-    await db.insert(studentCourses).values({
-      studentId: student.id,
-      courseId,
-      batchId: batchId || null,
-      organisationId,
+    // BUG FIX: student + enrollment + slot decrement in one transaction (org admin path)
+    const student = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(users)
+        .values({
+          name,
+          email,
+          phone: phone || null,
+          password: hashedPassword,
+          role: "student",
+          lmsId: finalLmsId,
+          collegeName: collegeName || null,
+          organisationId,
+        })
+        .returning();
+
+      await tx.insert(studentCourses).values({
+        studentId: created.id,
+        courseId,
+        batchId: batchId || null,
+        organisationId,
+        enrollmentSource,
+      });
+
+      if (!isPlatformStaff) {
+        const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
+        if (!slotToUpdate) {
+          throw new Error("SLOT_EXCEEDED");
+        }
+        await tx
+          .update(slots)
+          .set({ usedSlots: (slotToUpdate.usedSlots ?? 0) + 1 })
+          .where(eq(slots.id, slotToUpdate.id));
+      } else if (slotRecords.length > 0) {
+        const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
+        if (slotToUpdate) {
+          await tx
+            .update(slots)
+            .set({ usedSlots: (slotToUpdate.usedSlots ?? 0) + 1 })
+            .where(eq(slots.id, slotToUpdate.id));
+        }
+      } else {
+        await tx.insert(slots).values({
+          organisationId,
+          courseId,
+          totalSlots: 50,
+          usedSlots: 1,
+        });
+      }
+
+      return created;
     });
 
     const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
 
-    // Send credentials immediately (same as HR register) — before slots/audit so nothing blocks email.
     const emailResult = await trySendWelcomeEmail("student welcome", () =>
       sendStudentWelcomeEmail({
         email,
@@ -577,23 +685,6 @@ export async function POSTStudent(request: Request) {
       console.log("[POSTStudent] Welcome email sent to", email);
     } else {
       console.error("[POSTStudent] Welcome email failed:", emailResult.error);
-    }
-
-    if (slotRecords.length > 0) {
-      const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
-      if (slotToUpdate) {
-        await db
-          .update(slots)
-          .set({ usedSlots: (slotToUpdate.usedSlots ?? 0) + 1 })
-          .where(eq(slots.id, slotToUpdate.id));
-      }
-    } else if (isPlatformStaff) {
-      await db.insert(slots).values({
-        organisationId,
-        courseId,
-        totalSlots: 50,
-        usedSlots: 1,
-      });
     }
 
     try {
@@ -626,6 +717,9 @@ export async function POSTStudent(request: Request) {
   } catch (err) {
     console.error("[POSTStudent]", err);
     const msg = err instanceof Error ? err.message : "Failed to create student";
+    if (msg === "SLOT_EXCEEDED") {
+      return NextResponse.json({ error: "SLOT_EXCEEDED" }, { status: 403 });
+    }
     if (/unique|duplicate/i.test(msg)) {
       return NextResponse.json(
         { error: "Email or LMS ID already exists. Use a different email or clear LMS ID." },
@@ -695,23 +789,48 @@ export async function DELETEStudent(request: Request, id: string) {
   if (error) return error;
 
   if (session!.user.role === "org_admin") {
-    await db
-      .delete(studentCourses)
-      .where(eq(studentCourses.studentId, id));
+    // BUG FIX: soft-delete enrollment + free slot atomically (no hard deletes)
+    await db.transaction(async (tx) => {
+      const activeEnrollments = await tx
+        .select({
+          id: studentCourses.id,
+          courseId: studentCourses.courseId,
+          organisationId: studentCourses.organisationId,
+        })
+        .from(studentCourses)
+        .where(and(eq(studentCourses.studentId, id), eq(studentCourses.isActive, true)));
 
-    await db
-      .update(jobApplications)
-      .set({ studentId: null, updatedAt: new Date() })
-      .where(eq(jobApplications.studentId, id));
+      for (const enrollment of activeEnrollments) {
+        if (enrollment.organisationId) {
+          const orgSlots = await tx
+            .select()
+            .from(slots)
+            .where(
+              and(
+                eq(slots.organisationId, enrollment.organisationId),
+                eq(slots.courseId, enrollment.courseId)
+              )
+            );
+          const slotToDecrement = orgSlots.find((s) => (s.usedSlots ?? 0) > 0);
+          if (slotToDecrement) {
+            await tx
+              .update(slots)
+              .set({ usedSlots: (slotToDecrement.usedSlots ?? 0) - 1 })
+              .where(eq(slots.id, slotToDecrement.id));
+          }
+        }
+      }
 
-    await db
-      .update(auditLogs)
-      .set({ userId: null })
-      .where(eq(auditLogs.userId, id));
+      await tx
+        .update(studentCourses)
+        .set({ isActive: false })
+        .where(eq(studentCourses.studentId, id));
 
-    await db
-      .delete(users)
-      .where(eq(users.id, id));
+      await tx
+        .update(users)
+        .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
+        .where(eq(users.id, id));
+    });
   } else {
     await db
       .update(studentCourses)
@@ -1040,7 +1159,8 @@ export async function GETLiveClasses(request: Request) {
   const conditions = [isNull(liveClasses.deletedAt)];
 
   if (tab === "completed") {
-    conditions.push(eq(liveClasses.status, "completed"));
+    // BUG FIX: mentors must still see cancelled classes for their records
+    conditions.push(inArray(liveClasses.status, ["completed", "cancelled"]));
   } else {
     conditions.push(inArray(liveClasses.status, ["scheduled", "live"]));
     conditions.push(

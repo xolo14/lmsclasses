@@ -93,9 +93,21 @@ export const users = pgTable("users", {
 export const courses = pgTable("courses", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
+  slug: text("slug").unique(),
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   demoUrl: text("demo_url"),
+  demoVideoUrl: text("demo_video_url"),
+  thumbnailUrl: text("thumbnail_url"),
+  syllabus: jsonb("syllabus"),
+  whatYouLearn: jsonb("what_you_learn"),
+  requirements: jsonb("requirements"),
+  level: text("level").default("Beginner"),
+  language: text("language").default("English"),
+  totalHours: integer("total_hours"),
+  totalLectures: integer("total_lectures"),
+  certificate: boolean("certificate").default(true),
+  isFeatured: boolean("is_featured").default(false),
   isActive: boolean("is_active").default(true),
   deletedAt: timestamp("deleted_at"),
   createdBy: uuid("created_by").references(() => users.id),
@@ -138,15 +150,12 @@ export const coupons = pgTable("coupons", {
 
 export const payments = pgTable("payments", {
   id: uuid("id").primaryKey().defaultRandom(),
-  organisationId: uuid("organisation_id")
-    .references(() => organisations.id)
-    .notNull(),
+  // null = direct/public enrollment purchase (no organisation)
+  organisationId: uuid("organisation_id").references(() => organisations.id),
   courseId: uuid("course_id")
     .references(() => courses.id)
     .notNull(),
-  adminId: uuid("admin_id")
-    .references(() => users.id)
-    .notNull(),
+  adminId: uuid("admin_id").references(() => users.id),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   slotsCount: integer("slots_count").notNull(),
   couponId: uuid("coupon_id").references(() => coupons.id),
@@ -179,10 +188,32 @@ export const studentCourses = pgTable("student_courses", {
   courseId: uuid("course_id")
     .references(() => courses.id)
     .notNull(),
+  // null = no live class access (public / direct without batch)
   batchId: uuid("batch_id").references(() => batches.id),
+  // null = direct enrollment (public purchase or super admin add)
   organisationId: uuid("organisation_id").references(() => organisations.id),
+  enrollmentSource: text("enrollment_source").notNull().default("org_admin"),
   enrolledAt: timestamp("enrolled_at").defaultNow(),
   isActive: boolean("is_active").default(true),
+});
+
+/** Course-scoped recordings (base curriculum) — no batchId; distinct from class_recordings */
+export const courseRecordings = pgTable("course_recordings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  courseId: uuid("course_id")
+    .notNull()
+    .references(() => courses.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  videoUrl: text("video_url").notNull(),
+  duration: integer("duration_minutes"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isPublished: boolean("is_published").notNull().default(false),
+  createdBy: uuid("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const liveClasses = pgTable("live_classes", {
@@ -329,6 +360,7 @@ export type Slot = typeof slots.$inferSelect;
 export type StudentCourse = typeof studentCourses.$inferSelect;
 export type LiveClass = typeof liveClasses.$inferSelect;
 export type ClassRecording = typeof classRecordings.$inferSelect;
+export type CourseRecording = typeof courseRecordings.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type Company = typeof companies.$inferSelect;
 export type HrUser = typeof hrUsers.$inferSelect;

@@ -29,6 +29,12 @@ export async function fulfillSlotPurchase(
     return { ok: true, alreadyProcessed: true };
   }
 
+  if (!payment.organisationId || !payment.adminId) {
+    return { ok: false, error: "Not an organisation slot purchase" };
+  }
+
+  const organisationId = payment.organisationId;
+
   await db
     .update(payments)
     .set({
@@ -48,7 +54,7 @@ export async function fulfillSlotPurchase(
   }
 
   await db.insert(slots).values({
-    organisationId: payment.organisationId,
+    organisationId,
     courseId: payment.courseId,
     totalSlots: payment.slotsCount,
     usedSlots: 0,
@@ -71,7 +77,7 @@ export async function fulfillSlotPurchase(
     const [org] = await db
       .select()
       .from(organisations)
-      .where(eq(organisations.id, payment.organisationId))
+      .where(eq(organisations.id, organisationId))
       .limit(1);
 
     const [course] = await db

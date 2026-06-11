@@ -157,6 +157,7 @@ export function AddOrganisationAdminModal({
               <Input
                 type={showPassword ? "text" : "password"}
                 className="pr-10"
+                autoComplete="new-password"
                 {...register("password")}
               />
               <button
@@ -175,6 +176,7 @@ export function AddOrganisationAdminModal({
               <Input
                 type={showConfirmPassword ? "text" : "password"}
                 className="pr-10"
+                autoComplete="new-password"
                 {...register("confirmPassword")}
               />
               <button

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql, isNull, gte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { courses, payments, coupons } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
@@ -15,11 +15,45 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const { error, session } = await requireAuth(["org_admin"]);
-  if (error) return error;
-
   try {
     const body = await request.json();
+
+    if (body.source === "public") {
+      const courseId = body.courseId as string | undefined;
+      const amount = Number(body.amount);
+      if (!courseId || !Number.isFinite(amount) || amount <= 0) {
+        return NextResponse.json({ error: "Invalid course or amount" }, { status: 400 });
+      }
+
+      const [course] = await db
+        .select()
+        .from(courses)
+        .where(and(eq(courses.id, courseId), eq(courses.isActive, true), isNull(courses.deletedAt)))
+        .limit(1);
+      if (!course) {
+        return NextResponse.json({ error: "Course not found" }, { status: 404 });
+      }
+
+      const price = parseFloat(course.price);
+      if (Math.abs(price - amount) > 0.01) {
+        return NextResponse.json({ error: "Amount mismatch" }, { status: 400 });
+      }
+
+      const { createPublicOrder, getRazorpayKeyId } = await import("@/lib/razorpay");
+      const order = await createPublicOrder(price, courseId);
+      const keyId = getRazorpayKeyId();
+
+      return NextResponse.json({
+        orderId: order.id,
+        amount: price,
+        currency: order.currency,
+        key: keyId,
+      });
+    }
+
+    const { error, session } = await requireAuth(["org_admin"]);
+    if (error) return error;
+
     const parsed = buySlotsSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -98,19 +132,43 @@ export async function POST(request: Request) {
       couponId = coupon.id;
     }
 
-    const [payment] = await db
-      .insert(payments)
-      .values({
-        organisationId,
-        courseId,
-        adminId: session!.user.id,
-        amount: finalAmount.toString(),
-        slotsCount,
-        couponId,
-        discountAmount: discountAmount > 0 ? discountAmount.toString() : null,
-        status: "pending",
-      })
-      .returning();
+    // BUG FIX: idempotency — reuse pending order within 60s for same org+course+amount
+    const sixtySecondsAgo = new Date(Date.now() - 60_000);
+    const [recentPending] = await db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.organisationId, organisationId),
+          eq(payments.courseId, courseId),
+          eq(payments.status, "pending"),
+          eq(payments.amount, finalAmount.toString()),
+          gte(payments.createdAt, sixtySecondsAgo),
+          isNull(payments.razorpayPaymentId)
+        )
+      )
+      .limit(1);
+
+    let payment = recentPending ?? null;
+    if (!payment) {
+      const inserted = await db
+        .insert(payments)
+        .values({
+          organisationId,
+          courseId,
+          adminId: session!.user.id,
+          amount: finalAmount.toString(),
+          slotsCount,
+          couponId,
+          discountAmount: discountAmount > 0 ? discountAmount.toString() : null,
+          status: "pending",
+        })
+        .returning();
+      payment = inserted[0] ?? null;
+    }
+    if (!payment) {
+      return NextResponse.json({ error: "Failed to create payment record" }, { status: 500 });
+    }
 
     // Zero amount checkout path (e.g. 100% discount coupon applied)
     if (finalAmount === 0) {
@@ -149,20 +207,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const order = await razorpay.orders.create({
-      amount: Math.round(finalAmount * 100),
-      currency: "INR",
-      receipt: payment.id,
-    });
-
-    await db
-      .update(payments)
-      .set({ razorpayOrderId: order.id })
-      .where(eq(payments.id, payment.id));
+    let orderId = payment.razorpayOrderId;
+    if (!orderId) {
+      const order = await razorpay.orders.create({
+        amount: Math.round(finalAmount * 100),
+        currency: "INR",
+        receipt: payment.id,
+      });
+      orderId = order.id;
+      await db
+        .update(payments)
+        .set({ razorpayOrderId: orderId })
+        .where(eq(payments.id, payment.id));
+    }
 
     return NextResponse.json({
       paymentId: payment.id,
-      orderId: order.id,
+      orderId,
       amount: finalAmount,
       currency: "INR",
       key: keyId,
