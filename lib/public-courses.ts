@@ -41,7 +41,7 @@ export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
       demoUrl: courses.demoUrl,
     })
     .from(courses)
-    .where(and(eq(courses.isActive, true), isNull(courses.deletedAt)))
+    .where(and(eq(courses.isActive, true), isNull(courses.deletedAt), eq(courses.courseType, "record")))
     .orderBy(desc(courses.createdAt));
 
   return rows
@@ -86,7 +86,7 @@ export async function getPublicCourseBySlug(slug: string) {
       updatedAt: courses.updatedAt,
     })
     .from(courses)
-    .where(and(eq(courses.slug, slug), eq(courses.isActive, true), isNull(courses.deletedAt)))
+    .where(and(eq(courses.slug, slug), eq(courses.isActive, true), isNull(courses.deletedAt), eq(courses.courseType, "record")))
     .limit(1);
 
   if (!course) return null;

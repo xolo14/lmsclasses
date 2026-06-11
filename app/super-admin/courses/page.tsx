@@ -21,6 +21,7 @@ type Course = {
   demoUrl?: string | null;
   isActive: boolean;
   enrolledCount: number;
+  courseType?: string;
 };
 
 export default function CoursesPage() {
@@ -80,9 +81,14 @@ export default function CoursesPage() {
             <CardHeader>
               <div className="flex items-start justify-between">
                 <CardTitle className="text-lg">{course.title}</CardTitle>
-                <Badge variant={course.isActive ? "success" : "destructive"}>
-                  {course.isActive ? "Active" : "Inactive"}
-                </Badge>
+                <div className="flex gap-2">
+                  <Badge variant={course.isActive ? "success" : "destructive"}>
+                    {course.isActive ? "Active" : "Inactive"}
+                  </Badge>
+                  <Badge variant="secondary" className={course.courseType === "record" ? "bg-amber-950/40 text-amber-400 border border-amber-500/20 text-[10px]" : "bg-indigo-950/40 text-indigo-400 border border-indigo-500/20 text-[10px]"}>
+                    {course.courseType === "record" ? "Record" : "Live"}
+                  </Badge>
+                </div>
               </div>
             </CardHeader>
             <CardContent>

@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 interface AddCourseModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  course?: { id: string; title: string; description?: string | null; price: string; demoUrl?: string | null };
+  course?: { id: string; title: string; description?: string | null; price: string; demoUrl?: string | null; courseType?: string };
 }
 
 export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalProps) {
@@ -34,12 +34,14 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
             description: course.description ?? "",
             price: Number(course.price),
             demoUrl: course.demoUrl ?? "",
+            courseType: (course.courseType as any) ?? "live",
           }
         : {
             title: "",
             description: "",
             price: 0,
             demoUrl: "",
+            courseType: "live",
           },
     [course]
   );
@@ -69,7 +71,7 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["courses"] });
-      if (!course) reset({ title: "", description: "", price: 0, demoUrl: "" });
+      if (!course) reset({ title: "", description: "", price: 0, demoUrl: "", courseType: "live" });
       onOpenChange(false);
     },
     onError: () => setError("Failed to save course"),
@@ -99,6 +101,18 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
           <div className="space-y-2">
             <Label>Demo URL</Label>
             <Input {...register("demoUrl")} placeholder="https://..." />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="courseType">Course Type</Label>
+            <select
+              id="courseType"
+              {...register("courseType")}
+              className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            >
+              <option value="live">Live Course (Live Classes & Live Recordings)</option>
+              <option value="record">Record Course (Curriculum Recordings)</option>
+            </select>
+            {errors.courseType && <p className="text-sm text-destructive">{errors.courseType.message}</p>}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>

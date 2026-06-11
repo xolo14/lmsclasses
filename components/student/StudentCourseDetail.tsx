@@ -64,9 +64,11 @@ function sourceLabel(source: string) {
 
 export function StudentCourseDetail({
   courseTitle,
+  courseType = "live",
   content,
 }: {
   courseTitle: string;
+  courseType?: string;
   content: CourseContent;
 }) {
   const [video, setVideo] = useState<{ url: string; title: string } | null>(null);
@@ -109,6 +111,8 @@ export function StudentCourseDetail({
     URL.revokeObjectURL(url);
   };
 
+  const defaultTab = courseType === "record" ? "recordings" : "live";
+
   return (
     <div className="space-y-6">
       <div>
@@ -118,160 +122,178 @@ export function StudentCourseDetail({
           <span>
             Batch: {hasLive ? "Assigned" : "—"}
           </span>
-          <span>{content.courseRecordings.length} recordings</span>
-          <span>{content.liveClasses.length} live classes</span>
-          <span>{content.liveClassRecordings.length} live recordings</span>
+          {courseType === "record" && (
+            <span>{content.courseRecordings.length} recordings</span>
+          )}
+          {courseType === "live" && (
+            <>
+              <span>{content.liveClasses.length} live classes</span>
+              <span>{content.liveClassRecordings.length} live recordings</span>
+            </>
+          )}
         </div>
       </div>
 
-      <Tabs defaultValue="recordings">
+      <Tabs key={defaultTab} defaultValue={defaultTab}>
         <TabsList>
-          <TabsTrigger value="recordings">Course Recordings</TabsTrigger>
-          <TabsTrigger value="live" disabled={!hasLive} title={!hasLive ? "Not available for your enrollment" : undefined}>
-            Live Classes
-          </TabsTrigger>
-          <TabsTrigger value="live-recordings" disabled={!hasLive} title={!hasLive ? "Not available for your enrollment" : undefined}>
-            Live Recordings
-          </TabsTrigger>
+          {courseType === "record" && (
+            <TabsTrigger value="recordings">Course Recordings</TabsTrigger>
+          )}
+          {courseType === "live" && (
+            <>
+              <TabsTrigger value="live" disabled={!hasLive} title={!hasLive ? "Not available for your enrollment" : undefined}>
+                Live Classes
+              </TabsTrigger>
+              <TabsTrigger value="live-recordings" disabled={!hasLive} title={!hasLive ? "Not available for your enrollment" : undefined}>
+                Live Recordings
+              </TabsTrigger>
+            </>
+          )}
         </TabsList>
 
-        <TabsContent value="recordings" className="mt-4 space-y-3">
-          {content.courseRecordings.length === 0 ? (
-            <p className="py-8 text-center text-muted-foreground">
-              No recordings have been published for this course yet.
-            </p>
-          ) : (
-            content.courseRecordings.map((rec) => (
-              <Card key={rec.id}>
-                <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground">#{rec.sortOrder + 1}</p>
-                    <p className="font-medium">{rec.title}</p>
-                    {rec.description && (
-                      <p className="line-clamp-2 text-sm text-muted-foreground">{rec.description}</p>
-                    )}
-                    {rec.duration != null && (
-                      <Badge variant="secondary" className="mt-1">
-                        {rec.duration} min
-                      </Badge>
-                    )}
-                  </div>
-                  <Button onClick={() => setVideo({ url: rec.videoUrl, title: rec.title })}>
-                    <Play className="mr-2 h-4 w-4" /> Play
-                  </Button>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="live" className="mt-4">
-          {!hasLive ? (
-            <LockedPanel />
-          ) : displayedLiveClasses.length === 0 ? (
-            <p className="py-8 text-center text-muted-foreground">
-              No live classes have been scheduled for your batch yet.
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left">
-                  <tr>
-                    <th className="p-3">Title</th>
-                    <th className="p-3">Scheduled</th>
-                    <th className="p-3">Duration</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedLiveClasses.map((cls) => (
-                    <tr key={cls.id} className="border-t">
-                      <td className="p-3">{cls.title}</td>
-                      <td className="p-3">{format(new Date(cls.scheduledAt), "MMM d, yyyy h:mm a")}</td>
-                      <td className="p-3">{cls.duration ?? 60} min</td>
-                      <td className="p-3">
-                        {cls.status === "live" && (
-                          <Badge className="animate-pulse bg-red-500/20 text-red-400">LIVE NOW</Badge>
-                        )}
-                        {cls.status === "scheduled" && (
-                          <Badge className="bg-amber-500/20 text-amber-400">Upcoming</Badge>
-                        )}
-                        {cls.status === "completed" && !cls.recordingUrl && (
-                          <Badge variant="secondary">Recording Pending</Badge>
-                        )}
-                        {cls.status === "completed" && cls.recordingUrl && (
-                          <Badge className="bg-emerald-500/20 text-emerald-400">Completed</Badge>
-                        )}
-                        {cls.status === "cancelled" && (
-                          <Badge variant="destructive">Cancelled</Badge>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {cls.status === "scheduled" && (
-                          <Button size="sm" variant="outline" onClick={() => downloadIcs(cls)}>
-                            <Calendar className="mr-1 h-3 w-3" /> Add to Calendar
-                          </Button>
-                        )}
-                        {cls.status === "live" && cls.meetingLink && (
-                          <Button size="sm" asChild>
-                            <a href={cls.meetingLink} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="mr-1 h-3 w-3" /> Join Now
-                            </a>
-                          </Button>
-                        )}
-                        {cls.status === "completed" && cls.recordingUrl && (
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              setVideo({ url: cls.recordingUrl!, title: cls.title })
-                            }
-                          >
-                            Watch Recording
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="live-recordings" className="mt-4">
-          {!hasLive ? (
-            <LockedPanel />
-          ) : content.liveClassRecordings.length === 0 ? (
-            <p className="py-8 text-center text-muted-foreground">
-              No recordings available yet. Check back after your live sessions.
-            </p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {content.liveClassRecordings.map((rec) => (
+        {courseType === "record" && (
+          <TabsContent value="recordings" className="mt-4 space-y-3">
+            {content.courseRecordings.length === 0 ? (
+              <p className="py-8 text-center text-muted-foreground">
+                No recordings have been published for this course yet.
+              </p>
+            ) : (
+              content.courseRecordings.map((rec) => (
                 <Card key={rec.id}>
-                  <CardContent className="space-y-2 py-4">
-                    <p className="font-medium">{rec.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {format(new Date(rec.scheduledAt), "MMM d, yyyy")}
-                    </p>
-                    {rec.duration != null && (
-                      <Badge variant="secondary">{rec.duration} min</Badge>
-                    )}
-                    <Button
-                      className="w-full"
-                      onClick={() =>
-                        setVideo({ url: rec.recordingUrl!, title: rec.title })
-                      }
-                    >
+                  <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground">#{rec.sortOrder + 1}</p>
+                      <p className="font-medium">{rec.title}</p>
+                      {rec.description && (
+                        <p className="line-clamp-2 text-sm text-muted-foreground">{rec.description}</p>
+                      )}
+                      {rec.duration != null && (
+                        <Badge variant="secondary" className="mt-1">
+                          {rec.duration} min
+                        </Badge>
+                      )}
+                    </div>
+                    <Button onClick={() => setVideo({ url: rec.videoUrl, title: rec.title })}>
                       <Play className="mr-2 h-4 w-4" /> Play
                     </Button>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
+              ))
+            )}
+          </TabsContent>
+        )}
+
+        {courseType === "live" && (
+          <>
+            <TabsContent value="live" className="mt-4">
+              {!hasLive ? (
+                <LockedPanel />
+              ) : displayedLiveClasses.length === 0 ? (
+                <p className="py-8 text-center text-muted-foreground">
+                  No live classes have been scheduled for your batch yet.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-left">
+                      <tr>
+                        <th className="p-3">Title</th>
+                        <th className="p-3">Scheduled</th>
+                        <th className="p-3">Duration</th>
+                        <th className="p-3">Status</th>
+                        <th className="p-3">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedLiveClasses.map((cls) => (
+                        <tr key={cls.id} className="border-t">
+                          <td className="p-3">{cls.title}</td>
+                          <td className="p-3">{format(new Date(cls.scheduledAt), "MMM d, yyyy h:mm a")}</td>
+                          <td className="p-3">{cls.duration ?? 60} min</td>
+                          <td className="p-3">
+                            {cls.status === "live" && (
+                              <Badge className="animate-pulse bg-red-500/20 text-red-400">LIVE NOW</Badge>
+                            )}
+                            {cls.status === "scheduled" && (
+                              <Badge className="bg-amber-500/20 text-amber-400">Upcoming</Badge>
+                            )}
+                            {cls.status === "completed" && !cls.recordingUrl && (
+                              <Badge variant="secondary">Recording Pending</Badge>
+                            )}
+                            {cls.status === "completed" && cls.recordingUrl && (
+                              <Badge className="bg-emerald-500/20 text-emerald-400">Completed</Badge>
+                            )}
+                            {cls.status === "cancelled" && (
+                              <Badge variant="destructive">Cancelled</Badge>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {cls.status === "scheduled" && (
+                              <Button size="sm" variant="outline" onClick={() => downloadIcs(cls)}>
+                                <Calendar className="mr-1 h-3 w-3" /> Add to Calendar
+                              </Button>
+                            )}
+                            {cls.status === "live" && cls.meetingLink && (
+                              <Button size="sm" asChild>
+                                <a href={cls.meetingLink} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="mr-1 h-3 w-3" /> Join Now
+                                </a>
+                              </Button>
+                            )}
+                            {cls.status === "completed" && cls.recordingUrl && (
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  setVideo({ url: cls.recordingUrl!, title: cls.title })
+                                }
+                              >
+                                Watch Recording
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="live-recordings" className="mt-4">
+              {!hasLive ? (
+                <LockedPanel />
+              ) : content.liveClassRecordings.length === 0 ? (
+                <p className="py-8 text-center text-muted-foreground">
+                  No recordings available yet. Check back after your live sessions.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {content.liveClassRecordings.map((rec) => (
+                    <Card key={rec.id}>
+                      <CardContent className="space-y-2 py-4">
+                        <p className="font-medium">{rec.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(rec.scheduledAt), "MMM d, yyyy")}
+                        </p>
+                        {rec.duration != null && (
+                          <Badge variant="secondary">{rec.duration} min</Badge>
+                        )}
+                        <Button
+                          className="w-full"
+                          onClick={() =>
+                            setVideo({ url: rec.recordingUrl!, title: rec.title })
+                          }
+                        >
+                          <Play className="mr-2 h-4 w-4" /> Play
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </>
+        )}
       </Tabs>
 
       <VideoPlayerModal

@@ -60,6 +60,8 @@ export const applicationStatusEnum = pgEnum("application_status", [
   "rejected",
 ]);
 
+export const courseTypeEnum = pgEnum("course_type", ["live", "record"]);
+
 export const organisations = pgTable("organisations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -104,6 +106,8 @@ export const courses = pgTable("courses", {
   slug: text("slug").unique(),
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  courseType: courseTypeEnum("course_type").notNull().default("live"),
+  duration: text("duration"),
   demoUrl: text("demo_url"),
   demoVideoUrl: text("demo_video_url"),
   thumbnailUrl: text("thumbnail_url"),

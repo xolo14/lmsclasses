@@ -22,6 +22,7 @@ export async function getStudentEnrollments(studentId: string) {
       courseSlug: courses.slug,
       courseThumbnail: courses.thumbnailUrl,
       courseDescription: courses.description,
+      courseType: courses.courseType,
     })
     .from(studentCourses)
     .innerJoin(courses, eq(courses.id, studentCourses.courseId))
@@ -105,8 +106,11 @@ export async function getStudentCourseContent(studentId: string, courseId: strin
     .select({
       batchId: studentCourses.batchId,
       enrollmentSource: studentCourses.enrollmentSource,
+      courseType: courses.courseType,
+      courseTitle: courses.title,
     })
     .from(studentCourses)
+    .innerJoin(courses, eq(courses.id, studentCourses.courseId))
     .where(
       and(
         eq(studentCourses.studentId, studentId),
@@ -118,16 +122,20 @@ export async function getStudentCourseContent(studentId: string, courseId: strin
 
   if (!enrollment) return null;
 
-  const recordings = await getCourseRecordings(courseId);
+  const courseType = enrollment.courseType ?? "live";
+  const isRecord = courseType === "record";
   const batchId = enrollment.batchId ?? null;
-  const liveClassList = await getLiveClassesForStudent(batchId);
-  const liveRecordings = await getLiveClassRecordingsForStudent(batchId);
+  const recordings = isRecord ? await getCourseRecordings(courseId) : [];
+  const liveClassList = isRecord ? [] : await getLiveClassesForStudent(batchId);
+  const liveRecordings = isRecord ? [] : await getLiveClassRecordingsForStudent(batchId);
 
   return {
+    courseTitle: enrollment.courseTitle,
+    courseType,
     enrollment: {
       batchId: enrollment.batchId,
       enrollmentSource: enrollment.enrollmentSource,
-      hasLiveAccess: enrollment.batchId !== null,
+      hasLiveAccess: !isRecord && enrollment.batchId !== null,
     },
     courseRecordings: recordings,
     liveClasses: liveClassList,

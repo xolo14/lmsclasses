@@ -16,6 +16,8 @@ export const courseSchema = z.object({
   description: z.string().optional(),
   price: z.coerce.number().min(0, "Price must be positive"),
   demoUrl: z.string().url().optional().or(z.literal("")),
+  duration: z.string().optional().or(z.literal("")),
+  courseType: z.enum(["live", "record"]).default("live"),
 });
 
 export const organisationSchema = z

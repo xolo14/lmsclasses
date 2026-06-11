@@ -1,9 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { courses } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
 import { getStudentCourseContent } from "@/lib/content-access";
 import { StudentCourseDetail } from "@/components/student/StudentCourseDetail";
 
@@ -30,16 +27,13 @@ export default async function StudentCourseDetailPage({
     redirect("/student/courses?error=not-enrolled");
   }
 
-  const [course] = await db
-    .select({ title: courses.title })
-    .from(courses)
-    .where(eq(courses.id, parsed.data))
-    .limit(1);
+  const { courseTitle, courseType, ...courseContent } = content;
 
   return (
     <StudentCourseDetail
-      courseTitle={course?.title ?? "Course"}
-      content={JSON.parse(JSON.stringify(content))}
+      courseTitle={courseTitle}
+      courseType={courseType}
+      content={JSON.parse(JSON.stringify(courseContent))}
     />
   );
 }
