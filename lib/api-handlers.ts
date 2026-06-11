@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, desc, sql, and, gte, lte, isNull, inArray, isNotNull } from "drizzle-orm";
+import { eq, desc, sql, and, gte, lte, isNull, inArray, isNotNull, gt } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import {
@@ -106,7 +106,7 @@ export async function POSTOrganisation(request: Request) {
 
   const { orgName, adminName, email, phone, password, address, jobPortalAccess } = parsed.data;
 
-  const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
   if (existing.length) {
     return NextResponse.json({ error: "Email already exists" }, { status: 409 });
   }
@@ -402,6 +402,9 @@ export async function GETStudents(request: Request) {
   const orgId = searchParams.get("organisationId");
   const courseId = searchParams.get("courseId");
   const batchId = searchParams.get("batchId");
+  const cursor = searchParams.get("cursor");
+  const limit = searchParams.get("limit") || "50";
+  const limitNum = Math.min(parseInt(limit), 100);
 
   const conditions = [eq(users.role, "student"), isNull(users.deletedAt)];
 
@@ -415,6 +418,35 @@ export async function GETStudents(request: Request) {
     conditions.push(eq(studentCourses.isActive, true));
   }
   if (batchId) conditions.push(eq(studentCourses.batchId, batchId));
+
+  if (cursor) {
+    conditions.push(gt(users.id, cursor));
+  }
+
+  // PERF: Retrieve paginated matching student IDs in a lightweight query before joining details
+  const queryBuilder = db
+    .selectDistinct({ id: users.id })
+    .from(users);
+
+  if (courseId || batchId) {
+    queryBuilder.leftJoin(
+      studentCourses,
+      and(eq(studentCourses.studentId, users.id), eq(studentCourses.isActive, true))
+    );
+  }
+
+  const studentIdsQuery = await queryBuilder
+    .where(and(...conditions))
+    .orderBy(users.id)
+    .limit(limitNum + 1);
+
+  const hasNextPage = studentIdsQuery.length > limitNum;
+  const pageStudentIds = hasNextPage ? studentIdsQuery.slice(0, limitNum).map(s => s.id) : studentIdsQuery.map(s => s.id);
+  const nextCursor = hasNextPage ? pageStudentIds[pageStudentIds.length - 1] : null;
+
+  if (pageStudentIds.length === 0) {
+    return NextResponse.json({ data: [], nextCursor: null, hasNextPage: false });
+  }
 
   const students = await db
     .select({
@@ -444,8 +476,8 @@ export async function GETStudents(request: Request) {
     .leftJoin(organisations, eq(users.organisationId, organisations.id))
     .leftJoin(courses, eq(studentCourses.courseId, courses.id))
     .leftJoin(batches, eq(studentCourses.batchId, batches.id))
-    .where(and(...conditions))
-    .orderBy(desc(users.createdAt));
+    .where(inArray(users.id, pageStudentIds))
+    .orderBy(users.id);
 
   // BUG FIX: Super admin — one row per student with course count (not per enrollment)
   if (session!.user.role === "super_admin" && !courseId && !batchId) {
@@ -468,38 +500,38 @@ export async function GETStudents(request: Request) {
       }
     }
 
-    return NextResponse.json(
-      Array.from(byStudent.values()).map((r) => {
-        const source =
-          r.enrollmentSources.has("public")
-            ? "public"
-            : r.enrollmentSources.has("super_admin") || !r.organisationId
-              ? "super_admin"
-              : "org_admin";
-        return {
-          id: r.id,
-          name: r.name,
-          email: r.email,
-          phone: r.phone,
-          lmsId: r.lmsId,
-          collegeName: r.collegeName,
-          isActive: r.isActive,
-          createdAt: r.createdAt,
-          organisationId: r.organisationId,
-          orgName: r.orgName,
-          enrollmentSource: source,
-          source,
-          courseTitle:
-            r.courseCount > 0
-              ? `${r.courseCount} course${r.courseCount === 1 ? "" : "s"}`
-              : "—",
-          batchName: "—",
-        };
-      })
-    );
+    const finalData = Array.from(byStudent.values()).map((r) => {
+      const source =
+        r.enrollmentSources.has("public")
+          ? "public"
+          : r.enrollmentSources.has("super_admin") || !r.organisationId
+            ? "super_admin"
+            : "org_admin";
+      return {
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        phone: r.phone,
+        lmsId: r.lmsId,
+        collegeName: r.collegeName,
+        isActive: r.isActive,
+        createdAt: r.createdAt,
+        organisationId: r.organisationId,
+        orgName: r.orgName,
+        enrollmentSource: source,
+        source,
+        courseTitle:
+          r.courseCount > 0
+            ? `${r.courseCount} course${r.courseCount === 1 ? "" : "s"}`
+            : "—",
+        batchName: "—",
+      };
+    });
+
+    return NextResponse.json({ data: finalData, nextCursor, hasNextPage });
   }
 
-  return NextResponse.json(students);
+  return NextResponse.json({ data: students, nextCursor, hasNextPage });
 }
 
 export async function POSTStudent(request: Request) {
@@ -585,7 +617,7 @@ export async function POSTStudent(request: Request) {
       );
     }
 
-    const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const existing = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.email, email)).limit(1);
     if (existing.length) {
       const role = existing[0].role;
       return NextResponse.json(
@@ -881,7 +913,7 @@ export async function POSTUserByRole(request: Request, role: "manager" | "mentor
   }
 
   const { name, email, phone, password } = parsed.data;
-  const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
   if (existing.length) {
     return NextResponse.json({ error: "Email already exists" }, { status: 409 });
   }
@@ -1223,11 +1255,14 @@ export async function POSTLiveClass(request: Request) {
     })
     .returning();
 
-  const [mentor] = await db.select().from(users).where(eq(users.id, parsed.data.mentorId)).limit(1);
-  const [course] = await db.select().from(courses).where(eq(courses.id, parsed.data.courseId)).limit(1);
-  const [batch] = parsed.data.batchId
-    ? await db.select().from(batches).where(eq(batches.id, parsed.data.batchId)).limit(1)
-    : [null];
+  // PERF: Fetch mentor, course, and batch metadata in parallel with explicit column selections
+  const [[mentor], [course], [batch]] = await Promise.all([
+    db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, parsed.data.mentorId)).limit(1),
+    db.select({ title: courses.title }).from(courses).where(eq(courses.id, parsed.data.courseId)).limit(1),
+    parsed.data.batchId
+      ? db.select({ name: batches.name }).from(batches).where(eq(batches.id, parsed.data.batchId)).limit(1)
+      : Promise.resolve([null] as any[]),
+  ]);
 
   if (mentor && course) {
     await sendMentorLiveClassEmail({
@@ -1309,9 +1344,18 @@ export async function GETPayments(request: Request) {
   const { error, session } = await requireAuth(["super_admin", "manager", "org_admin"]);
   if (error) return error;
 
+  const { searchParams } = new URL(request.url);
+  const cursor = searchParams.get("cursor");
+  const limit = searchParams.get("limit") || "50";
+  const limitNum = Math.min(parseInt(limit), 100);
+
   const conditions = [];
   if (session!.user.role === "org_admin" && session!.user.organisationId) {
     conditions.push(eq(payments.organisationId, session!.user.organisationId));
+  }
+
+  if (cursor) {
+    conditions.push(sql`${payments.createdAt} < ${new Date(cursor)}`);
   }
 
   const result = await db
@@ -1332,9 +1376,14 @@ export async function GETPayments(request: Request) {
     .leftJoin(organisations, eq(payments.organisationId, organisations.id))
     .leftJoin(users, eq(payments.adminId, users.id))
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(payments.createdAt));
+    .orderBy(desc(payments.createdAt))
+    .limit(limitNum + 1);
 
-  return NextResponse.json(result);
+  const hasNextPage = result.length > limitNum;
+  const data = hasNextPage ? result.slice(0, limitNum) : result;
+  const nextCursor = hasNextPage && data.length ? data[data.length - 1].createdAt?.toISOString() : null;
+
+  return NextResponse.json({ data, nextCursor, hasNextPage });
 }
 
 // ============ AUDIT LOGS ============
@@ -1344,9 +1393,16 @@ export async function GETAuditLogs(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const role = searchParams.get("role");
+  const cursor = searchParams.get("cursor");
+  const limit = searchParams.get("limit") || "50";
+  const limitNum = Math.min(parseInt(limit), 100);
 
   const conditions = [];
   if (role) conditions.push(eq(auditLogs.role, role as typeof auditLogs.role.enumValues[number]));
+
+  if (cursor) {
+    conditions.push(sql`${auditLogs.createdAt} < ${new Date(cursor)}`);
+  }
 
   const logs = await db
     .select({
@@ -1363,9 +1419,13 @@ export async function GETAuditLogs(request: Request) {
     .leftJoin(users, eq(auditLogs.userId, users.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(auditLogs.createdAt))
-    .limit(100);
+    .limit(limitNum + 1);
 
-  return NextResponse.json(logs);
+  const hasNextPage = logs.length > limitNum;
+  const data = hasNextPage ? logs.slice(0, limitNum) : logs;
+  const nextCursor = hasNextPage && data.length ? data[data.length - 1].createdAt?.toISOString() : null;
+
+  return NextResponse.json({ data, nextCursor, hasNextPage });
 }
 
 // ============ DASHBOARD STATS ============
@@ -1378,58 +1438,59 @@ export async function GETDashboardStats(scope?: "org" | "global", organisationId
       ? eq(users.organisationId, organisationId)
       : undefined;
 
-  const [totalOrgs] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(organisations);
-
-  const [totalStudents] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(users)
-    .where(
-      orgFilter
-        ? and(eq(users.role, "student"), orgFilter)
-        : eq(users.role, "student")
-    );
-
-  const [totalRevenue] = await db
-    .select({ sum: sql<string>`coalesce(sum(${payments.amount}), 0)` })
-    .from(payments)
-    .where(
-      orgFilter
-        ? and(eq(payments.status, "success"), eq(payments.organisationId, organisationId!))
-        : eq(payments.status, "success")
-    );
-
-  const [activeCourses] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(courses)
-    .where(eq(courses.isActive, true));
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const [liveClassesToday] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(liveClasses)
-    .where(and(gte(liveClasses.scheduledAt, today), lte(liveClasses.scheduledAt, tomorrow)));
-
-  let slotsRemaining = 0;
-  if (scope === "org" && organisationId) {
-    const orgSlots = await db
-      .select()
-      .from(slots)
-      .where(eq(slots.organisationId, organisationId));
-    slotsRemaining = orgSlots.reduce(
-      (sum, s) => sum + (s.totalSlots - (s.usedSlots ?? 0)),
-      0
-    );
-  }
-
-  const [paymentsMade] =
+  // PERF: Fetch independent KPI metrics in parallel to reduce Time-To-First-Byte
+  const [
+    [totalOrgs],
+    [totalStudents],
+    [totalRevenue],
+    [activeCourses],
+    [liveClassesToday],
+    orgSlots,
+    [paymentsMade]
+  ] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(organisations),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users)
+      .where(
+        orgFilter
+          ? and(eq(users.role, "student"), orgFilter)
+          : eq(users.role, "student")
+      ),
+    db
+      .select({ sum: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+      .from(payments)
+      .where(
+        orgFilter
+          ? and(eq(payments.status, "success"), eq(payments.organisationId, organisationId!))
+          : eq(payments.status, "success")
+      ),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(courses)
+      .where(eq(courses.isActive, true)),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(liveClasses)
+      .where(and(gte(liveClasses.scheduledAt, today), lte(liveClasses.scheduledAt, tomorrow))),
     scope === "org" && organisationId
-      ? await db
+      ? db
+          .select({
+            totalSlots: slots.totalSlots,
+            usedSlots: slots.usedSlots,
+          })
+          .from(slots)
+          .where(eq(slots.organisationId, organisationId))
+      : Promise.resolve([] as { totalSlots: number; usedSlots: number | null }[]),
+    scope === "org" && organisationId
+      ? db
           .select({ count: sql<number>`count(*)::int` })
           .from(payments)
           .where(
@@ -1438,7 +1499,16 @@ export async function GETDashboardStats(scope?: "org" | "global", organisationId
               eq(payments.status, "success")
             )
           )
-      : [{ count: 0 }];
+      : Promise.resolve([{ count: 0 }])
+  ]);
+
+  let slotsRemaining = 0;
+  if (scope === "org" && organisationId && Array.isArray(orgSlots)) {
+    slotsRemaining = orgSlots.reduce(
+      (sum, s) => sum + (s.totalSlots - (s.usedSlots ?? 0)),
+      0
+    );
+  }
 
   return NextResponse.json({
     totalOrgs: totalOrgs?.count ?? 0,

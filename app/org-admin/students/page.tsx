@@ -57,9 +57,9 @@ export default function OrgAdminStudentsPage() {
     queryKey: ["students", selectedCourse?.id],
     queryFn: async () => {
       const res = await fetch(`/api/students?courseId=${selectedCourse!.id}`);
-      const data = await res.json();
+      const resData = await res.json();
       if (!res.ok) return [];
-      return Array.isArray(data) ? data : [];
+      return Array.isArray(resData?.data) ? resData.data : [];
     },
     enabled: !!selectedCourse,
   });

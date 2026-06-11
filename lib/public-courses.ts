@@ -24,7 +24,22 @@ function mapDemoUrl(course: { demoVideoUrl: string | null; demoUrl: string | nul
 
 export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
   const rows = await db
-    .select()
+    .select({
+      id: courses.id,
+      title: courses.title,
+      slug: courses.slug,
+      description: courses.description,
+      price: courses.price,
+      thumbnailUrl: courses.thumbnailUrl,
+      level: courses.level,
+      language: courses.language,
+      totalHours: courses.totalHours,
+      totalLectures: courses.totalLectures,
+      certificate: courses.certificate,
+      isFeatured: courses.isFeatured,
+      demoVideoUrl: courses.demoVideoUrl,
+      demoUrl: courses.demoUrl,
+    })
     .from(courses)
     .where(and(eq(courses.isActive, true), isNull(courses.deletedAt)))
     .orderBy(desc(courses.createdAt));
@@ -50,7 +65,26 @@ export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
 
 export async function getPublicCourseBySlug(slug: string) {
   const [course] = await db
-    .select()
+    .select({
+      id: courses.id,
+      title: courses.title,
+      slug: courses.slug,
+      description: courses.description,
+      price: courses.price,
+      thumbnailUrl: courses.thumbnailUrl,
+      level: courses.level,
+      language: courses.language,
+      totalHours: courses.totalHours,
+      totalLectures: courses.totalLectures,
+      certificate: courses.certificate,
+      isFeatured: courses.isFeatured,
+      demoVideoUrl: courses.demoVideoUrl,
+      demoUrl: courses.demoUrl,
+      syllabus: courses.syllabus,
+      whatYouLearn: courses.whatYouLearn,
+      requirements: courses.requirements,
+      updatedAt: courses.updatedAt,
+    })
     .from(courses)
     .where(and(eq(courses.slug, slug), eq(courses.isActive, true), isNull(courses.deletedAt)))
     .limit(1);

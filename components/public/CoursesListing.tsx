@@ -2,7 +2,12 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { CourseCard, type CourseCardProps } from "@/components/public/CourseCard";
-import { DemoVideoModal } from "@/components/public/DemoVideoModal";
+import dynamic from "next/dynamic";
+
+const DemoVideoModal = dynamic(
+  () => import("@/components/public/DemoVideoModal").then((mod) => mod.DemoVideoModal),
+  { ssr: false }
+);
 import { Input } from "@/components/ui/input";
 import {
   Select,

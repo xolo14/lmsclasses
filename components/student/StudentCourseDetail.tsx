@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Lock, Play, Calendar, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +72,29 @@ export function StudentCourseDetail({
   const [video, setVideo] = useState<{ url: string; title: string } | null>(null);
   const { enrollment } = content;
   const hasLive = enrollment.hasLiveAccess;
+  const batchId = enrollment.batchId;
+
+  // PERF: Polling only for live class statuses with a lightweight endpoint every 60s
+  const { data: liveStatuses } = useQuery({
+    queryKey: ["live-class-statuses", batchId],
+    queryFn: async () => {
+      const res = await fetch(`/api/student/live-status?batchId=${batchId}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 60 * 1000,
+    enabled: !!batchId && hasLive,
+  });
+
+  const displayedLiveClasses = content.liveClasses.map((cls) => {
+    const statusUpdate = Array.isArray(liveStatuses)
+      ? liveStatuses.find((u: any) => u.id === cls.id)
+      : null;
+    if (statusUpdate) {
+      return { ...cls, status: statusUpdate.status };
+    }
+    return cls;
+  });
 
   const downloadIcs = (cls: CourseContent["liveClasses"][number]) => {
     const start = new Date(cls.scheduledAt);
@@ -144,7 +168,7 @@ export function StudentCourseDetail({
         <TabsContent value="live" className="mt-4">
           {!hasLive ? (
             <LockedPanel />
-          ) : content.liveClasses.length === 0 ? (
+          ) : displayedLiveClasses.length === 0 ? (
             <p className="py-8 text-center text-muted-foreground">
               No live classes have been scheduled for your batch yet.
             </p>
@@ -161,7 +185,7 @@ export function StudentCourseDetail({
                   </tr>
                 </thead>
                 <tbody>
-                  {content.liveClasses.map((cls) => (
+                  {displayedLiveClasses.map((cls) => (
                     <tr key={cls.id} className="border-t">
                       <td className="p-3">{cls.title}</td>
                       <td className="p-3">{format(new Date(cls.scheduledAt), "MMM d, yyyy h:mm a")}</td>

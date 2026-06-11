@@ -16,7 +16,17 @@ export async function GET(request: Request) {
   }
 
   const rows = await db
-    .select()
+    .select({
+      id: courseRecordings.id,
+      courseId: courseRecordings.courseId,
+      title: courseRecordings.title,
+      description: courseRecordings.description,
+      videoUrl: courseRecordings.videoUrl,
+      duration: courseRecordings.duration,
+      sortOrder: courseRecordings.sortOrder,
+      isPublished: courseRecordings.isPublished,
+      createdAt: courseRecordings.createdAt,
+    })
     .from(courseRecordings)
     .where(eq(courseRecordings.courseId, courseId))
     .orderBy(asc(courseRecordings.sortOrder));

@@ -3,7 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { CourseCard, type CourseCardProps } from "@/components/public/CourseCard";
-import { DemoVideoModal } from "@/components/public/DemoVideoModal";
+import dynamic from "next/dynamic";
+
+const DemoVideoModal = dynamic(
+  () => import("@/components/public/DemoVideoModal").then((mod) => mod.DemoVideoModal),
+  { ssr: false }
+);
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 

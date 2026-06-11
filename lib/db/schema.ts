@@ -8,6 +8,7 @@ import {
   pgEnum,
   decimal,
   jsonb,
+  index,
 } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", [
@@ -88,7 +89,14 @@ export const users = pgTable("users", {
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // PERF: Login query filters by email — without this index, every login is a full table scan
+  index("users_email_idx").on(table.email),
+  // PERF: Portal queries filter students by org — used on every org admin dashboard load
+  index("users_org_id_idx").on(table.organisationId),
+  // PERF: Role-based queries used in middleware and admin pages
+  index("users_role_idx").on(table.role),
+]);
 
 export const courses = pgTable("courses", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -128,7 +136,12 @@ export const batches = pgTable("batches", {
   createdBy: uuid("created_by").references(() => users.id),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // PERF: "show batches for this course" — dropdown population
+  index("batch_course_id_idx").on(table.courseId),
+  // PERF: "show batches for this org"
+  index("batch_org_id_idx").on(table.organisationId),
+]);
 
 export const coupons = pgTable("coupons", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -164,7 +177,12 @@ export const payments = pgTable("payments", {
   razorpayPaymentId: text("razorpay_payment_id"),
   status: paymentStatusEnum("status").default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // PERF: Org admin history page — "show me my payments"
+  index("pay_org_id_idx").on(table.organisationId),
+  // PERF: Super admin payments page — "show all payments sorted by date"
+  index("pay_created_at_idx").on(table.createdAt),
+]);
 
 export const slots = pgTable("slots", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -178,7 +196,10 @@ export const slots = pgTable("slots", {
   usedSlots: integer("used_slots").default(0),
   paymentId: uuid("payment_id").references(() => payments.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // PERF: Slot check on every student add — must be instant
+  index("slots_org_course_idx").on(table.organisationId, table.courseId),
+]);
 
 export const studentCourses = pgTable("student_courses", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -195,7 +216,16 @@ export const studentCourses = pgTable("student_courses", {
   enrollmentSource: text("enrollment_source").notNull().default("org_admin"),
   enrolledAt: timestamp("enrolled_at").defaultNow(),
   isActive: boolean("is_active").default(true),
-});
+}, (table) => [
+  // PERF: The most-queried pattern: "what courses is this student in?"
+  index("sc_student_id_idx").on(table.studentId),
+  // PERF: "which students are in this course?" — used on org admin students page
+  index("sc_course_id_idx").on(table.courseId),
+  // PERF: Composite — the exact pattern used by getStudentCourseContent()
+  index("sc_student_course_idx").on(table.studentId, table.courseId),
+  // PERF: Batch queries — "which students are in this batch?"
+  index("sc_batch_id_idx").on(table.batchId),
+]);
 
 /** Course-scoped recordings (base curriculum) — no batchId; distinct from class_recordings */
 export const courseRecordings = pgTable("course_recordings", {
@@ -214,7 +244,12 @@ export const courseRecordings = pgTable("course_recordings", {
     .references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  // PERF: "show me recordings for this course, ordered by sortOrder"
+  index("cr_course_id_idx").on(table.courseId),
+  // PERF: Published filter is always applied — composite index is best
+  index("cr_course_published_idx").on(table.courseId, table.isPublished),
+]);
 
 export const liveClasses = pgTable("live_classes", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -234,7 +269,14 @@ export const liveClasses = pgTable("live_classes", {
   createdBy: uuid("created_by").references(() => users.id),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // PERF: Mentor portal — "show me my classes" — runs on every mentor page load
+  index("lc_mentor_id_idx").on(table.mentorId),
+  // PERF: Student portal — "show me classes for my batch"
+  index("lc_batch_id_idx").on(table.batchId),
+  // PERF: Composite — status filter + batch — used by student live class tab
+  index("lc_batch_status_idx").on(table.batchId, table.status),
+]);
 
 export const classRecordings = pgTable("class_recordings", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -250,7 +292,11 @@ export const classRecordings = pgTable("class_recordings", {
   uploadedBy: uuid("uploaded_by").references(() => users.id),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // PERF: "show me class recordings for this course/batch"
+  index("clr_course_id_idx").on(table.courseId),
+  index("clr_batch_id_idx").on(table.batchId),
+]);
 
 export const auditLogs = pgTable("audit_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -262,7 +308,12 @@ export const auditLogs = pgTable("audit_logs", {
   metadata: jsonb("metadata"),
   ipAddress: text("ip_address"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // PERF: Audit log page always filters by date DESC — without this, full table scan
+  index("al_created_at_idx").on(table.createdAt),
+  // PERF: "show me actions by this user" — used in org detail page
+  index("al_user_id_idx").on(table.userId),
+]);
 
 export const companies = pgTable("companies", {
   id: uuid("id").primaryKey().defaultRandom(),

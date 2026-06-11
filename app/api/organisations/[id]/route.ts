@@ -43,37 +43,48 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const [studentCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(users)
-    .where(and(eq(users.organisationId, id), eq(users.role, "student")));
-
-  const orgPayments = await db
-    .select()
-    .from(payments)
-    .where(eq(payments.organisationId, id))
-    .orderBy(desc(payments.createdAt));
-
-  const orgStudents = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      lmsId: users.lmsId,
-      isActive: users.isActive,
-      createdAt: users.createdAt,
-      courseTitle: courses.title,
-    })
-    .from(users)
-    .leftJoin(studentCourses, eq(studentCourses.studentId, users.id))
-    .leftJoin(courses, eq(studentCourses.courseId, courses.id))
-    .where(and(eq(users.organisationId, id), eq(users.role, "student")))
-    .orderBy(desc(users.createdAt));
-
-  const orgSlots = await db
-    .select()
-    .from(slots)
-    .where(eq(slots.organisationId, id));
+  // PERF: Execute independent sub-queries in parallel to reduce organization detail load times
+  const [[studentCount], orgPayments, orgStudents, orgSlots] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users)
+      .where(and(eq(users.organisationId, id), eq(users.role, "student"))),
+    db
+      .select({
+        id: payments.id,
+        amount: payments.amount,
+        slotsCount: payments.slotsCount,
+        status: payments.status,
+        createdAt: payments.createdAt,
+      })
+      .from(payments)
+      .where(eq(payments.organisationId, id))
+      .orderBy(desc(payments.createdAt)),
+    db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        lmsId: users.lmsId,
+        isActive: users.isActive,
+        createdAt: users.createdAt,
+        courseTitle: courses.title,
+      })
+      .from(users)
+      .leftJoin(studentCourses, eq(studentCourses.studentId, users.id))
+      .leftJoin(courses, eq(studentCourses.courseId, courses.id))
+      .where(and(eq(users.organisationId, id), eq(users.role, "student")))
+      .orderBy(desc(users.createdAt)),
+    db
+      .select({
+        id: slots.id,
+        courseId: slots.courseId,
+        totalSlots: slots.totalSlots,
+        usedSlots: slots.usedSlots,
+      })
+      .from(slots)
+      .where(eq(slots.organisationId, id)),
+  ]);
 
   return NextResponse.json({
     ...org,

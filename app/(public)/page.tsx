@@ -5,7 +5,7 @@ import { LandingHero } from "@/components/public/LandingHero";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Video, Briefcase, Award, Search, CreditCard, PlayCircle } from "lucide-react";
 
-export const revalidate = 60;
+export const revalidate = 300;
 
 export default async function LandingPage() {
   const courses = await getPublicCourses();

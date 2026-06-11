@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/tables/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -30,21 +30,28 @@ export default function StudentsPage() {
   const queryClient = useQueryClient();
 
   const {
-    data: students = [],
+    data,
     isLoading,
     isError,
     error,
-  } = useQuery<Student[]>({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["students"],
-    queryFn: async () => {
-      const res = await fetch("/api/students");
-      const data = await res.json();
+    queryFn: async ({ pageParam = "" }) => {
+      const res = await fetch(`/api/students?cursor=${pageParam}&limit=50`);
+      const resData = await res.json();
       if (!res.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Failed to load students");
+        throw new Error(typeof resData?.error === "string" ? resData.error : "Failed to load students");
       }
-      return Array.isArray(data) ? data : [];
+      return resData;
     },
+    initialPageParam: "",
+    getNextPageParam: (lastPage: any) => lastPage.nextCursor ?? undefined,
   });
+
+  const students = data ? data.pages.flatMap((page) => page.data) : [];
 
   const columns: ColumnDef<Student>[] = [
     { accessorKey: "name", header: "Student Name" },
@@ -121,6 +128,9 @@ export default function StudentsPage() {
         searchPlaceholder="Search students..."
         searchKey="name"
         getRowId={(row) => row.id}
+        hasNextPage={hasNextPage}
+        fetchNextPage={fetchNextPage}
+        isFetchingNextPage={isFetchingNextPage}
       />
     </div>
   );

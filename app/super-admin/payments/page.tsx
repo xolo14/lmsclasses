@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { Download } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
@@ -20,10 +20,27 @@ type Payment = {
 };
 
 export default function PaymentsPage() {
-  const { data: payments = [], isLoading } = useQuery<Payment[]>({
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["payments"],
-    queryFn: () => fetch("/api/payments").then((r) => r.json()),
+    queryFn: async ({ pageParam = "" }) => {
+      const res = await fetch(`/api/payments?cursor=${pageParam}&limit=50`);
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof resData?.error === "string" ? resData.error : "Failed to load payments");
+      }
+      return resData;
+    },
+    initialPageParam: "",
+    getNextPageParam: (lastPage: any) => lastPage.nextCursor ?? undefined,
   });
+
+  const payments = data ? data.pages.flatMap((page) => page.data) : [];
 
   const columns: ColumnDef<Payment>[] = [
     { accessorKey: "orgName", header: "Org Admin" },
@@ -65,7 +82,14 @@ export default function PaymentsPage() {
           <Download className="h-4 w-4 mr-2" /> Export CSV
         </Button>
       </div>
-      <DataTable columns={columns} data={payments} searchPlaceholder="Search payments..." />
+      <DataTable
+        columns={columns}
+        data={payments}
+        searchPlaceholder="Search payments..."
+        hasNextPage={hasNextPage}
+        fetchNextPage={fetchNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+      />
     </div>
   );
 }

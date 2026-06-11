@@ -1,11 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/tables/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
-import { fetchJson } from "@/lib/fetch-json";
 
 type AuditLog = {
   id: string;
@@ -18,11 +17,28 @@ type AuditLog = {
 };
 
 export default function AuditLogsPage() {
-  const { data: logs = [], isLoading } = useQuery<AuditLog[]>({
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["audit-logs"],
-    queryFn: () => fetchJson<AuditLog[]>("/api/audit-logs"),
+    queryFn: async ({ pageParam = "" }) => {
+      const res = await fetch(`/api/audit-logs?cursor=${pageParam}&limit=50`);
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof resData?.error === "string" ? resData.error : "Failed to load audit logs");
+      }
+      return resData;
+    },
+    initialPageParam: "",
+    getNextPageParam: (lastPage: any) => lastPage.nextCursor ?? undefined,
     staleTime: 2 * 60 * 1000,
   });
+
+  const logs = data ? data.pages.flatMap((page) => page.data) : [];
 
   const columns: ColumnDef<AuditLog>[] = [
     { accessorKey: "createdAt", header: "Timestamp", cell: ({ row }) => formatDateTime(row.original.createdAt) },
@@ -46,7 +62,14 @@ export default function AuditLogsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Audit Logs</h1>
-      <DataTable columns={columns} data={logs} searchPlaceholder="Search logs..." />
+      <DataTable
+        columns={columns}
+        data={logs}
+        searchPlaceholder="Search logs..."
+        hasNextPage={hasNextPage}
+        fetchNextPage={fetchNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+      />
     </div>
   );
 }

@@ -30,6 +30,10 @@ interface DataTableProps<TData, TValue> {
   searchPlaceholder?: string;
   searchKey?: string;
   getRowId?: (row: TData) => string;
+  // PERF: Server-side pagination support
+  hasNextPage?: boolean;
+  fetchNextPage?: () => void;
+  isFetchingNextPage?: boolean;
 }
 
 export function DataTable<TData, TValue>({
@@ -39,6 +43,9 @@ export function DataTable<TData, TValue>({
   searchPlaceholder = "Search...",
   searchKey,
   getRowId,
+  hasNextPage,
+  fetchNextPage,
+  isFetchingNextPage,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -51,7 +58,8 @@ export function DataTable<TData, TValue>({
         getRowId(originalRow) || String(index),
     }),
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    // PERF: Disable local pagination when server-side pagination is used
+    ...(hasNextPage === undefined ? { getPaginationRowModel: getPaginationRowModel() } : {}),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
@@ -117,29 +125,42 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground text-center sm:text-left">
-          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount() || 1}
-        </p>
-        <div className="flex gap-2 justify-center sm:justify-end">
+      {hasNextPage !== undefined ? (
+        <div className="flex justify-center mt-4">
           <Button
             variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
+            onClick={() => fetchNextPage?.()}
+            disabled={!hasNextPage || isFetchingNextPage}
+            className="w-full max-w-xs"
           >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            <ChevronRight className="h-4 w-4" />
+            {isFetchingNextPage ? "Loading more..." : hasNextPage ? "Load More" : "No more items"}
           </Button>
         </div>
-      </div>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground text-center sm:text-left">
+            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount() || 1}
+          </p>
+          <div className="flex gap-2 justify-center sm:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

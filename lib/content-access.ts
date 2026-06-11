@@ -41,7 +41,14 @@ export async function getStudentEnrollments(studentId: string) {
  */
 export async function getCourseRecordings(courseId: string) {
   return db
-    .select()
+    .select({
+      id: courseRecordings.id,
+      title: courseRecordings.title,
+      description: courseRecordings.description,
+      videoUrl: courseRecordings.videoUrl,
+      duration: courseRecordings.duration,
+      sortOrder: courseRecordings.sortOrder,
+    })
     .from(courseRecordings)
     .where(and(eq(courseRecordings.courseId, courseId), eq(courseRecordings.isPublished, true)))
     .orderBy(asc(courseRecordings.sortOrder));
@@ -95,7 +102,10 @@ export async function getLiveClassRecordingsForStudent(batchId: string | null) {
 
 export async function getStudentCourseContent(studentId: string, courseId: string) {
   const [enrollment] = await db
-    .select()
+    .select({
+      batchId: studentCourses.batchId,
+      enrollmentSource: studentCourses.enrollmentSource,
+    })
     .from(studentCourses)
     .where(
       and(

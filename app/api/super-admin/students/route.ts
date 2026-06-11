@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     let courseTitle: string | undefined;
     if (courseId) {
       const [course] = await db
-        .select()
+        .select({ title: courses.title })
         .from(courses)
         .where(and(eq(courses.id, courseId), eq(courses.isActive, true), isNull(courses.deletedAt)))
         .limit(1);
