@@ -25,8 +25,21 @@ export function DemosPage() {
   const [isDirectVideo, setIsDirectVideo] = useState(false);
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
-    queryKey: ["courses"],
-    queryFn: () => fetch("/api/courses").then((r) => r.json()),
+    queryKey: ["demos-courses"],
+    queryFn: async () => {
+      const [liveRes, recordRes] = await Promise.all([
+        fetch("/api/live-courses"),
+        fetch("/api/record-courses"),
+      ]);
+      const [liveCourses, recordCourses] = await Promise.all([
+        liveRes.ok ? liveRes.json() : [],
+        recordRes.ok ? recordRes.json() : [],
+      ]);
+      return [
+        ...(Array.isArray(liveCourses) ? liveCourses : []),
+        ...(Array.isArray(recordCourses) ? recordCourses : []),
+      ];
+    },
   });
 
   // Filter courses that have a valid demoUrl
