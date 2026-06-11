@@ -9,6 +9,7 @@ import {
   liveClasses,
   classRecordings,
   studentCourses,
+  coupons,
 } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
@@ -21,6 +22,7 @@ const TRASH_TABLES = {
   batch: { table: batches, id: batches.id, label: batches.name },
   live_class: { table: liveClasses, id: liveClasses.id, label: liveClasses.title },
   class_recording: { table: classRecordings, id: classRecordings.id, label: classRecordings.topicName },
+  coupon: { table: coupons, id: coupons.id, label: coupons.code },
 } as const;
 
 export async function GETTrash() {
@@ -29,7 +31,7 @@ export async function GETTrash() {
 
   await purgeExpiredTrash();
 
-  const [orgs, courseRows, batchRows, liveRows, recordingRows, students, managers, mentors] =
+  const [orgs, courseRows, batchRows, liveRows, recordingRows, students, managers, mentors, couponRows] =
     await Promise.all([
       db
         .select({ id: organisations.id, name: organisations.name, deletedAt: organisations.deletedAt })
@@ -75,6 +77,11 @@ export async function GETTrash() {
         .from(users)
         .where(and(eq(users.role, "mentor"), isNotNull(users.deletedAt)))
         .orderBy(desc(users.deletedAt)),
+      db
+        .select({ id: coupons.id, name: coupons.code, deletedAt: coupons.deletedAt })
+        .from(coupons)
+        .where(isNotNull(coupons.deletedAt))
+        .orderBy(desc(coupons.deletedAt)),
     ]);
 
   const mapItem = (entityType: TrashEntityType, item: { id: string; name: string | null; deletedAt: Date | null }) => ({
@@ -98,6 +105,7 @@ export async function GETTrash() {
       ...students.map((s) => mapItem("student", s)),
       ...managers.map((m) => mapItem("manager", m)),
       ...mentors.map((m) => mapItem("mentor", m)),
+      ...couponRows.map((cp) => mapItem("coupon", cp)),
     ].sort((a, b) => new Date(b.deletedAt!).getTime() - new Date(a.deletedAt!).getTime()),
   });
 }
@@ -108,7 +116,10 @@ export async function POSTTrashRestore(request: Request) {
 
   const { entityType, id } = (await request.json()) as { entityType: TrashEntityType; id: string };
 
-  if (entityType === "student" || entityType === "manager" || entityType === "mentor") {
+  if (entityType === "student") {
+    await db.update(users).set({ deletedAt: null, isActive: true }).where(eq(users.id, id));
+    await db.update(studentCourses).set({ isActive: true }).where(eq(studentCourses.studentId, id));
+  } else if (entityType === "manager" || entityType === "mentor") {
     await db.update(users).set({ deletedAt: null, isActive: true }).where(eq(users.id, id));
   } else if (entityType in TRASH_TABLES) {
     const key = entityType as keyof typeof TRASH_TABLES;
@@ -119,6 +130,20 @@ export async function POSTTrashRestore(request: Request) {
     }
     if (entityType === "organisation") {
       await db.update(organisations).set({ isActive: true }).where(eq(organisations.id, id));
+      const [org] = await db
+        .select({ adminId: organisations.adminId })
+        .from(organisations)
+        .where(eq(organisations.id, id))
+        .limit(1);
+      if (org?.adminId) {
+        await db
+          .update(users)
+          .set({ deletedAt: null, isActive: true })
+          .where(eq(users.id, org.adminId));
+      }
+    }
+    if (entityType === "coupon") {
+      await db.update(coupons).set({ isActive: true }).where(eq(coupons.id, id));
     }
   } else {
     return NextResponse.json({ error: "Invalid entity type" }, { status: 400 });

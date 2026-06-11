@@ -20,7 +20,8 @@ export type TrashEntityType =
   | "manager"
   | "mentor"
   | "live_class"
-  | "class_recording";
+  | "class_recording"
+  | "coupon";
 
 export function trashCutoffDate(): Date {
   const cutoff = new Date();
@@ -37,6 +38,7 @@ export async function purgeExpiredTrash() {
   await db.delete(batches).where(and(isNotNull(batches.deletedAt), lt(batches.deletedAt, cutoff)));
   await db.delete(courses).where(and(isNotNull(courses.deletedAt), lt(courses.deletedAt, cutoff)));
   await db.delete(organisations).where(and(isNotNull(organisations.deletedAt), lt(organisations.deletedAt, cutoff)));
+  await db.delete(coupons).where(and(isNotNull(coupons.deletedAt), lt(coupons.deletedAt, cutoff)));
   await db
     .delete(users)
     .where(
@@ -64,6 +66,15 @@ export async function purgeExpiredTrash() {
         eq(users.role, "mentor")
       )
     );
+  await db
+    .delete(users)
+    .where(
+      and(
+        isNotNull(users.deletedAt),
+        lt(users.deletedAt, cutoff),
+        eq(users.role, "org_admin")
+      )
+    );
 }
 
 export async function clearAllTrashImmediate() {
@@ -81,7 +92,8 @@ export async function clearAllTrashImmediate() {
         or(
           eq(users.role, "student"),
           eq(users.role, "manager"),
-          eq(users.role, "mentor")
+          eq(users.role, "mentor"),
+          eq(users.role, "org_admin")
         )
       )
     );

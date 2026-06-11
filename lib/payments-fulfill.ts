@@ -1,8 +1,9 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { payments, slots, coupons } from "@/lib/db/schema";
+import { payments, slots, coupons, organisations, courses, users } from "@/lib/db/schema";
 import { logAction } from "@/lib/audit";
 import type { Role } from "@/lib/db/schema";
+import { trySendWelcomeEmail, sendSlotPurchaseEmail } from "@/lib/email";
 
 export async function fulfillSlotPurchase(
   paymentId: string,
@@ -64,6 +65,53 @@ export async function fulfillSlotPurchase(
       metadata: { slotsCount: payment.slotsCount, courseId: payment.courseId },
       ipAddress: opts.ipAddress ?? undefined,
     });
+  }
+
+  try {
+    const [org] = await db
+      .select()
+      .from(organisations)
+      .where(eq(organisations.id, payment.organisationId))
+      .limit(1);
+
+    const [course] = await db
+      .select()
+      .from(courses)
+      .where(eq(courses.id, payment.courseId))
+      .limit(1);
+
+    if (org && course) {
+      let adminEmail = org.email;
+      let adminName = org.name + " Admin";
+
+      if (org.adminId) {
+        const [adminUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, org.adminId))
+          .limit(1);
+        if (adminUser) {
+          adminEmail = adminUser.email;
+          adminName = adminUser.name;
+        }
+      }
+
+      if (adminEmail) {
+        await trySendWelcomeEmail("slot purchase email", () =>
+          sendSlotPurchaseEmail({
+            email: adminEmail!,
+            adminName,
+            orgName: org.name,
+            courseTitle: course.title,
+            slotsCount: payment.slotsCount,
+            amount: payment.amount,
+            paymentId: payment.id,
+          })
+        );
+      }
+    }
+  } catch (emailErr) {
+    console.error("[FulfillPayment] Failed to send slot purchase email:", emailErr);
   }
 
   return { ok: true };

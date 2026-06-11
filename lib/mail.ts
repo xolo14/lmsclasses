@@ -8,7 +8,7 @@ export function getDefaultFromEmail(): string {
     process.env.MAIL_FROM?.trim() ||
     process.env.SMTP_FROM?.trim() ||
     process.env.RESEND_FROM_EMAIL?.trim() ||
-    (smtpUser ? `LMS Platform <${smtpUser}>` : `LMS Platform <info@lmsclasses.com>`)
+    (smtpUser ? `LMS Classes <${smtpUser}>` : `LMS Classes <info@lmsclasses.com>`)
   );
 }
 

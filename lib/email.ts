@@ -49,22 +49,42 @@ async function sendMemberCredentialsEmail({
     .join("");
 
   const safeEmail = email.trim().toLowerCase();
+  const loginUrl = `${appUrl}${loginPath}`;
 
   return sendEmail({
     to: safeEmail,
-    subject: `Welcome to ${appName} — ${roleLabel} Account`,
+    subject: `Welcome to LMS Classes — ${roleLabel} Account`,
     html: `
-      <h2>Welcome, ${escapeHtml(name)}!</h2>
-      ${introHtml}
-      <p>Your login credentials:</p>
-      <ul>
-        ${extras}
-        <li><strong>Email:</strong> ${escapeHtml(safeEmail)}</li>
-        <li><strong>Password:</strong> ${escapeHtml(password)}</li>
-      </ul>
-      <p><a href="${appUrl}${loginPath}">Login here</a></p>
-      <p style="color:#64748b;font-size:12px;margin-top:24px">Please change your password after first login if your organisation requires it.</p>
-      <p style="color:#64748b;font-size:12px">— ${appName} (info@lmsclasses.com)</p>
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1a202c;">
+        <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
+          <h2 style="color: #0284c7; margin: 0; font-size: 24px;">Welcome, ${escapeHtml(name)}!</h2>
+        </div>
+        
+        <div style="font-size: 16px; line-height: 1.5; color: #334155;">
+          ${introHtml}
+        </div>
+
+        <div style="background-color: #f8fafc; border-left: 4px solid #0f766e; padding: 16px; margin: 20px 0; border-radius: 6px;">
+          <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px;">Credentials</h3>
+          <ul style="margin: 0; padding-left: 20px; color: #475569; line-height: 1.6; font-family: monospace;">
+            ${extras}
+            <li><strong>Email:</strong> ${safeEmail}</li>
+            <li><strong>Password:</strong> ${escapeHtml(password)}</li>
+          </ul>
+        </div>
+
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${loginUrl}" style="background-color: #0284c7; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">Login here</a>
+        </div>
+
+        <div style="color: #64748b; font-size: 13px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 32px; line-height: 1.6;">
+          Please change your password after logging in for the first time if your organization requires it.<br/>
+          If you have any questions, feel free to contact us.
+        </div>
+        <div style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 12px;">
+          — LMS Classes (info@lmsclasses.com)
+        </div>
+      </div>
     `,
   });
 }
@@ -109,7 +129,6 @@ export async function sendStudentWelcomeEmail({
   const loginUrl = `${appUrl}/login`;
 
   return sendEmail({
-    from: "LMS Classes <info@lmsclasses.com>",
     to: safeEmail,
     subject: `Welcome to LMS Classes — Course Details & Credentials`,
     html: `
@@ -373,6 +392,71 @@ export async function sendApplicationRejectedEmail({
       <p>Thank you for applying to <strong>${jobTitle}</strong>.</p>
       <p>At this time, your application was not selected. We encourage you to apply for future opportunities.</p>
       <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
+    `,
+  });
+}
+
+export async function sendSlotPurchaseEmail({
+  email,
+  adminName,
+  orgName,
+  courseTitle,
+  slotsCount,
+  amount,
+  paymentId,
+}: {
+  email: string;
+  adminName: string;
+  orgName: string;
+  courseTitle: string;
+  slotsCount: number;
+  amount: string;
+  paymentId: string;
+}) {
+  const loginUrl = `${appUrl}/org-admin`;
+
+  return sendEmail({
+    to: email.trim().toLowerCase(),
+    subject: `Slots Purchased Successfully — LMS Classes`,
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1a202c;">
+        <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
+          <h2 style="color: #0f766e; margin: 0; font-size: 24px;">Payment Successful!</h2>
+          <p style="color: #64748b; font-size: 14px; margin-top: 5px;">Your slots have been successfully credited.</p>
+        </div>
+        
+        <p style="font-size: 16px; line-height: 1.5; color: #334155;">
+          Hello ${escapeHtml(adminName)},
+        </p>
+        <p style="font-size: 16px; line-height: 1.5; color: #334155;">
+          Thank you for your purchase. We have credited the slots to your organisation, <strong>${escapeHtml(orgName)}</strong>. Below are the purchase details:
+        </p>
+
+        <div style="background-color: #f8fafc; border-left: 4px solid #0f766e; padding: 16px; margin: 20px 0; border-radius: 6px;">
+          <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px;">Order Details</h3>
+          <ul style="margin: 0; padding-left: 20px; color: #475569; line-height: 1.6;">
+            <li><strong>Course Name:</strong> ${escapeHtml(courseTitle)}</li>
+            <li><strong>Slots Credited:</strong> ${slotsCount}</li>
+            <li><strong>Amount Paid:</strong> INR ${amount}</li>
+            <li><strong>Payment ID:</strong> ${paymentId}</li>
+          </ul>
+        </div>
+
+        <p style="font-size: 16px; line-height: 1.5; color: #334155;">
+          You can now start adding students to this course from your administrator dashboard.
+        </p>
+
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${loginUrl}" style="background-color: #0f766e; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">Go to Dashboard</a>
+        </div>
+
+        <div style="color: #64748b; font-size: 13px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 32px; line-height: 1.6;">
+          If you have any questions or require an official invoice, please reach out to support.
+        </div>
+        <div style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 12px;">
+          — LMS Classes (info@lmsclasses.com)
+        </div>
+      </div>
     `,
   });
 }
