@@ -20,8 +20,9 @@ export function FeaturedCoursesSection({ courses }: { courses: Course[] }) {
   const [filter, setFilter] = useState<(typeof levels)[number]>("All");
   const [demo, setDemo] = useState<{ url: string; title: string } | null>(null);
 
-  const featured = courses.filter((c) => c.isFeatured);
-  const base = featured.length > 0 ? featured.slice(0, 6) : courses.slice(0, 6);
+  const courseList = Array.isArray(courses) ? courses : [];
+  const featured = courseList.filter((c) => c.isFeatured);
+  const base = featured.length > 0 ? featured.slice(0, 6) : courseList.slice(0, 6);
 
   const filtered =
     filter === "All" ? base : base.filter((c) => c.level === filter);

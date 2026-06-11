@@ -20,6 +20,7 @@ import {
 type Course = CourseCardProps;
 
 export function CoursesListing({ courses }: { courses: Course[] }) {
+  const courseList = Array.isArray(courses) ? courses : [];
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [level, setLevel] = useState("All");
@@ -45,7 +46,7 @@ export function CoursesListing({ courses }: { courses: Course[] }) {
     if (sort === "price-asc") list.sort((a, b) => a.price - b.price);
     else if (sort === "price-desc") list.sort((a, b) => b.price - a.price);
     return list;
-  }, [courses, debounced, level, sort]);
+  }, [courseList, debounced, level, sort]);
 
   return (
     <>

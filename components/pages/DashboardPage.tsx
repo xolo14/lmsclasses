@@ -53,24 +53,39 @@ type AuditRow = {
   createdAt: string;
 };
 
+type PaginatedResponse<T> = {
+  data: T[];
+  nextCursor?: string | null;
+  hasNextPage?: boolean;
+};
+
+function asArray<T>(value: T[] | PaginatedResponse<T> | undefined): T[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return Array.isArray(value.data) ? value.data : [];
+}
+
 export function DashboardPage({ scope = "global", userRole }: DashboardPageProps) {
   const { data: stats } = useQuery<DashboardStats>({
     queryKey: ["dashboard", scope],
     queryFn: () => fetchJson<DashboardStats>(`/api/dashboard?scope=${scope}`),
   });
 
-  const { data: payments = [] } = useQuery<PaymentRow[]>({
+  const { data: paymentsRaw } = useQuery<PaymentRow[] | PaginatedResponse<PaymentRow>>({
     queryKey: ["payments"],
-    queryFn: () => fetchJson<PaymentRow[]>("/api/payments"),
+    queryFn: () => fetchJson<PaymentRow[] | PaginatedResponse<PaymentRow>>("/api/payments"),
     enabled: scope === "global",
   });
 
-  const { data: auditLogs = [] } = useQuery<AuditRow[]>({
+  const { data: auditLogsRaw } = useQuery<AuditRow[] | PaginatedResponse<AuditRow>>({
     queryKey: ["audit-logs", "dashboard"],
-    queryFn: () => fetchJson<AuditRow[]>("/api/audit-logs"),
+    queryFn: () => fetchJson<AuditRow[] | PaginatedResponse<AuditRow>>("/api/audit-logs"),
     enabled: scope === "global" && userRole === "super_admin",
     staleTime: 2 * 60 * 1000,
   });
+
+  const payments = asArray(paymentsRaw);
+  const auditLogs = asArray(auditLogsRaw);
 
   const revenueChart = payments
     .filter((p) => p.status === "success")

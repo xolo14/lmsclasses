@@ -8,7 +8,12 @@ import { BookOpen, Video, Briefcase, Award, Search, CreditCard, PlayCircle } fro
 export const revalidate = 300;
 
 export default async function LandingPage() {
-  const courses = await getPublicCourses();
+  let courses: Awaited<ReturnType<typeof getPublicCourses>> = [];
+  try {
+    courses = await getPublicCourses();
+  } catch (err) {
+    console.error("[landing] getPublicCourses failed:", err);
+  }
   const mapped = courses.map((c) => ({
     ...c,
     description: c.description ?? "",
