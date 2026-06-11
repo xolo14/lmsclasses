@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { courses } from "@/lib/db/schema";
+import { liveCourses, recordCourses } from "@/lib/db/schema";
 import { eq, isNull, and } from "drizzle-orm";
 
 export function toSlug(title: string): string {
@@ -9,16 +9,38 @@ export function toSlug(title: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
-export async function ensureUniqueCourseSlug(title: string, excludeId?: string): Promise<string> {
+export async function ensureUniqueLiveCourseSlug(title: string, excludeId?: string): Promise<string> {
   const base = toSlug(title) || "course";
   let candidate = base;
   let suffix = 2;
 
   while (true) {
-    const conditions = [eq(courses.slug, candidate), isNull(courses.deletedAt)];
+    const conditions = [eq(liveCourses.slug, candidate), isNull(liveCourses.deletedAt)];
     const [existing] = await db
-      .select({ id: courses.id })
-      .from(courses)
+      .select({ id: liveCourses.id })
+      .from(liveCourses)
+      .where(and(...conditions))
+      .limit(1);
+
+    if (!existing || (excludeId && existing.id === excludeId)) {
+      return candidate;
+    }
+
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+}
+
+export async function ensureUniqueRecordCourseSlug(title: string, excludeId?: string): Promise<string> {
+  const base = toSlug(title) || "course";
+  let candidate = base;
+  let suffix = 2;
+
+  while (true) {
+    const conditions = [eq(recordCourses.slug, candidate), isNull(recordCourses.deletedAt)];
+    const [existing] = await db
+      .select({ id: recordCourses.id })
+      .from(recordCourses)
       .where(and(...conditions))
       .limit(1);
 

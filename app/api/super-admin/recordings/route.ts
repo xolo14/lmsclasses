@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq, asc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { courseRecordings, courses } from "@/lib/db/schema";
+import { courseRecordings, recordCourses } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { courseRecordingSchema } from "@/lib/validations/course-recording";
 import { logAction, getClientIp } from "@/lib/audit";
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   const rows = await db
     .select({
       id: courseRecordings.id,
-      courseId: courseRecordings.courseId,
+      courseId: courseRecordings.recordCourseId,
       title: courseRecordings.title,
       description: courseRecordings.description,
       videoUrl: courseRecordings.videoUrl,
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       createdAt: courseRecordings.createdAt,
     })
     .from(courseRecordings)
-    .where(eq(courseRecordings.courseId, courseId))
+    .where(eq(courseRecordings.recordCourseId, courseId))
     .orderBy(asc(courseRecordings.sortOrder));
 
   return NextResponse.json(rows);
@@ -46,18 +46,20 @@ export async function POST(request: Request) {
     }
 
     const [course] = await db
-      .select({ id: courses.id })
-      .from(courses)
-      .where(eq(courses.id, parsed.data.courseId))
+      .select({ id: recordCourses.id })
+      .from(recordCourses)
+      .where(eq(recordCourses.id, parsed.data.courseId))
       .limit(1);
     if (!course) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
 
+    const { courseId, ...rest } = parsed.data;
     const [recording] = await db
       .insert(courseRecordings)
       .values({
-        ...parsed.data,
+        ...rest,
+        recordCourseId: courseId,
         createdBy: session!.user.id,
       })
       .returning();

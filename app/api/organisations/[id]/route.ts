@@ -7,7 +7,8 @@ import {
   payments,
   slots,
   studentCourses,
-  courses,
+  liveCourses,
+  recordCourses,
 } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { PATCHOrganisation, DELETEOrganisation } from "@/lib/api-handlers";
@@ -68,11 +69,12 @@ export async function GET(
         lmsId: users.lmsId,
         isActive: users.isActive,
         createdAt: users.createdAt,
-        courseTitle: courses.title,
+        courseTitle: sql<string | null>`coalesce(${liveCourses.title}, ${recordCourses.title})`,
       })
       .from(users)
       .leftJoin(studentCourses, eq(studentCourses.studentId, users.id))
-      .leftJoin(courses, eq(studentCourses.courseId, courses.id))
+      .leftJoin(liveCourses, eq(studentCourses.liveCourseId, liveCourses.id))
+      .leftJoin(recordCourses, eq(studentCourses.recordCourseId, recordCourses.id))
       .where(and(eq(users.organisationId, id), eq(users.role, "student")))
       .orderBy(desc(users.createdAt)),
     db

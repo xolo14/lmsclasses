@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { payments, slots, coupons, organisations, courses, users } from "@/lib/db/schema";
+import { payments, slots, coupons, organisations, liveCourses, users } from "@/lib/db/schema";
 import { logAction } from "@/lib/audit";
 import type { Role } from "@/lib/db/schema";
 import { trySendWelcomeEmail, sendSlotPurchaseEmail } from "@/lib/email";
@@ -55,7 +55,7 @@ export async function fulfillSlotPurchase(
 
   await db.insert(slots).values({
     organisationId,
-    courseId: payment.courseId,
+    courseId: payment.liveCourseId!,
     totalSlots: payment.slotsCount,
     usedSlots: 0,
     paymentId: payment.id,
@@ -68,7 +68,7 @@ export async function fulfillSlotPurchase(
       action: "PURCHASED_SLOTS",
       entity: "Payment",
       entityId: paymentId,
-      metadata: { slotsCount: payment.slotsCount, courseId: payment.courseId },
+      metadata: { slotsCount: payment.slotsCount, courseId: payment.liveCourseId },
       ipAddress: opts.ipAddress ?? undefined,
     });
   }
@@ -82,8 +82,8 @@ export async function fulfillSlotPurchase(
 
     const [course] = await db
       .select()
-      .from(courses)
-      .where(eq(courses.id, payment.courseId))
+      .from(liveCourses)
+      .where(eq(liveCourses.id, payment.liveCourseId!))
       .limit(1);
 
     if (org && course) {

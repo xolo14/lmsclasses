@@ -35,7 +35,7 @@ export function AddBatchModal({ open, onOpenChange, defaultCourseId, orgAdminMod
 
   const { data: courses = [] } = useQuery({
     queryKey: ["courses"],
-    queryFn: () => fetch("/api/courses").then((r) => r.json()),
+    queryFn: () => fetch("/api/live-courses").then((r) => r.json()),
     enabled: open,
   });
 

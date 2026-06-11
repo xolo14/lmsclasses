@@ -19,7 +19,7 @@ import { AddCourseRecordingModal } from "@/components/modals/AddCourseRecordingM
 import type { CourseRecording } from "@/lib/db/schema";
 import { format } from "date-fns";
 
-export default function CourseRecordingsPage() {
+export default function RecordCourseRecordingsPage() {
   const params = useParams();
   const courseId = params.courseId as string;
   const queryClient = useQueryClient();
@@ -27,9 +27,9 @@ export default function CourseRecordingsPage() {
   const [editing, setEditing] = useState<CourseRecording | undefined>();
 
   const { data: course } = useQuery<{ title: string }>({
-    queryKey: ["course", courseId],
+    queryKey: ["record-course", courseId],
     queryFn: async () => {
-      const res = await fetch(`/api/courses/${courseId}`);
+      const res = await fetch(`/api/record-courses/${courseId}`);
       return res.json();
     },
   });
@@ -54,8 +54,8 @@ export default function CourseRecordingsPage() {
   return (
     <div className="space-y-6">
       <nav className="text-sm text-muted-foreground">
-        <Link href="/super-admin/courses" className="hover:text-primary">
-          Courses
+        <Link href="/super-admin/record-courses" className="hover:text-primary">
+          Record Courses
         </Link>
         {" > "}
         <span>{course?.title ?? "Course"}</span>

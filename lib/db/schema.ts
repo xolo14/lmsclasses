@@ -100,13 +100,38 @@ export const users = pgTable("users", {
   index("users_role_idx").on(table.role),
 ]);
 
-export const courses = pgTable("courses", {
+export const liveCourses = pgTable("live_courses", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
   slug: text("slug").unique(),
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  courseType: courseTypeEnum("course_type").notNull().default("live"),
+  duration: text("duration"),
+  demoUrl: text("demo_url"),
+  demoVideoUrl: text("demo_video_url"),
+  thumbnailUrl: text("thumbnail_url"),
+  syllabus: jsonb("syllabus"),
+  whatYouLearn: jsonb("what_you_learn"),
+  requirements: jsonb("requirements"),
+  level: text("level").default("Beginner"),
+  language: text("language").default("English"),
+  totalHours: integer("total_hours"),
+  totalLectures: integer("total_lectures"),
+  certificate: boolean("certificate").default(true),
+  isFeatured: boolean("is_featured").default(false),
+  isActive: boolean("is_active").default(true),
+  deletedAt: timestamp("deleted_at"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const recordCourses = pgTable("record_courses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  slug: text("slug").unique(),
+  description: text("description"),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   duration: text("duration"),
   demoUrl: text("demo_url"),
   demoVideoUrl: text("demo_video_url"),
@@ -131,7 +156,7 @@ export const batches = pgTable("batches", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   courseId: uuid("course_id")
-    .references(() => courses.id)
+    .references(() => liveCourses.id)
     .notNull(),
   organisationId: uuid("organisation_id").references(() => organisations.id),
   startDate: timestamp("start_date"),
@@ -169,9 +194,8 @@ export const payments = pgTable("payments", {
   id: uuid("id").primaryKey().defaultRandom(),
   // null = direct/public enrollment purchase (no organisation)
   organisationId: uuid("organisation_id").references(() => organisations.id),
-  courseId: uuid("course_id")
-    .references(() => courses.id)
-    .notNull(),
+  liveCourseId: uuid("live_course_id").references(() => liveCourses.id),
+  recordCourseId: uuid("record_course_id").references(() => recordCourses.id),
   adminId: uuid("admin_id").references(() => users.id),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   slotsCount: integer("slots_count").notNull(),
@@ -194,7 +218,7 @@ export const slots = pgTable("slots", {
     .references(() => organisations.id)
     .notNull(),
   courseId: uuid("course_id")
-    .references(() => courses.id)
+    .references(() => liveCourses.id)
     .notNull(),
   totalSlots: integer("total_slots").notNull(),
   usedSlots: integer("used_slots").default(0),
@@ -210,9 +234,8 @@ export const studentCourses = pgTable("student_courses", {
   studentId: uuid("student_id")
     .references(() => users.id)
     .notNull(),
-  courseId: uuid("course_id")
-    .references(() => courses.id)
-    .notNull(),
+  liveCourseId: uuid("live_course_id").references(() => liveCourses.id),
+  recordCourseId: uuid("record_course_id").references(() => recordCourses.id),
   // null = no live class access (public / direct without batch)
   batchId: uuid("batch_id").references(() => batches.id),
   // null = direct enrollment (public purchase or super admin add)
@@ -223,10 +246,6 @@ export const studentCourses = pgTable("student_courses", {
 }, (table) => [
   // PERF: The most-queried pattern: "what courses is this student in?"
   index("sc_student_id_idx").on(table.studentId),
-  // PERF: "which students are in this course?" — used on org admin students page
-  index("sc_course_id_idx").on(table.courseId),
-  // PERF: Composite — the exact pattern used by getStudentCourseContent()
-  index("sc_student_course_idx").on(table.studentId, table.courseId),
   // PERF: Batch queries — "which students are in this batch?"
   index("sc_batch_id_idx").on(table.batchId),
 ]);
@@ -234,9 +253,9 @@ export const studentCourses = pgTable("student_courses", {
 /** Course-scoped recordings (base curriculum) — no batchId; distinct from class_recordings */
 export const courseRecordings = pgTable("course_recordings", {
   id: uuid("id").primaryKey().defaultRandom(),
-  courseId: uuid("course_id")
+  recordCourseId: uuid("record_course_id")
     .notNull()
-    .references(() => courses.id, { onDelete: "cascade" }),
+    .references(() => recordCourses.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description"),
   videoUrl: text("video_url").notNull(),
@@ -249,17 +268,15 @@ export const courseRecordings = pgTable("course_recordings", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
-  // PERF: "show me recordings for this course, ordered by sortOrder"
-  index("cr_course_id_idx").on(table.courseId),
-  // PERF: Published filter is always applied — composite index is best
-  index("cr_course_published_idx").on(table.courseId, table.isPublished),
+  // PERF: Student curriculum page — "show me recordings for this course"
+  index("cr_course_published_idx").on(table.recordCourseId, table.isPublished),
 ]);
 
 export const liveClasses = pgTable("live_classes", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
   courseId: uuid("course_id")
-    .references(() => courses.id)
+    .references(() => liveCourses.id)
     .notNull(),
   batchId: uuid("batch_id").references(() => batches.id),
   mentorId: uuid("mentor_id")
@@ -285,7 +302,7 @@ export const liveClasses = pgTable("live_classes", {
 export const classRecordings = pgTable("class_recordings", {
   id: uuid("id").primaryKey().defaultRandom(),
   courseId: uuid("course_id")
-    .references(() => courses.id)
+    .references(() => liveCourses.id)
     .notNull(),
   batchId: uuid("batch_id")
     .references(() => batches.id)
@@ -408,7 +425,9 @@ export const jobApplications = pgTable("job_applications", {
 
 export type User = typeof users.$inferSelect;
 export type Organisation = typeof organisations.$inferSelect;
-export type Course = typeof courses.$inferSelect;
+export type LiveCourse = typeof liveCourses.$inferSelect;
+export type RecordCourse = typeof recordCourses.$inferSelect;
+export type Course = LiveCourse | RecordCourse;
 export type Batch = typeof batches.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type Slot = typeof slots.$inferSelect;

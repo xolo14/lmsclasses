@@ -33,7 +33,7 @@ interface AddDirectStudentModalProps {
   onSuccess: () => void;
 }
 
-type CourseOption = { id: string; title: string; price: string; isActive: boolean };
+type CourseOption = { id: string; title: string; price: string; isActive: boolean; duration?: string | null; type: "live" | "record" };
 type BatchOption = { id: string; name: string; courseId: string; organisationId: string | null };
 
 export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectStudentModalProps) {
@@ -59,13 +59,24 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
   const { data: courses = [] } = useQuery<CourseOption[]>({
     queryKey: ["courses-for-direct-student"],
     queryFn: async () => {
-      const res = await fetch("/api/courses");
-      if (!res.ok) throw new Error("Failed to load courses");
-      const data = await res.json();
-      return Array.isArray(data) ? data.filter((c: CourseOption) => c.isActive !== false) : [];
+      const [liveRes, recordRes] = await Promise.all([
+        fetch("/api/live-courses"),
+        fetch("/api/record-courses"),
+      ]);
+      if (!liveRes.ok || !recordRes.ok) throw new Error("Failed to load courses");
+      const [liveData, recordData] = await Promise.all([
+        liveRes.json(),
+        recordRes.json(),
+      ]);
+      const mappedLive = (Array.isArray(liveData) ? liveData : []).map((c: any) => ({ ...c, type: "live" }));
+      const mappedRecord = (Array.isArray(recordData) ? recordData : []).map((c: any) => ({ ...c, type: "record" }));
+      return [...mappedLive, ...mappedRecord].filter((c: CourseOption) => c.isActive !== false);
     },
     enabled: isOpen,
   });
+
+  const selectedCourse = courses.find((c) => c.id === courseId);
+  const isLiveCourse = selectedCourse?.type === "live";
 
   const { data: batches = [] } = useQuery<BatchOption[]>({
     queryKey: ["batches-for-direct-student", courseId],
@@ -75,12 +86,12 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     },
-    enabled: isOpen && !!courseId,
+    enabled: isOpen && !!courseId && isLiveCourse,
   });
 
   useEffect(() => {
-    if (!courseId) form.setValue("batchId", undefined);
-  }, [courseId, form]);
+    if (!courseId || !isLiveCourse) form.setValue("batchId", undefined);
+  }, [courseId, isLiveCourse, form]);
 
   const onSubmit = async (data: DirectStudentInput) => {
     setSubmitting(true);
@@ -203,7 +214,7 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
                 <SelectContent>
                   {courses.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.title} — ₹{parseFloat(c.price).toLocaleString("en-IN")}
+                      {c.title} — ₹{parseFloat(c.price).toLocaleString("en-IN")}{c.duration ? ` (${c.duration})` : ""} [{c.type === "live" ? "Live" : "Record"}]
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -212,19 +223,24 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
 
             {!courseId && (
               <p className="rounded-md border border-cyan-500/30 bg-cyan-500/10 p-3 text-sm text-muted-foreground">
-                ℹ️ Without a batch, this student will only access course recordings. To grant live
-                class access, select or create a batch for this course.
+                ℹ️ Select a course to determine batching options. Live courses support batches for live class access, while record courses are self-paced curriculum.
               </p>
             )}
 
-            {courseId && !form.watch("batchId") && (
+            {courseId && isLiveCourse && !form.watch("batchId") && (
               <p className="rounded-md border border-cyan-500/30 bg-cyan-500/10 p-3 text-sm text-muted-foreground">
                 ℹ️ Without a batch, this student will only access course recordings. To grant live
                 class access, select a batch for this course.
               </p>
             )}
 
-            {courseId && batches.length > 0 && (
+            {courseId && !isLiveCourse && (
+              <p className="rounded-md border border-cyan-500/30 bg-cyan-500/10 p-3 text-sm text-muted-foreground">
+                ℹ️ Record courses do not support batches. The student will have self-paced access to the course recorded curriculum.
+              </p>
+            )}
+
+            {courseId && isLiveCourse && batches.length > 0 && (
               <div className="space-y-2">
                 <Label>Batch</Label>
                 <Select

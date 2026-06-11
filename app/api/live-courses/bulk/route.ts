@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { courses } from "@/lib/db/schema";
+import { liveCourses } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { courseSchema } from "@/lib/validations";
@@ -32,15 +32,18 @@ export async function POST(request: Request) {
       }
 
       parsedCourses.push({
-        ...parsed.data,
+        title: parsed.data.title,
+        description: parsed.data.description,
         price: parsed.data.price.toString(),
+        demoUrl: parsed.data.demoUrl,
+        duration: parsed.data.duration,
         createdBy: session!.user.id,
       });
     }
 
     // Single batch insert query (atomic in PostgreSQL)
     const insertedCourses = await db
-      .insert(courses)
+      .insert(liveCourses)
       .values(parsedCourses)
       .returning();
 
@@ -50,14 +53,14 @@ export async function POST(request: Request) {
         await logAction({
           userId: session!.user.id,
           role: session!.user.role,
-          action: "CREATED_COURSE",
-          entity: "Course",
+          action: "CREATED_LIVE_COURSE",
+          entity: "LiveCourse",
           entityId: course.id,
           metadata: { title: course.title, importMode: "bulk" },
           ipAddress: getClientIp(request),
         });
       } catch (auditErr) {
-        console.error(`[POSTBulkCourses] Audit logging failed for course ${course.id}:`, auditErr);
+        console.error(`[POSTBulkLiveCourses] Audit logging failed for course ${course.id}:`, auditErr);
       }
     }
 
@@ -68,8 +71,8 @@ export async function POST(request: Request) {
     }, { status: 201 });
 
   } catch (err) {
-    console.error("[POSTBulkCourses] error:", err);
-    const msg = err instanceof Error ? err.message : "Failed to bulk create courses";
+    console.error("[POSTBulkLiveCourses] error:", err);
+    const msg = err instanceof Error ? err.message : "Failed to bulk create live courses";
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 }

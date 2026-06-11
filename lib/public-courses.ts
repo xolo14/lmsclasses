@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
-import { courses, studentCourses, liveClasses, classRecordings } from "@/lib/db/schema";
-import { and, eq, isNull, sql, desc, gte, count } from "drizzle-orm";
+import { recordCourses, studentCourses, courseRecordings } from "@/lib/db/schema";
+import { and, eq, isNull, sql, desc, count } from "drizzle-orm";
 
 export type PublicCourseListItem = {
   id: string;
@@ -8,6 +8,7 @@ export type PublicCourseListItem = {
   slug: string;
   description: string | null;
   price: string;
+  duration: string | null;
   thumbnailUrl: string | null;
   level: string | null;
   language: string | null;
@@ -25,24 +26,25 @@ function mapDemoUrl(course: { demoVideoUrl: string | null; demoUrl: string | nul
 export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
   const rows = await db
     .select({
-      id: courses.id,
-      title: courses.title,
-      slug: courses.slug,
-      description: courses.description,
-      price: courses.price,
-      thumbnailUrl: courses.thumbnailUrl,
-      level: courses.level,
-      language: courses.language,
-      totalHours: courses.totalHours,
-      totalLectures: courses.totalLectures,
-      certificate: courses.certificate,
-      isFeatured: courses.isFeatured,
-      demoVideoUrl: courses.demoVideoUrl,
-      demoUrl: courses.demoUrl,
+      id: recordCourses.id,
+      title: recordCourses.title,
+      slug: recordCourses.slug,
+      description: recordCourses.description,
+      price: recordCourses.price,
+      duration: recordCourses.duration,
+      thumbnailUrl: recordCourses.thumbnailUrl,
+      level: recordCourses.level,
+      language: recordCourses.language,
+      totalHours: recordCourses.totalHours,
+      totalLectures: recordCourses.totalLectures,
+      certificate: recordCourses.certificate,
+      isFeatured: recordCourses.isFeatured,
+      demoVideoUrl: recordCourses.demoVideoUrl,
+      demoUrl: recordCourses.demoUrl,
     })
-    .from(courses)
-    .where(and(eq(courses.isActive, true), isNull(courses.deletedAt), eq(courses.courseType, "record")))
-    .orderBy(desc(courses.createdAt));
+    .from(recordCourses)
+    .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)))
+    .orderBy(desc(recordCourses.createdAt));
 
   return rows
     .filter((c) => c.slug)
@@ -52,6 +54,7 @@ export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
       slug: c.slug!,
       description: c.description,
       price: c.price,
+      duration: c.duration,
       thumbnailUrl: c.thumbnailUrl,
       level: c.level,
       language: c.language,
@@ -66,56 +69,41 @@ export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
 export async function getPublicCourseBySlug(slug: string) {
   const [course] = await db
     .select({
-      id: courses.id,
-      title: courses.title,
-      slug: courses.slug,
-      description: courses.description,
-      price: courses.price,
-      thumbnailUrl: courses.thumbnailUrl,
-      level: courses.level,
-      language: courses.language,
-      totalHours: courses.totalHours,
-      totalLectures: courses.totalLectures,
-      certificate: courses.certificate,
-      isFeatured: courses.isFeatured,
-      demoVideoUrl: courses.demoVideoUrl,
-      demoUrl: courses.demoUrl,
-      syllabus: courses.syllabus,
-      whatYouLearn: courses.whatYouLearn,
-      requirements: courses.requirements,
-      updatedAt: courses.updatedAt,
+      id: recordCourses.id,
+      title: recordCourses.title,
+      slug: recordCourses.slug,
+      description: recordCourses.description,
+      price: recordCourses.price,
+      duration: recordCourses.duration,
+      thumbnailUrl: recordCourses.thumbnailUrl,
+      level: recordCourses.level,
+      language: recordCourses.language,
+      totalHours: recordCourses.totalHours,
+      totalLectures: recordCourses.totalLectures,
+      certificate: recordCourses.certificate,
+      isFeatured: recordCourses.isFeatured,
+      demoVideoUrl: recordCourses.demoVideoUrl,
+      demoUrl: recordCourses.demoUrl,
+      syllabus: recordCourses.syllabus,
+      whatYouLearn: recordCourses.whatYouLearn,
+      requirements: recordCourses.requirements,
+      updatedAt: recordCourses.updatedAt,
     })
-    .from(courses)
-    .where(and(eq(courses.slug, slug), eq(courses.isActive, true), isNull(courses.deletedAt), eq(courses.courseType, "record")))
+    .from(recordCourses)
+    .where(and(eq(recordCourses.slug, slug), eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)))
     .limit(1);
 
   if (!course) return null;
 
-  const [[enrollmentRow], upcomingClasses, [recordingRow]] = await Promise.all([
+  const [[enrollmentRow], [recordingRow]] = await Promise.all([
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(studentCourses)
-      .where(and(eq(studentCourses.courseId, course.id), eq(studentCourses.isActive, true))),
-    db
-      .select({
-        title: liveClasses.title,
-        scheduledAt: liveClasses.scheduledAt,
-        status: liveClasses.status,
-      })
-      .from(liveClasses)
-      .where(
-        and(
-          eq(liveClasses.courseId, course.id),
-          isNull(liveClasses.deletedAt),
-          gte(liveClasses.scheduledAt, new Date())
-        )
-      )
-      .orderBy(liveClasses.scheduledAt)
-      .limit(5),
+      .where(and(eq(studentCourses.recordCourseId, course.id), eq(studentCourses.isActive, true))),
     db
       .select({ count: count() })
-      .from(classRecordings)
-      .where(and(eq(classRecordings.courseId, course.id), isNull(classRecordings.deletedAt))),
+      .from(courseRecordings)
+      .where(eq(courseRecordings.recordCourseId, course.id)),
   ]);
 
   const syllabus = (course.syllabus as { week?: number; title?: string; topics?: string[] }[] | null) ?? [];
@@ -128,6 +116,7 @@ export async function getPublicCourseBySlug(slug: string) {
     slug: course.slug!,
     description: course.description,
     price: course.price,
+    duration: course.duration,
     thumbnailUrl: course.thumbnailUrl,
     level: course.level,
     language: course.language,
@@ -142,10 +131,6 @@ export async function getPublicCourseBySlug(slug: string) {
     updatedAt: course.updatedAt,
     enrolledCount: enrollmentRow?.count ?? 0,
     recordingsCount: recordingRow?.count ?? 0,
-    liveClasses: upcomingClasses.map((lc) => ({
-      title: lc.title,
-      scheduledAt: lc.scheduledAt,
-      status: lc.status,
-    })),
+    liveClasses: [] as { id: string; title: string; scheduledAt: string | Date | null; status: string }[], // Record courses do not have live classes
   };
 }

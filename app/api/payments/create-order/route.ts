@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq, and, sql, isNull, gte } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { courses, payments, coupons } from "@/lib/db/schema";
+import { liveCourses, recordCourses, payments, coupons } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { buySlotsSchema } from "@/lib/validations";
 import { getClientIp } from "@/lib/audit";
@@ -27,8 +27,8 @@ export async function POST(request: Request) {
 
       const [course] = await db
         .select()
-        .from(courses)
-        .where(and(eq(courses.id, courseId), eq(courses.isActive, true), isNull(courses.deletedAt)))
+        .from(recordCourses)
+        .where(and(eq(recordCourses.id, courseId), eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)))
         .limit(1);
       if (!course) {
         return NextResponse.json({ error: "Course not found" }, { status: 404 });
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     const couponCode = (body.couponCode as string | undefined)?.trim();
     const organisationId = session!.user.organisationId!;
 
-    const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
+    const [course] = await db.select().from(liveCourses).where(eq(liveCourses.id, courseId)).limit(1);
     if (!course) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
@@ -140,7 +140,7 @@ export async function POST(request: Request) {
       .where(
         and(
           eq(payments.organisationId, organisationId),
-          eq(payments.courseId, courseId),
+          eq(payments.liveCourseId, courseId),
           eq(payments.status, "pending"),
           eq(payments.amount, finalAmount.toString()),
           gte(payments.createdAt, sixtySecondsAgo),
@@ -155,7 +155,8 @@ export async function POST(request: Request) {
         .insert(payments)
         .values({
           organisationId,
-          courseId,
+          liveCourseId: courseId,
+          recordCourseId: null,
           adminId: session!.user.id,
           amount: finalAmount.toString(),
           slotsCount,

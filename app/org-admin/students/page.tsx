@@ -49,8 +49,8 @@ export default function OrgAdminStudentsPage() {
   const [editStudent, setEditStudent] = useState<Student | undefined>();
 
   const { data: courses = [] } = useQuery<Course[]>({
-    queryKey: ["courses"],
-    queryFn: () => fetch("/api/courses").then((r) => r.json()),
+    queryKey: ["live-courses"],
+    queryFn: () => fetch("/api/live-courses").then((r) => r.json()),
   });
 
   const { data: students = [] } = useQuery<Student[]>({

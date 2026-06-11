@@ -124,7 +124,7 @@ export const studentSchema = z
     confirmPassword: z.preprocess(emptyToUndefined, z.string().optional()),
     collegeName: z.preprocess(emptyToUndefined, z.string().optional()),
     courseId: z.string().uuid("Select a course"),
-    batchId: z.string().uuid("Batch is required"),
+    batchId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",

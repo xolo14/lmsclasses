@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { courses, payments, studentCourses, users } from "@/lib/db/schema";
+import { recordCourses, payments, studentCourses, users } from "@/lib/db/schema";
 import { PublicEnrollmentSchema } from "@/lib/validations/public-enrollment";
 import { verifySignature } from "@/lib/razorpay";
 import { logAction, getClientIp } from "@/lib/audit";
@@ -84,9 +84,9 @@ export async function POST(request: Request) {
 
     const [course] = await db
       .select()
-      .from(courses)
+      .from(recordCourses)
       .where(
-        and(eq(courses.id, enrolledCourseId), eq(courses.isActive, true), isNull(courses.deletedAt))
+        and(eq(recordCourses.id, enrolledCourseId), eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt))
       )
       .limit(1);
     if (!course) {
@@ -127,7 +127,8 @@ export async function POST(request: Request) {
 
         await tx.insert(studentCourses).values({
           studentId: newStudent.id,
-          courseId: enrolledCourseId,
+          liveCourseId: null,
+          recordCourseId: enrolledCourseId,
           batchId: null,
           organisationId: null,
           enrollmentSource: "public",
@@ -135,7 +136,8 @@ export async function POST(request: Request) {
 
         await tx.insert(payments).values({
           organisationId: null,
-          courseId: enrolledCourseId,
+          liveCourseId: null,
+          recordCourseId: enrolledCourseId,
           adminId: null,
           amount,
           slotsCount: 1,
@@ -152,7 +154,8 @@ export async function POST(request: Request) {
       try {
         await db.insert(payments).values({
           organisationId: null,
-          courseId: enrolledCourseId,
+          liveCourseId: null,
+          recordCourseId: enrolledCourseId,
           adminId: null,
           amount,
           slotsCount: 1,

@@ -19,10 +19,11 @@ import { Label } from "@/components/ui/label";
 interface AddCourseModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  course?: { id: string; title: string; description?: string | null; price: string; demoUrl?: string | null; courseType?: string };
+  type: "live" | "record";
+  course?: { id: string; title: string; description?: string | null; price: string; demoUrl?: string | null; duration?: string | null };
 }
 
-export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalProps) {
+export function AddCourseModal({ open, onOpenChange, type, course }: AddCourseModalProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
 
@@ -34,16 +35,18 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
             description: course.description ?? "",
             price: Number(course.price),
             demoUrl: course.demoUrl ?? "",
-            courseType: (course.courseType as any) ?? "live",
+            duration: course.duration ?? "",
+            courseType: type,
           }
         : {
             title: "",
             description: "",
             price: 0,
             demoUrl: "",
-            courseType: "live",
+            duration: "",
+            courseType: type,
           },
-    [course]
+    [course, type]
   );
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CourseInput>({
@@ -60,7 +63,7 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
 
   const mutation = useMutation({
     mutationFn: async (data: CourseInput) => {
-      const url = course ? `/api/courses/${course.id}` : "/api/courses";
+      const url = course ? `/api/${type}-courses/${course.id}` : `/api/${type}-courses`;
       const res = await fetch(url, {
         method: course ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -70,8 +73,10 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
       return res.json();
     },
     onSuccess: () => {
+      const targetKey = type === "live" ? "live-courses" : "record-courses";
+      queryClient.invalidateQueries({ queryKey: [targetKey] });
       queryClient.invalidateQueries({ queryKey: ["courses"] });
-      if (!course) reset({ title: "", description: "", price: 0, demoUrl: "", courseType: "live" });
+      if (!course) reset({ title: "", description: "", price: 0, demoUrl: "", duration: "", courseType: type });
       onOpenChange(false);
     },
     onError: () => setError("Failed to save course"),
@@ -81,7 +86,7 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{course ? "Edit Course" : "Add Course"}</DialogTitle>
+          <DialogTitle>{course ? "Edit Course" : `Add ${type === "live" ? "Live" : "Record"} Course`}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
           <div className="space-y-2">
@@ -99,20 +104,14 @@ export function AddCourseModal({ open, onOpenChange, course }: AddCourseModalPro
             {errors.price && <p className="text-sm text-destructive">{errors.price.message}</p>}
           </div>
           <div className="space-y-2">
-            <Label>Demo URL</Label>
-            <Input {...register("demoUrl")} placeholder="https://..." />
+            <Label>Duration (e.g. 12 weeks, 40 hours)</Label>
+            <Input {...register("duration")} placeholder="12 weeks" />
+            {errors.duration && <p className="text-sm text-destructive">{errors.duration.message}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="courseType">Course Type</Label>
-            <select
-              id="courseType"
-              {...register("courseType")}
-              className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-            >
-              <option value="live">Live Course (Live Classes & Live Recordings)</option>
-              <option value="record">Record Course (Curriculum Recordings)</option>
-            </select>
-            {errors.courseType && <p className="text-sm text-destructive">{errors.courseType.message}</p>}
+            <Label>Demo URL</Label>
+            <Input {...register("demoUrl")} placeholder="https://..." />
+            {errors.demoUrl && <p className="text-sm text-destructive">{errors.demoUrl.message}</p>}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>

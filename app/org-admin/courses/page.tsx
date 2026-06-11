@@ -27,8 +27,8 @@ export default function OrgAdminCoursesPage() {
   const [demoModalOpen, setDemoModalOpen] = useState(false);
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
-    queryKey: ["courses"],
-    queryFn: () => fetch("/api/courses").then((r) => r.json()),
+    queryKey: ["live-courses"],
+    queryFn: () => fetch("/api/live-courses").then((r) => r.json()),
   });
 
   const handleWatchDemo = (url: string, title: string) => {

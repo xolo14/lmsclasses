@@ -4,7 +4,7 @@
  */
 import { validateDatabaseUrl } from "../lib/load-env";
 import { db } from "@/lib/db";
-import { users, organisations, courses, batches, slots, studentCourses } from "@/lib/db/schema";
+import { users, organisations, liveCourses, batches, slots, studentCourses } from "@/lib/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { studentSchema } from "@/lib/validations";
@@ -14,7 +14,7 @@ async function main() {
   validateDatabaseUrl();
 
   const orgs = await db.select().from(organisations).where(isNull(organisations.deletedAt)).limit(3);
-  const courseList = await db.select().from(courses).where(isNull(courses.deletedAt)).limit(3);
+  const courseList = await db.select().from(liveCourses).where(isNull(liveCourses.deletedAt)).limit(3);
   console.log("Orgs:", orgs.map((o) => ({ id: o.id, name: o.name })));
   console.log("Courses:", courseList.map((c) => ({ id: c.id, title: c.title })));
 
@@ -74,7 +74,8 @@ async function main() {
 
     await db.insert(studentCourses).values({
       studentId: student.id,
-      courseId,
+      liveCourseId: courseId,
+      recordCourseId: null,
       batchId: body.batchId || null,
       organisationId: orgId,
     });

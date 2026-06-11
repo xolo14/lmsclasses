@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { coupons, courses } from "@/lib/db/schema";
+import { coupons, liveCourses } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
+    const [course] = await db.select().from(liveCourses).where(eq(liveCourses.id, courseId)).limit(1);
     if (!course) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }

@@ -1,22 +1,27 @@
 import { db } from "@/lib/db";
-import { courses } from "@/lib/db/schema";
+import { liveCourses, recordCourses } from "@/lib/db/schema";
 import { eq, isNull, and } from "drizzle-orm";
 import { toSlug } from "@/lib/slug";
 
 async function main() {
-  const all = await db
-    .select({ id: courses.id, title: courses.title, slug: courses.slug })
-    .from(courses)
-    .where(isNull(courses.deletedAt));
+  const allLive = await db
+    .select({ id: liveCourses.id, title: liveCourses.title, slug: liveCourses.slug })
+    .from(liveCourses)
+    .where(isNull(liveCourses.deletedAt));
 
-  const used = new Set(
-    all.map((c) => c.slug).filter((s): s is string => !!s)
-  );
+  const allRecord = await db
+    .select({ id: recordCourses.id, title: recordCourses.title, slug: recordCourses.slug })
+    .from(recordCourses)
+    .where(isNull(recordCourses.deletedAt));
+
+  const used = new Set([
+    ...allLive.map((c) => c.slug).filter((s): s is string => !!s),
+    ...allRecord.map((c) => c.slug).filter((s): s is string => !!s),
+  ]);
 
   let updated = 0;
-  for (const c of all) {
+  for (const c of allLive) {
     if (c.slug) continue;
-
     let base = toSlug(c.title) || "course";
     let candidate = base;
     let suffix = 2;
@@ -25,19 +30,25 @@ async function main() {
       suffix += 1;
     }
     used.add(candidate);
-
-    await db.update(courses).set({ slug: candidate }).where(eq(courses.id, c.id));
+    await db.update(liveCourses).set({ slug: candidate }).where(eq(liveCourses.id, c.id));
     updated += 1;
   }
 
-  console.log(`✅ Slugs generated for ${updated} courses (${all.length} total)`);
+  for (const c of allRecord) {
+    if (c.slug) continue;
+    let base = toSlug(c.title) || "course";
+    let candidate = base;
+    let suffix = 2;
+    while (used.has(candidate)) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    used.add(candidate);
+    await db.update(recordCourses).set({ slug: candidate }).where(eq(recordCourses.id, c.id));
+    updated += 1;
+  }
 
-  const { sql } = await import("drizzle-orm");
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS courses_slug_unique ON courses (slug)
-    WHERE slug IS NOT NULL
-  `);
-  console.log("✅ Unique index on courses.slug ensured");
+  console.log(`✅ Slugs generated for ${updated} courses`);
 }
 
 main().catch((err) => {

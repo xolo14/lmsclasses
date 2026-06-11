@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import {
   organisations,
   users,
-  courses,
+  liveCourses,
+  recordCourses,
   batches,
   liveClasses,
   classRecordings,
@@ -18,7 +19,8 @@ import { purgeExpiredTrash, clearAllTrashImmediate, TRASH_RETENTION_DAYS, type T
 
 const TRASH_TABLES = {
   organisation: { table: organisations, id: organisations.id, label: organisations.name },
-  course: { table: courses, id: courses.id, label: courses.title },
+  live_course: { table: liveCourses, id: liveCourses.id, label: liveCourses.title },
+  record_course: { table: recordCourses, id: recordCourses.id, label: recordCourses.title },
   batch: { table: batches, id: batches.id, label: batches.name },
   live_class: { table: liveClasses, id: liveClasses.id, label: liveClasses.title },
   class_recording: { table: classRecordings, id: classRecordings.id, label: classRecordings.topicName },
@@ -31,7 +33,7 @@ export async function GETTrash() {
 
   await purgeExpiredTrash();
 
-  const [orgs, courseRows, batchRows, liveRows, recordingRows, students, managers, mentors, couponRows] =
+  const [orgs, liveCourseRows, recordCourseRows, batchRows, liveRows, recordingRows, students, managers, mentors, couponRows] =
     await Promise.all([
       db
         .select({ id: organisations.id, name: organisations.name, deletedAt: organisations.deletedAt })
@@ -39,10 +41,15 @@ export async function GETTrash() {
         .where(isNotNull(organisations.deletedAt))
         .orderBy(desc(organisations.deletedAt)),
       db
-        .select({ id: courses.id, name: courses.title, deletedAt: courses.deletedAt })
-        .from(courses)
-        .where(isNotNull(courses.deletedAt))
-        .orderBy(desc(courses.deletedAt)),
+        .select({ id: liveCourses.id, name: liveCourses.title, deletedAt: liveCourses.deletedAt })
+        .from(liveCourses)
+        .where(isNotNull(liveCourses.deletedAt))
+        .orderBy(desc(liveCourses.deletedAt)),
+      db
+        .select({ id: recordCourses.id, name: recordCourses.title, deletedAt: recordCourses.deletedAt })
+        .from(recordCourses)
+        .where(isNotNull(recordCourses.deletedAt))
+        .orderBy(desc(recordCourses.deletedAt)),
       db
         .select({ id: batches.id, name: batches.name, deletedAt: batches.deletedAt })
         .from(batches)
@@ -98,7 +105,8 @@ export async function GETTrash() {
     retentionDays: TRASH_RETENTION_DAYS,
     items: [
       ...orgs.map((o) => mapItem("organisation", o)),
-      ...courseRows.map((c) => mapItem("course", c)),
+      ...liveCourseRows.map((c) => mapItem("live_course", c)),
+      ...recordCourseRows.map((c) => mapItem("record_course", c)),
       ...batchRows.map((b) => mapItem("batch", b)),
       ...liveRows.map((l) => mapItem("live_class", l)),
       ...recordingRows.map((r) => mapItem("class_recording", r)),
@@ -125,8 +133,11 @@ export async function POSTTrashRestore(request: Request) {
     const key = entityType as keyof typeof TRASH_TABLES;
     const { table, id: idCol } = TRASH_TABLES[key];
     await db.update(table).set({ deletedAt: null }).where(eq(idCol, id));
-    if (entityType === "course") {
-      await db.update(courses).set({ isActive: true }).where(eq(courses.id, id));
+    if (entityType === "live_course") {
+      await db.update(liveCourses).set({ isActive: true }).where(eq(liveCourses.id, id));
+    }
+    if (entityType === "record_course") {
+      await db.update(recordCourses).set({ isActive: true }).where(eq(recordCourses.id, id));
     }
     if (entityType === "organisation") {
       await db.update(organisations).set({ isActive: true }).where(eq(organisations.id, id));
@@ -187,23 +198,23 @@ export async function GETOngoingCourses() {
 
   const ongoing = await db
     .select({
-      id: courses.id,
-      title: courses.title,
-      description: courses.description,
+      id: liveCourses.id,
+      title: liveCourses.title,
+      description: liveCourses.description,
       batchCount: sql<number>`count(distinct ${batches.id})::int`,
     })
-    .from(courses)
+    .from(liveCourses)
     .innerJoin(
       batches,
       and(
-        eq(batches.courseId, courses.id),
+        eq(batches.courseId, liveCourses.id),
         isNull(batches.deletedAt),
         or(isNull(batches.endDate), gte(batches.endDate, now))
       )
     )
-    .where(and(eq(courses.isActive, true), isNull(courses.deletedAt)))
-    .groupBy(courses.id, courses.title, courses.description)
-    .orderBy(courses.title);
+    .where(and(eq(liveCourses.isActive, true), isNull(liveCourses.deletedAt)))
+    .groupBy(liveCourses.id, liveCourses.title, liveCourses.description)
+    .orderBy(liveCourses.title);
 
   return NextResponse.json(ongoing);
 }
@@ -349,12 +360,16 @@ export async function GETStudentRecordings(studentId: string) {
 
   const enrollments = await db
     .select({
-      courseId: studentCourses.courseId,
+      liveCourseId: studentCourses.liveCourseId,
       batchId: studentCourses.batchId,
     })
     .from(studentCourses)
     .where(
-      and(eq(studentCourses.studentId, studentId), eq(studentCourses.isActive, true))
+      and(
+        eq(studentCourses.studentId, studentId),
+        eq(studentCourses.isActive, true),
+        isNotNull(studentCourses.liveCourseId)
+      )
     );
 
   if (enrollments.length === 0) {
@@ -364,12 +379,12 @@ export async function GETStudentRecordings(studentId: string) {
   const accessConditions = enrollments.map((enrollment) => {
     if (enrollment.batchId) {
       return and(
-        eq(classRecordings.courseId, enrollment.courseId),
+        eq(classRecordings.courseId, enrollment.liveCourseId!),
         eq(classRecordings.batchId, enrollment.batchId)
       );
     }
     // Enrolled in course but batch not set — show all recordings for that course
-    return eq(classRecordings.courseId, enrollment.courseId);
+    return eq(classRecordings.courseId, enrollment.liveCourseId!);
   });
 
   const recordings = await db
@@ -378,12 +393,12 @@ export async function GETStudentRecordings(studentId: string) {
       weekName: classRecordings.weekName,
       topicName: classRecordings.topicName,
       videoUrl: classRecordings.videoUrl,
-      courseTitle: courses.title,
+      courseTitle: liveCourses.title,
       batchName: batches.name,
       createdAt: classRecordings.createdAt,
     })
     .from(classRecordings)
-    .innerJoin(courses, eq(classRecordings.courseId, courses.id))
+    .innerJoin(liveCourses, eq(classRecordings.courseId, liveCourses.id))
     .innerJoin(batches, eq(classRecordings.batchId, batches.id))
     .where(and(isNull(classRecordings.deletedAt), or(...accessConditions)))
     .orderBy(desc(classRecordings.createdAt));

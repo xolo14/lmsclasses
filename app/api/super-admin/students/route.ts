@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { customAlphabet } from "nanoid";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { batches, courses, studentCourses, users } from "@/lib/db/schema";
+import { batches, liveCourses, recordCourses, studentCourses, users } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { DirectStudentSchema } from "@/lib/validations/super-admin-student";
 import { logAction, getClientIp } from "@/lib/audit";
@@ -55,18 +55,29 @@ export async function POST(request: Request) {
     }
 
     let courseTitle: string | undefined;
+    let isLive = false;
     if (courseId) {
-      const [course] = await db
-        .select({ title: courses.title })
-        .from(courses)
-        .where(and(eq(courses.id, courseId), eq(courses.isActive, true), isNull(courses.deletedAt)))
+      const [liveCourse] = await db
+        .select({ title: liveCourses.title })
+        .from(liveCourses)
+        .where(and(eq(liveCourses.id, courseId), eq(liveCourses.isActive, true), isNull(liveCourses.deletedAt)))
         .limit(1);
+      const [recordCourse] = await db
+        .select({ title: recordCourses.title })
+        .from(recordCourses)
+        .where(and(eq(recordCourses.id, courseId), eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)))
+        .limit(1);
+      const course = liveCourse || recordCourse;
       if (!course) {
         return NextResponse.json({ error: "Course not found or inactive" }, { status: 404 });
       }
       courseTitle = course.title;
+      isLive = !!liveCourse;
 
       if (batchId) {
+        if (!isLive) {
+          return NextResponse.json({ error: "Record courses do not support batch assignments" }, { status: 400 });
+        }
         const [batch] = await db
           .select({ id: batches.id })
           .from(batches)
@@ -100,8 +111,9 @@ export async function POST(request: Request) {
     if (courseId) {
       await db.insert(studentCourses).values({
         studentId: student.id,
-        courseId,
-        batchId: batchId ?? null,
+        liveCourseId: isLive ? courseId : null,
+        recordCourseId: isLive ? null : courseId,
+        batchId: isLive ? (batchId ?? null) : null,
         organisationId: null,
         enrollmentSource: "super_admin",
       });

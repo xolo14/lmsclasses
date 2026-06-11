@@ -18,13 +18,13 @@ type Course = {
   title: string;
   description: string;
   price: string;
+  duration?: string | null;
   demoUrl?: string | null;
   isActive: boolean;
   enrolledCount: number;
-  courseType?: string;
 };
 
-export default function CoursesPage() {
+export default function RecordCoursesPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -36,26 +36,26 @@ export default function CoursesPage() {
   const [demoModalOpen, setDemoModalOpen] = useState(false);
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
-    queryKey: ["courses"],
-    queryFn: () => fetch("/api/courses").then((r) => r.json()),
+    queryKey: ["record-courses"],
+    queryFn: () => fetch("/api/record-courses").then((r) => r.json()),
   });
 
   const deleteCourse = useMutation({
-    mutationFn: (id: string) => fetch(`/api/courses/${id}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["courses"] }),
+    mutationFn: (id: string) => fetch(`/api/record-courses/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["record-courses"] }),
   });
 
   if (isLoading) return <div className="text-muted-foreground">Loading...</div>;
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Courses">
+      <PageHeader title="Record Courses">
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Button variant="outline" onClick={() => setImportModalOpen(true)} className="w-full sm:w-auto">
             <FileSpreadsheet className="h-4 w-4 mr-2" /> Bulk Import
           </Button>
           <Button onClick={() => { setEditCourse(undefined); setModalOpen(true); }} className="w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" /> Add Course
+            <Plus className="h-4 w-4 mr-2" /> Add Record Course
           </Button>
         </div>
       </PageHeader>
@@ -69,7 +69,7 @@ export default function CoursesPage() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Course Module</p>
-                  <p className="text-sm font-semibold text-foreground">Interactive Learning</p>
+                  <p className="text-sm font-semibold text-foreground">Self-Paced Curriculum</p>
                 </div>
               </div>
               {course.demoUrl && (
@@ -85,9 +85,11 @@ export default function CoursesPage() {
                   <Badge variant={course.isActive ? "success" : "destructive"}>
                     {course.isActive ? "Active" : "Inactive"}
                   </Badge>
-                  <Badge variant="secondary" className={course.courseType === "record" ? "bg-amber-950/40 text-amber-400 border border-amber-500/20 text-[10px]" : "bg-indigo-950/40 text-indigo-400 border border-indigo-500/20 text-[10px]"}>
-                    {course.courseType === "record" ? "Record" : "Live"}
-                  </Badge>
+                  {course.duration && (
+                    <Badge variant="outline" className="text-[10px]">
+                      {course.duration}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -100,7 +102,7 @@ export default function CoursesPage() {
               <div className="flex items-center justify-between gap-2 mt-4">
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" asChild>
-                    <Link href={`/super-admin/courses/${course.id}/recordings`}>
+                    <Link href={`/super-admin/record-courses/${course.id}/recordings`}>
                       <Film className="h-3 w-3 mr-1" /> Manage Recordings
                     </Link>
                   </Button>
@@ -136,38 +138,40 @@ export default function CoursesPage() {
           setModalOpen(open);
           if (!open) setEditCourse(undefined);
         }}
+        type="record"
         course={editCourse}
       />
       <BulkImportModal
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
-        title="Bulk Import Courses"
-        description="Upload an Excel or CSV file containing course details. The table below shows a preview of parsed records."
-        templateHeaders={["Title", "Description", "Price", "Demo URL"]}
+        title="Bulk Import Record Courses"
+        description="Upload an Excel or CSV file containing record course details. The table below shows a preview of parsed records."
+        templateHeaders={["Title", "Description", "Price", "Duration", "Demo URL"]}
         templateSampleRows={[
-          ["Python for Beginners", "Learn programming basics from scratch.", "1999", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
-          ["Web Design Principles", "Visual composition, typography, grids, and layouts.", "2999", ""]
+          ["Python for Beginners Self-Paced", "Learn programming basics from scratch at your own pace.", "999", "12 weeks", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
+          ["Web Design Self-Paced", "Visual composition, grids, layouts, and self-paced study.", "1499", "8 weeks", ""]
         ]}
         headerMapping={{
           title: "Title",
           description: "Description",
           price: "Price",
+          duration: "Duration",
           demoUrl: "Demo URL"
         }}
         onImport={async (data) => {
-          const res = await fetch("/api/courses/bulk", {
+          const res = await fetch("/api/record-courses/bulk", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data),
           });
           const json = await res.json();
           if (!res.ok) {
-            return { successCount: 0, error: json.error || "Failed to bulk import courses." };
+            return { successCount: 0, error: json.error || "Failed to bulk import record courses." };
           }
           return { successCount: json.successCount };
         }}
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["courses"] });
+          queryClient.invalidateQueries({ queryKey: ["record-courses"] });
         }}
       />
       {demoVideoUrl && (

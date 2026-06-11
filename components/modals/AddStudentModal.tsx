@@ -80,7 +80,7 @@ export function AddStudentModal({
   const { data: courses = [] } = useQuery<{ id: string; title: string }[]>({
     queryKey: ["courses"],
     queryFn: async () => {
-      const res = await fetch("/api/courses");
+      const res = await fetch("/api/live-courses");
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     },

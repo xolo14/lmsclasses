@@ -1,11 +1,11 @@
-import { PATCHCourse, DELETECourse } from "@/lib/api-handlers";
+import { PATCHLiveCourse, DELETELiveCourse } from "@/lib/api-handlers";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  return PATCHCourse(request, id);
+  return PATCHLiveCourse(request, id);
 }
 
 export async function DELETE(
@@ -13,5 +13,5 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  return DELETECourse(request, id);
+  return DELETELiveCourse(request, id);
 }

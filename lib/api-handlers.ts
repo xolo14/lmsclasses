@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { eq, desc, sql, and, gte, lte, isNull, inArray, isNotNull, gt } from "drizzle-orm";
+import { eq, desc, sql, and, or, gte, lte, isNull, inArray, isNotNull, gt } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import {
   organisations,
   users,
-  courses,
+  liveCourses,
+  recordCourses,
   batches,
   payments,
   slots,
@@ -269,28 +270,28 @@ export async function DELETEOrganisation(request: Request, id: string) {
 }
 
 // ============ COURSES ============
-export async function GETCourses() {
+export async function GETLiveCourses() {
   const { error } = await requireAuth();
   if (error) return error;
 
   const [allCourses, enrollmentCounts] = await Promise.all([
     db
       .select()
-      .from(courses)
-      .where(isNull(courses.deletedAt))
-      .orderBy(desc(courses.createdAt)),
+      .from(liveCourses)
+      .where(isNull(liveCourses.deletedAt))
+      .orderBy(desc(liveCourses.createdAt)),
     db
       .select({
-        courseId: studentCourses.courseId,
+        liveCourseId: studentCourses.liveCourseId,
         count: sql<number>`count(*)::int`,
       })
       .from(studentCourses)
-      .where(eq(studentCourses.isActive, true))
-      .groupBy(studentCourses.courseId),
+      .where(and(eq(studentCourses.isActive, true), isNotNull(studentCourses.liveCourseId)))
+      .groupBy(studentCourses.liveCourseId),
   ]);
 
   const countByCourse = new Map(
-    enrollmentCounts.map((row) => [row.courseId, row.count])
+    enrollmentCounts.map((row) => [row.liveCourseId!, row.count])
   );
 
   const enriched = allCourses.map((course) => ({
@@ -301,7 +302,39 @@ export async function GETCourses() {
   return NextResponse.json(enriched);
 }
 
-export async function POSTCourse(request: Request) {
+export async function GETRecordCourses() {
+  const { error } = await requireAuth();
+  if (error) return error;
+
+  const [allCourses, enrollmentCounts] = await Promise.all([
+    db
+      .select()
+      .from(recordCourses)
+      .where(isNull(recordCourses.deletedAt))
+      .orderBy(desc(recordCourses.createdAt)),
+    db
+      .select({
+        recordCourseId: studentCourses.recordCourseId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(studentCourses)
+      .where(and(eq(studentCourses.isActive, true), isNotNull(studentCourses.recordCourseId)))
+      .groupBy(studentCourses.recordCourseId),
+  ]);
+
+  const countByCourse = new Map(
+    enrollmentCounts.map((row) => [row.recordCourseId!, row.count])
+  );
+
+  const enriched = allCourses.map((course) => ({
+    ...course,
+    enrolledCount: countByCourse.get(course.id) ?? 0,
+  }));
+
+  return NextResponse.json(enriched);
+}
+
+export async function POSTLiveCourse(request: Request) {
   const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
@@ -311,15 +344,18 @@ export async function POSTCourse(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { ensureUniqueCourseSlug } = await import("@/lib/slug");
-  const slug = await ensureUniqueCourseSlug(parsed.data.title);
+  const { ensureUniqueLiveCourseSlug } = await import("@/lib/slug");
+  const slug = await ensureUniqueLiveCourseSlug(parsed.data.title);
 
   const [course] = await db
-    .insert(courses)
+    .insert(liveCourses)
     .values({
-      ...parsed.data,
-      slug,
+      title: parsed.data.title,
+      description: parsed.data.description,
       price: parsed.data.price.toString(),
+      demoUrl: parsed.data.demoUrl,
+      duration: parsed.data.duration,
+      slug,
       createdBy: session!.user.id,
     })
     .returning();
@@ -327,8 +363,8 @@ export async function POSTCourse(request: Request) {
   await logAction({
     userId: session!.user.id,
     role: session!.user.role,
-    action: "CREATED_COURSE",
-    entity: "Course",
+    action: "CREATED_LIVE_COURSE",
+    entity: "LiveCourse",
     entityId: course.id,
     metadata: { title: course.title },
     ipAddress: getClientIp(request),
@@ -337,7 +373,46 @@ export async function POSTCourse(request: Request) {
   return NextResponse.json(course, { status: 201 });
 }
 
-export async function PATCHCourse(request: Request, id: string) {
+export async function POSTRecordCourse(request: Request) {
+  const { error, session } = await requireAuth(["super_admin", "manager"]);
+  if (error) return error;
+
+  const body = await request.json();
+  const parsed = courseSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const { ensureUniqueRecordCourseSlug } = await import("@/lib/slug");
+  const slug = await ensureUniqueRecordCourseSlug(parsed.data.title);
+
+  const [course] = await db
+    .insert(recordCourses)
+    .values({
+      title: parsed.data.title,
+      description: parsed.data.description,
+      price: parsed.data.price.toString(),
+      demoUrl: parsed.data.demoUrl,
+      duration: parsed.data.duration,
+      slug,
+      createdBy: session!.user.id,
+    })
+    .returning();
+
+  await logAction({
+    userId: session!.user.id,
+    role: session!.user.role,
+    action: "CREATED_RECORD_COURSE",
+    entity: "RecordCourse",
+    entityId: course.id,
+    metadata: { title: course.title },
+    ipAddress: getClientIp(request),
+  });
+
+  return NextResponse.json(course, { status: 201 });
+}
+
+export async function PATCHLiveCourse(request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
@@ -347,7 +422,7 @@ export async function PATCHCourse(request: Request, id: string) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { price, ...rest } = parsed.data;
+  const { price, courseType, ...rest } = parsed.data;
   const updateData = {
     ...rest,
     ...(price !== undefined && { price: price.toString() }),
@@ -355,16 +430,16 @@ export async function PATCHCourse(request: Request, id: string) {
   };
 
   const [course] = await db
-    .update(courses)
+    .update(liveCourses)
     .set(updateData)
-    .where(eq(courses.id, id))
+    .where(eq(liveCourses.id, id))
     .returning();
 
   await logAction({
     userId: session!.user.id,
     role: session!.user.role,
-    action: "UPDATED_COURSE",
-    entity: "Course",
+    action: "UPDATED_LIVE_COURSE",
+    entity: "LiveCourse",
     entityId: id,
     ipAddress: getClientIp(request),
   });
@@ -372,20 +447,76 @@ export async function PATCHCourse(request: Request, id: string) {
   return NextResponse.json(course);
 }
 
-export async function DELETECourse(request: Request, id: string) {
+export async function PATCHRecordCourse(request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
-  await db
-    .update(courses)
-    .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
-    .where(eq(courses.id, id));
+  const body = await request.json();
+  const parsed = courseSchema.partial().safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const { price, courseType, ...rest } = parsed.data;
+  const updateData = {
+    ...rest,
+    ...(price !== undefined && { price: price.toString() }),
+    updatedAt: new Date(),
+  };
+
+  const [course] = await db
+    .update(recordCourses)
+    .set(updateData)
+    .where(eq(recordCourses.id, id))
+    .returning();
 
   await logAction({
     userId: session!.user.id,
     role: session!.user.role,
-    action: "DELETED_COURSE",
-    entity: "Course",
+    action: "UPDATED_RECORD_COURSE",
+    entity: "RecordCourse",
+    entityId: id,
+    ipAddress: getClientIp(request),
+  });
+
+  return NextResponse.json(course);
+}
+
+export async function DELETELiveCourse(request: Request, id: string) {
+  const { error, session } = await requireAuth(["super_admin", "manager"]);
+  if (error) return error;
+
+  await db
+    .update(liveCourses)
+    .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
+    .where(eq(liveCourses.id, id));
+
+  await logAction({
+    userId: session!.user.id,
+    role: session!.user.role,
+    action: "DELETED_LIVE_COURSE",
+    entity: "LiveCourse",
+    entityId: id,
+    ipAddress: getClientIp(request),
+  });
+
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETERecordCourse(request: Request, id: string) {
+  const { error, session } = await requireAuth(["super_admin", "manager"]);
+  if (error) return error;
+
+  await db
+    .update(recordCourses)
+    .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
+    .where(eq(recordCourses.id, id));
+
+  await logAction({
+    userId: session!.user.id,
+    role: session!.user.role,
+    action: "DELETED_RECORD_COURSE",
+    entity: "RecordCourse",
     entityId: id,
     ipAddress: getClientIp(request),
   });
@@ -414,7 +545,7 @@ export async function GETStudents(request: Request) {
     conditions.push(eq(users.organisationId, orgId));
   }
   if (courseId) {
-    conditions.push(eq(studentCourses.courseId, courseId));
+    conditions.push(or(eq(studentCourses.liveCourseId, courseId), eq(studentCourses.recordCourseId, courseId))!);
     conditions.push(eq(studentCourses.isActive, true));
   }
   if (batchId) conditions.push(eq(studentCourses.batchId, batchId));
@@ -463,8 +594,8 @@ export async function GETStudents(request: Request) {
       enrollmentSource: studentCourses.enrollmentSource,
       source: studentCourses.enrollmentSource,
       enrollmentId: studentCourses.id,
-      courseId: studentCourses.courseId,
-      courseTitle: courses.title,
+      courseId: sql<string | null>`coalesce(${studentCourses.liveCourseId}, ${studentCourses.recordCourseId})`,
+      courseTitle: sql<string | null>`coalesce(${liveCourses.title}, ${recordCourses.title})`,
       batchId: studentCourses.batchId,
       batchName: batches.name,
     })
@@ -474,7 +605,8 @@ export async function GETStudents(request: Request) {
       and(eq(studentCourses.studentId, users.id), eq(studentCourses.isActive, true))
     )
     .leftJoin(organisations, eq(users.organisationId, organisations.id))
-    .leftJoin(courses, eq(studentCourses.courseId, courses.id))
+    .leftJoin(liveCourses, eq(studentCourses.liveCourseId, liveCourses.id))
+    .leftJoin(recordCourses, eq(studentCourses.recordCourseId, recordCourses.id))
     .leftJoin(batches, eq(studentCourses.batchId, batches.id))
     .where(inArray(users.id, pageStudentIds))
     .orderBy(users.id);
@@ -502,7 +634,7 @@ export async function GETStudents(request: Request) {
 
     const finalData = Array.from(byStudent.values()).map((r) => {
       const source =
-        r.enrollmentSources.has("public")
+         r.enrollmentSources.has("public")
           ? "public"
           : r.enrollmentSources.has("super_admin") || !r.organisationId
             ? "super_admin"
@@ -561,8 +693,17 @@ export async function POSTStudent(request: Request) {
 
     const isOrgAdmin = session!.user.role === "org_admin";
 
-    // BUG FIX: Org Admin must assign a batch — live content is batch-gated
-    if (isOrgAdmin && !batchId) {
+    // Query both liveCourses and recordCourses to verify course exists and determine its type
+    const [liveCourse] = await db.select().from(liveCourses).where(eq(liveCourses.id, courseId)).limit(1);
+    const [recordCourse] = await db.select().from(recordCourses).where(eq(recordCourses.id, courseId)).limit(1);
+    const course = liveCourse || recordCourse;
+    if (!course) {
+      return NextResponse.json({ error: "Course not found" }, { status: 404 });
+    }
+    const isLive = !!liveCourse;
+
+    // BUG FIX: Org Admin must assign a batch for live courses — live content is batch-gated
+    if (isOrgAdmin && isLive && !batchId) {
       return NextResponse.json(
         {
           error:
@@ -573,6 +714,12 @@ export async function POSTStudent(request: Request) {
     }
 
     if (batchId) {
+      if (!isLive) {
+        return NextResponse.json(
+          { error: "Record courses do not support batches." },
+          { status: 400 }
+        );
+      }
       const batchConditions = [
         eq(batches.id, batchId),
         eq(batches.courseId, courseId),
@@ -595,26 +742,30 @@ export async function POSTStudent(request: Request) {
       }
     }
 
-    const slotRecords = await db
-      .select()
-      .from(slots)
-      .where(and(eq(slots.organisationId, organisationId), eq(slots.courseId, courseId)));
-
-    const totalSlots = slotRecords.reduce((sum, s) => sum + s.totalSlots, 0);
-    const usedSlots = slotRecords.reduce((sum, s) => sum + (s.usedSlots ?? 0), 0);
+    let slotRecords: typeof slots.$inferSelect[] = [];
     const isPlatformStaff = session!.user.role === "super_admin" || session!.user.role === "manager";
 
-    if (!isPlatformStaff && usedSlots >= totalSlots) {
-      if (totalSlots === 0) {
+    if (isLive) {
+      slotRecords = await db
+        .select()
+        .from(slots)
+        .where(and(eq(slots.organisationId, organisationId), eq(slots.courseId, courseId)));
+
+      const totalSlots = slotRecords.reduce((sum, s) => sum + s.totalSlots, 0);
+      const usedSlots = slotRecords.reduce((sum, s) => sum + (s.usedSlots ?? 0), 0);
+
+      if (!isPlatformStaff && usedSlots >= totalSlots) {
+        if (totalSlots === 0) {
+          return NextResponse.json(
+            { error: "No slots purchased for this course. Buy slots from the dashboard first." },
+            { status: 403 }
+          );
+        }
         return NextResponse.json(
-          { error: "No slots purchased for this course. Buy slots from the dashboard first." },
+          { error: "SLOT_EXCEEDED", totalSlots, usedSlots },
           { status: 403 }
         );
       }
-      return NextResponse.json(
-        { error: "SLOT_EXCEEDED", totalSlots, usedSlots },
-        { status: 403 }
-      );
     }
 
     const existing = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.email, email)).limit(1);
@@ -646,7 +797,7 @@ export async function POSTStudent(request: Request) {
       }
     }
 
-    const enrollmentSource = isOrgAdmin ? "org_admin" : "org_admin";
+    const enrollmentSource = "org_admin";
 
     // BUG FIX: student + enrollment + slot decrement in one transaction (org admin path)
     const student = await db.transaction(async (tx) => {
@@ -666,42 +817,43 @@ export async function POSTStudent(request: Request) {
 
       await tx.insert(studentCourses).values({
         studentId: created.id,
-        courseId,
-        batchId: batchId || null,
+        liveCourseId: isLive ? courseId : null,
+        recordCourseId: isLive ? null : courseId,
+        batchId: isLive ? (batchId || null) : null,
         organisationId,
         enrollmentSource,
       });
 
-      if (!isPlatformStaff) {
-        const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
-        if (!slotToUpdate) {
-          throw new Error("SLOT_EXCEEDED");
-        }
-        await tx
-          .update(slots)
-          .set({ usedSlots: (slotToUpdate.usedSlots ?? 0) + 1 })
-          .where(eq(slots.id, slotToUpdate.id));
-      } else if (slotRecords.length > 0) {
-        const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
-        if (slotToUpdate) {
+      if (isLive) {
+        if (!isPlatformStaff) {
+          const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
+          if (!slotToUpdate) {
+            throw new Error("SLOT_EXCEEDED");
+          }
           await tx
             .update(slots)
             .set({ usedSlots: (slotToUpdate.usedSlots ?? 0) + 1 })
             .where(eq(slots.id, slotToUpdate.id));
+        } else if (slotRecords.length > 0) {
+          const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
+          if (slotToUpdate) {
+            await tx
+              .update(slots)
+              .set({ usedSlots: (slotToUpdate.usedSlots ?? 0) + 1 })
+              .where(eq(slots.id, slotToUpdate.id));
+          }
+        } else {
+          await tx.insert(slots).values({
+            organisationId,
+            courseId,
+            totalSlots: 50,
+            usedSlots: 1,
+          });
         }
-      } else {
-        await tx.insert(slots).values({
-          organisationId,
-          courseId,
-          totalSlots: 50,
-          usedSlots: 1,
-        });
       }
 
       return created;
     });
-
-    const [course] = await db.select().from(courses).where(eq(courses.id, courseId)).limit(1);
 
     const emailResult = await trySendWelcomeEmail("student welcome", () =>
       sendStudentWelcomeEmail({
@@ -826,21 +978,22 @@ export async function DELETEStudent(request: Request, id: string) {
       const activeEnrollments = await tx
         .select({
           id: studentCourses.id,
-          courseId: studentCourses.courseId,
+          liveCourseId: studentCourses.liveCourseId,
+          recordCourseId: studentCourses.recordCourseId,
           organisationId: studentCourses.organisationId,
         })
         .from(studentCourses)
         .where(and(eq(studentCourses.studentId, id), eq(studentCourses.isActive, true)));
 
       for (const enrollment of activeEnrollments) {
-        if (enrollment.organisationId) {
+        if (enrollment.organisationId && enrollment.liveCourseId) {
           const orgSlots = await tx
             .select()
             .from(slots)
             .where(
               and(
                 eq(slots.organisationId, enrollment.organisationId),
-                eq(slots.courseId, enrollment.courseId)
+                eq(slots.courseId, enrollment.liveCourseId)
               )
             );
           const slotToDecrement = orgSlots.find((s) => (s.usedSlots ?? 0) > 0);
@@ -1048,7 +1201,7 @@ export async function GETBatches(request: Request) {
       id: batches.id,
       name: batches.name,
       courseId: batches.courseId,
-      courseTitle: courses.title,
+      courseTitle: liveCourses.title,
       organisationId: batches.organisationId,
       orgName: organisations.name,
       startDate: batches.startDate,
@@ -1057,7 +1210,7 @@ export async function GETBatches(request: Request) {
       createdAt: batches.createdAt,
     })
     .from(batches)
-    .leftJoin(courses, eq(batches.courseId, courses.id))
+    .leftJoin(liveCourses, eq(batches.courseId, liveCourses.id))
     .leftJoin(organisations, eq(batches.organisationId, organisations.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(batches.createdAt));
@@ -1209,7 +1362,7 @@ export async function GETLiveClasses(request: Request) {
       id: liveClasses.id,
       title: liveClasses.title,
       courseId: liveClasses.courseId,
-      courseTitle: courses.title,
+      courseTitle: liveCourses.title,
       batchId: liveClasses.batchId,
       batchName: batches.name,
       mentorId: liveClasses.mentorId,
@@ -1222,7 +1375,7 @@ export async function GETLiveClasses(request: Request) {
       createdAt: liveClasses.createdAt,
     })
     .from(liveClasses)
-    .leftJoin(courses, eq(liveClasses.courseId, courses.id))
+    .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
     .leftJoin(batches, eq(liveClasses.batchId, batches.id))
     .leftJoin(users, eq(liveClasses.mentorId, users.id))
     .where(conditions.length ? and(...conditions) : undefined)
@@ -1258,7 +1411,7 @@ export async function POSTLiveClass(request: Request) {
   // PERF: Fetch mentor, course, and batch metadata in parallel with explicit column selections
   const [[mentor], [course], [batch]] = await Promise.all([
     db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, parsed.data.mentorId)).limit(1),
-    db.select({ title: courses.title }).from(courses).where(eq(courses.id, parsed.data.courseId)).limit(1),
+    db.select({ title: liveCourses.title }).from(liveCourses).where(eq(liveCourses.id, parsed.data.courseId)).limit(1),
     parsed.data.batchId
       ? db.select({ name: batches.name }).from(batches).where(eq(batches.id, parsed.data.batchId)).limit(1)
       : Promise.resolve([null] as any[]),
@@ -1367,12 +1520,13 @@ export async function GETPayments(request: Request) {
       razorpayOrderId: payments.razorpayOrderId,
       razorpayPaymentId: payments.razorpayPaymentId,
       createdAt: payments.createdAt,
-      courseTitle: courses.title,
+      courseTitle: sql<string | null>`coalesce(${liveCourses.title}, ${recordCourses.title})`,
       orgName: organisations.name,
       adminName: users.name,
     })
     .from(payments)
-    .leftJoin(courses, eq(payments.courseId, courses.id))
+    .leftJoin(liveCourses, eq(payments.liveCourseId, liveCourses.id))
+    .leftJoin(recordCourses, eq(payments.recordCourseId, recordCourses.id))
     .leftJoin(organisations, eq(payments.organisationId, organisations.id))
     .leftJoin(users, eq(payments.adminId, users.id))
     .where(conditions.length ? and(...conditions) : undefined)
@@ -1473,9 +1627,11 @@ export async function GETDashboardStats(scope?: "org" | "global", organisationId
           : eq(payments.status, "success")
       ),
     db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(courses)
-      .where(eq(courses.isActive, true)),
+      .select({
+        count: sql<number>`(SELECT COUNT(*)::int FROM ${liveCourses} WHERE is_active = true AND deleted_at IS NULL) + (SELECT COUNT(*)::int FROM ${recordCourses} WHERE is_active = true AND deleted_at IS NULL)`
+      })
+      .from(users)
+      .limit(1),
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(liveClasses)
@@ -1553,10 +1709,11 @@ export async function GETHistory(organisationId: string) {
       slotsCount: payments.slotsCount,
       status: payments.status,
       createdAt: payments.createdAt,
-      courseTitle: courses.title,
+      courseTitle: sql<string | null>`coalesce(${liveCourses.title}, ${recordCourses.title})`,
     })
     .from(payments)
-    .leftJoin(courses, eq(payments.courseId, courses.id))
+    .leftJoin(liveCourses, eq(payments.liveCourseId, liveCourses.id))
+    .leftJoin(recordCourses, eq(payments.recordCourseId, recordCourses.id))
     .where(eq(payments.organisationId, organisationId))
     .orderBy(desc(payments.createdAt));
 
@@ -1591,16 +1748,19 @@ export async function GETStudentCourses(studentId: string) {
 
   const enrolled = await db
     .select({
-      courseId: courses.id,
-      title: courses.title,
-      description: courses.description,
-      price: courses.price,
-      demoUrl: courses.demoUrl,
+      courseId: sql<string>`coalesce(${studentCourses.liveCourseId}, ${studentCourses.recordCourseId})`,
+      title: sql<string>`coalesce(${liveCourses.title}, ${recordCourses.title})`,
+      description: sql<string | null>`coalesce(${liveCourses.description}, ${recordCourses.description})`,
+      price: sql<string>`coalesce(${liveCourses.price}, ${recordCourses.price})`,
+      demoUrl: sql<string | null>`coalesce(${liveCourses.demoUrl}, ${recordCourses.demoUrl})`,
+      duration: sql<string | null>`coalesce(${liveCourses.duration}, ${recordCourses.duration})`,
       batchName: batches.name,
       enrolledAt: studentCourses.enrolledAt,
+      courseType: sql<string>`case when ${studentCourses.liveCourseId} is not null then 'live' else 'record' end`,
     })
     .from(studentCourses)
-    .innerJoin(courses, eq(studentCourses.courseId, courses.id))
+    .leftJoin(liveCourses, eq(studentCourses.liveCourseId, liveCourses.id))
+    .leftJoin(recordCourses, eq(studentCourses.recordCourseId, recordCourses.id))
     .leftJoin(batches, eq(studentCourses.batchId, batches.id))
     .where(
       and(eq(studentCourses.studentId, studentId), eq(studentCourses.isActive, true))

@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import {
   organisations,
   users,
-  courses,
+  liveCourses,
+  recordCourses,
   batches,
   liveClasses,
   classRecordings,
@@ -14,7 +15,8 @@ export const TRASH_RETENTION_DAYS = 30;
 
 export type TrashEntityType =
   | "organisation"
-  | "course"
+  | "live_course"
+  | "record_course"
   | "batch"
   | "student"
   | "manager"
@@ -36,7 +38,8 @@ export async function purgeExpiredTrash() {
   await db.delete(classRecordings).where(and(isNotNull(classRecordings.deletedAt), lt(classRecordings.deletedAt, cutoff)));
   await db.delete(liveClasses).where(and(isNotNull(liveClasses.deletedAt), lt(liveClasses.deletedAt, cutoff)));
   await db.delete(batches).where(and(isNotNull(batches.deletedAt), lt(batches.deletedAt, cutoff)));
-  await db.delete(courses).where(and(isNotNull(courses.deletedAt), lt(courses.deletedAt, cutoff)));
+  await db.delete(liveCourses).where(and(isNotNull(liveCourses.deletedAt), lt(liveCourses.deletedAt, cutoff)));
+  await db.delete(recordCourses).where(and(isNotNull(recordCourses.deletedAt), lt(recordCourses.deletedAt, cutoff)));
   await db.delete(organisations).where(and(isNotNull(organisations.deletedAt), lt(organisations.deletedAt, cutoff)));
   await db.delete(coupons).where(and(isNotNull(coupons.deletedAt), lt(coupons.deletedAt, cutoff)));
   await db
@@ -81,7 +84,8 @@ export async function clearAllTrashImmediate() {
   await db.delete(classRecordings).where(isNotNull(classRecordings.deletedAt));
   await db.delete(liveClasses).where(isNotNull(liveClasses.deletedAt));
   await db.delete(batches).where(isNotNull(batches.deletedAt));
-  await db.delete(courses).where(isNotNull(courses.deletedAt));
+  await db.delete(liveCourses).where(isNotNull(liveCourses.deletedAt));
+  await db.delete(recordCourses).where(isNotNull(recordCourses.deletedAt));
   await db.delete(organisations).where(isNotNull(organisations.deletedAt));
   await db.delete(coupons).where(isNotNull(coupons.deletedAt));
   await db
