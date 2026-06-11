@@ -38,6 +38,46 @@ export function SettingsPage() {
   const [logoDraft, setLogoDraft] = useState<string | null | undefined>(undefined);
   const [logoError, setLogoError] = useState<string | null>(null);
 
+  // Super Admin Hero Card settings state
+  const [heroCardTitle, setHeroCardTitle] = useState("");
+  const [heroCardSubtitle, setHeroCardSubtitle] = useState("");
+  const [heroCardStudentCount, setHeroCardStudentCount] = useState("");
+  const [heroCardStudentLabel, setHeroCardStudentLabel] = useState("");
+  const [heroCardLiveBadge, setHeroCardLiveBadge] = useState("");
+  const [heroCardBtnText, setHeroCardBtnText] = useState("");
+
+  const { data: systemSettingsData } = useQuery({
+    queryKey: ["system-settings"],
+    queryFn: () => fetch("/api/system-settings").then((r) => r.json()),
+    enabled: role === "super_admin",
+  });
+
+  useEffect(() => {
+    if (systemSettingsData) {
+      setHeroCardTitle(systemSettingsData.hero_card_title || "");
+      setHeroCardSubtitle(systemSettingsData.hero_card_subtitle || "");
+      setHeroCardStudentCount(systemSettingsData.hero_card_student_count || "");
+      setHeroCardStudentLabel(systemSettingsData.hero_card_student_label || "");
+      setHeroCardLiveBadge(systemSettingsData.hero_card_live_badge || "");
+      setHeroCardBtnText(systemSettingsData.hero_card_btn_text || "");
+    }
+  }, [systemSettingsData]);
+
+  const updateSystemSettings = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch("/api/system-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) await parseApiError(res);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["system-settings"] });
+    },
+  });
+
   useEffect(() => {
     // Reset draft when user/organisation changes
     setLogoDraft(undefined);
@@ -197,6 +237,97 @@ export function SettingsPage() {
                 Remove
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {role === "super_admin" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Landing Hero Card Settings</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                updateSystemSettings.mutate({
+                  hero_card_title: heroCardTitle,
+                  hero_card_subtitle: heroCardSubtitle,
+                  hero_card_student_count: heroCardStudentCount,
+                  hero_card_student_label: heroCardStudentLabel,
+                  hero_card_live_badge: heroCardLiveBadge,
+                  hero_card_btn_text: heroCardBtnText,
+                });
+              }}
+              className="space-y-4"
+            >
+              <div className="space-y-2">
+                <Label>Card Title</Label>
+                <Input
+                  value={heroCardTitle}
+                  onChange={(e) => setHeroCardTitle(e.target.value)}
+                  placeholder="e.g. Full Stack Bootcamp"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Card Subtext / Duration</Label>
+                <Input
+                  value={heroCardSubtitle}
+                  onChange={(e) => setHeroCardSubtitle(e.target.value)}
+                  placeholder="e.g. 12 weeks · Live + Recorded"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Students Count Badge</Label>
+                <Input
+                  value={heroCardStudentCount}
+                  onChange={(e) => setHeroCardStudentCount(e.target.value)}
+                  placeholder="e.g. 500+"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Students Label</Label>
+                <Input
+                  value={heroCardStudentLabel}
+                  onChange={(e) => setHeroCardStudentLabel(e.target.value)}
+                  placeholder="e.g. Active Students"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Live Class Badge Text</Label>
+                <Input
+                  value={heroCardLiveBadge}
+                  onChange={(e) => setHeroCardLiveBadge(e.target.value)}
+                  placeholder="e.g. Live class starting soon"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Button Text</Label>
+                <Input
+                  value={heroCardBtnText}
+                  onChange={(e) => setHeroCardBtnText(e.target.value)}
+                  placeholder="e.g. Join Live Class"
+                  required
+                />
+              </div>
+
+              <Button type="submit" disabled={updateSystemSettings.isPending}>
+                {updateSystemSettings.isPending ? "Saving..." : "Save Settings"}
+              </Button>
+              {updateSystemSettings.isSuccess && (
+                <p className="text-sm text-emerald-400">Settings saved successfully!</p>
+              )}
+              {updateSystemSettings.isError && (
+                <p className="text-sm text-destructive">
+                  {(updateSystemSettings.error as Error).message}
+                </p>
+              )}
+            </form>
           </CardContent>
         </Card>
       )}

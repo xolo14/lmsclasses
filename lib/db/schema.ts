@@ -423,6 +423,12 @@ export const jobApplications = pgTable("job_applications", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const systemSettings = pgTable("system_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Organisation = typeof organisations.$inferSelect;
 export type LiveCourse = typeof liveCourses.$inferSelect;
@@ -442,4 +448,5 @@ export type HrEmailVerification = typeof hrEmailVerifications.$inferSelect;
 export type JobPosting = typeof jobPostings.$inferSelect;
 export type JobApplication = typeof jobApplications.$inferSelect;
 export type Coupon = typeof coupons.$inferSelect;
+export type SystemSetting = typeof systemSettings.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];
