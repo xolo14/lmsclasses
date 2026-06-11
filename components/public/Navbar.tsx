@@ -50,7 +50,7 @@ export function Navbar() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          <Button asChild variant="outline" className="border-bg-border text-text-primary">
+          <Button asChild variant="outline" className="border-bg-border text-slate-950 hover:bg-slate-100 hover:text-slate-950 font-semibold transition-colors">
             <Link href="/login">Login</Link>
           </Button>
           <Button asChild className="bg-brand-cyan text-bg-base hover:bg-brand-cyan-light">
