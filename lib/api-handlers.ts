@@ -964,11 +964,22 @@ export async function PATCHStudent(request: Request, id: string) {
 
   const { name, phone, email, collegeName, isActive } = body;
 
+  const updates: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
+  if (name !== undefined) updates.name = name;
+  if (phone !== undefined) updates.phone = phone;
+  if (email !== undefined) updates.email = email;
+  if (collegeName !== undefined) updates.collegeName = collegeName;
+  if (isActive !== undefined) updates.isActive = isActive;
+
   const [student] = await db
     .update(users)
-    .set({ name, phone, email, collegeName, isActive, updatedAt: new Date() })
-    .where(eq(users.id, id))
+    .set(updates)
+    .where(and(eq(users.id, id), eq(users.role, "student")))
     .returning();
+
+  if (!student) {
+    return NextResponse.json({ error: "Student not found" }, { status: 404 });
+  }
 
   await logAction({
     userId: session!.user.id,

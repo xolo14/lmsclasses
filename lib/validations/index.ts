@@ -91,7 +91,10 @@ export const batchSchema = z.object({
   organisationId: z.string().uuid().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
-  maxSlots: z.coerce.number().min(1).default(30),
+  maxSlots: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(1, "Max slots is required")
+  ),
 });
 
 export const liveClassSchema = z.object({
@@ -234,8 +237,14 @@ export const couponSchema = z.object({
     .transform((val) => val.toUpperCase().trim()),
   description: z.preprocess(emptyToUndefined, z.string().optional()),
   discountType: z.enum(["percent", "fixed"]),
-  discountValue: z.coerce.number().min(0, "Value must be positive"),
-  minOrderAmount: z.coerce.number().min(0, "Min order must be positive").default(0),
+  discountValue: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(0.01, "Discount value is required")
+  ),
+  minOrderAmount: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(0, "Min order must be positive").optional()
+  ),
   maxUses: z.preprocess(emptyToUndefined, z.coerce.number().min(1, "Max uses must be at least 1").optional()),
   startsAt: z.preprocess(emptyToUndefined, z.string().optional()),
   expiresAt: z.preprocess(emptyToUndefined, z.string().optional()),

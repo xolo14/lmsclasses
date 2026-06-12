@@ -25,7 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SlotExceededModal } from "./SlotExceededModal";
-import { generateLmsId } from "@/lib/razorpay";
 
 interface AddStudentModalProps {
   open: boolean;
@@ -65,7 +64,7 @@ export function AddStudentModal({
     formState: { errors },
   } = useForm<StudentInput>({
     resolver: zodResolver(studentSchema),
-    defaultValues: { courseId: fixedCourseId ?? "", lmsId: generateLmsId() },
+    defaultValues: { courseId: fixedCourseId ?? "" },
   });
 
   const selectedBatchId = watch("batchId");
@@ -175,7 +174,6 @@ export function AddStudentModal({
       setPickedCourseId(initialCourse);
       reset({
         courseId: initialCourse,
-        lmsId: generateLmsId(),
         name: "",
         email: "",
         phone: "",
@@ -196,12 +194,6 @@ export function AddStudentModal({
       setValue("courseId", activeCourseId, { shouldValidate: true });
     }
   }, [open, activeCourseId, setValue]);
-
-  useEffect(() => {
-    if (open && requireOrganisation && orgs.length === 1 && !organisationId) {
-      setOrganisationId(orgs[0].id);
-    }
-  }, [open, requireOrganisation, orgs, organisationId]);
 
   const handleCourseChange = (id: string) => {
     setPickedCourseId(id);
@@ -289,10 +281,6 @@ export function AddStudentModal({
               <Input {...register("phone")} />
             </div>
             <div className="space-y-2">
-              <Label>LMS ID</Label>
-              <Input {...register("lmsId")} />
-            </div>
-            <div className="space-y-2">
               <Label>Password (leave blank to auto-generate)</Label>
               <div className="relative">
                 <Input
@@ -335,7 +323,7 @@ export function AddStudentModal({
               )}
             </div>
             <div className="space-y-2">
-              <Label>College Name</Label>
+              <Label>College Name (optional)</Label>
               <Input {...register("collegeName")} />
             </div>
             <div className="space-y-2">

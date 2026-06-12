@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,7 +39,28 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<LiveClassInput>({
     resolver: zodResolver(liveClassSchema),
+    defaultValues: {
+      title: "",
+      meetingLink: "",
+      scheduledAt: "",
+      recordingUrl: "",
+    },
   });
+
+  useEffect(() => {
+    if (open) {
+      reset({
+        title: "",
+        courseId: undefined,
+        batchId: undefined,
+        mentorId: undefined,
+        meetingLink: "",
+        scheduledAt: "",
+        duration: undefined,
+        recordingUrl: "",
+      });
+    }
+  }, [open, reset]);
 
   const courseId = watch("courseId");
 

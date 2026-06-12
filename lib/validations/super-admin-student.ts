@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+function emptyToUndefined(val: unknown) {
+  if (val === "" || val === null || val === undefined) return undefined;
+  return val;
+}
+
 export const DirectStudentSchema = z
   .object({
     name: z.string().min(2).max(100),
@@ -7,7 +12,7 @@ export const DirectStudentSchema = z
     phone: z.string().regex(/^\d{10}$/, "Phone must be 10 digits"),
     password: z.string().min(8),
     confirmPassword: z.string(),
-    collegeName: z.string().min(2),
+    collegeName: z.preprocess(emptyToUndefined, z.string().optional()),
     courseId: z.string().uuid().optional(),
     batchId: z.string().uuid().optional(),
     directEnrollment: z.literal(true),

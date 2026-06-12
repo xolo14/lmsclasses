@@ -103,7 +103,7 @@ export async function POST(request: Request) {
         password: hashedPassword,
         role: "student",
         lmsId,
-        collegeName,
+        collegeName: collegeName ?? null,
         organisationId: null,
       })
       .returning();

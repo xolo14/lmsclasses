@@ -90,6 +90,24 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
   });
 
   useEffect(() => {
+    if (isOpen) {
+      form.reset({
+        name: "",
+        email: "",
+        phone: "",
+        password: "",
+        confirmPassword: "",
+        collegeName: "",
+        directEnrollment: true,
+        courseId: undefined,
+        batchId: undefined,
+      });
+      setSubmitError(undefined);
+      setShowPassword(false);
+    }
+  }, [isOpen, form]);
+
+  useEffect(() => {
     if (!courseId || !isLiveCourse) form.setValue("batchId", undefined);
   }, [courseId, isLiveCourse, form]);
 
@@ -106,7 +124,17 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
       if (!res.ok) {
         throw new Error(typeof json.error === "string" ? json.error : "Failed to create student");
       }
-      form.reset();
+      form.reset({
+        name: "",
+        email: "",
+        phone: "",
+        password: "",
+        confirmPassword: "",
+        collegeName: "",
+        directEnrollment: true,
+        courseId: undefined,
+        batchId: undefined,
+      });
       onSuccess();
       onClose();
     } catch (err) {
@@ -187,7 +215,7 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ds-college">College / Institution</Label>
+              <Label htmlFor="ds-college">College / Institution (optional)</Label>
               <Input id="ds-college" {...form.register("collegeName")} />
               {form.formState.errors.collegeName && (
                 <p className="text-xs text-destructive">
@@ -205,8 +233,8 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
             <div className="space-y-2">
               <Label>Course</Label>
               <Select
-                value={courseId ?? ""}
-                onValueChange={(v) => form.setValue("courseId", v || undefined)}
+                value={courseId}
+                onValueChange={(v) => form.setValue("courseId", v)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a course" />
@@ -244,8 +272,8 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
               <div className="space-y-2">
                 <Label>Batch</Label>
                 <Select
-                  value={form.watch("batchId") ?? ""}
-                  onValueChange={(v) => form.setValue("batchId", v || undefined)}
+                  value={form.watch("batchId")}
+                  onValueChange={(v) => form.setValue("batchId", v)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a batch (optional)" />

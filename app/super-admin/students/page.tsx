@@ -1,18 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
+import { MoreHorizontal } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AddDirectStudentModal } from "@/components/modals/AddDirectStudentModal";
+import { EditStudentModal } from "@/components/modals/EditStudentModal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type Student = {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
+  collegeName?: string | null;
   lmsId: string;
   orgName: string;
   source?: string;
@@ -27,6 +37,7 @@ type Student = {
 
 export default function StudentsPage() {
   const [addOpen, setAddOpen] = useState(false);
+  const [editStudent, setEditStudent] = useState<Student | undefined>();
   const queryClient = useQueryClient();
 
   const {
@@ -52,6 +63,21 @@ export default function StudentsPage() {
   });
 
   const students = data ? data.pages.flatMap((page) => page.data) : [];
+
+  const deleteStudent = useMutation({
+    mutationFn: (id: string) => fetch(`/api/students/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["students"] }),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      fetch(`/api/students/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !isActive }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["students"] }),
+  });
 
   const columns: ColumnDef<Student>[] = [
     { accessorKey: "name", header: "Student Name" },
@@ -97,6 +123,38 @@ export default function StudentsPage() {
         </Badge>
       ),
     },
+    {
+      id: "actions",
+      cell: ({ row }) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setEditStudent(row.original)}>Edit</DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                toggleActive.mutate({ id: row.original.id, isActive: row.original.isActive })
+              }
+            >
+              {row.original.isActive ? "Deactivate" : "Activate"}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => {
+                if (confirm(`Move "${row.original.name}" to trash?`)) {
+                  deleteStudent.mutate(row.original.id);
+                }
+              }}
+            >
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
   ];
 
   if (isLoading) return <div className="text-muted-foreground">Loading...</div>;
@@ -120,6 +178,13 @@ export default function StudentsPage() {
         isOpen={addOpen}
         onClose={() => setAddOpen(false)}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ["students"] })}
+      />
+
+      <EditStudentModal
+        open={!!editStudent}
+        onOpenChange={(open) => !open && setEditStudent(undefined)}
+        student={editStudent}
+        showStatus
       />
 
       <DataTable

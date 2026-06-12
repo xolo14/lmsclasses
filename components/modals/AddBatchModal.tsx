@@ -47,12 +47,26 @@ export function AddBatchModal({ open, onOpenChange, defaultCourseId, orgAdminMod
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<BatchInput>({
     resolver: zodResolver(batchSchema),
-    defaultValues: { maxSlots: 30, courseId: defaultCourseId },
+    defaultValues: {
+      name: "",
+      courseId: defaultCourseId,
+      startDate: "",
+      endDate: "",
+    },
   });
 
   useEffect(() => {
-    if (defaultCourseId) setValue("courseId", defaultCourseId);
-  }, [defaultCourseId, setValue]);
+    if (open) {
+      reset({
+        name: "",
+        courseId: defaultCourseId,
+        organisationId: undefined,
+        startDate: "",
+        endDate: "",
+        maxSlots: undefined,
+      });
+    }
+  }, [open, defaultCourseId, reset]);
 
   const mutation = useMutation({
     mutationFn: async (data: BatchInput) => {
@@ -102,7 +116,7 @@ export function AddBatchModal({ open, onOpenChange, defaultCourseId, orgAdminMod
           {!orgAdminMode && (
             <div className="space-y-2">
               <Label>Organisation</Label>
-              <Select onValueChange={(v) => setValue("organisationId", v)}>
+              <Select onValueChange={(v) => setValue("organisationId", v)} value={watch("organisationId")}>
                 <SelectTrigger><SelectValue placeholder="Select organisation" /></SelectTrigger>
                 <SelectContent>
                   {orgs.map((o: { id: string; name: string }) => (
@@ -124,7 +138,8 @@ export function AddBatchModal({ open, onOpenChange, defaultCourseId, orgAdminMod
           </div>
           <div className="space-y-2">
             <Label>Max Slots</Label>
-            <Input type="number" {...register("maxSlots")} />
+            <Input type="number" placeholder="e.g. 30" {...register("maxSlots")} />
+            {errors.maxSlots && <p className="text-sm text-destructive">{errors.maxSlots.message}</p>}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

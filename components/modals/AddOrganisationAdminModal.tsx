@@ -93,7 +93,7 @@ export function AddOrganisationAdminModal({
     if (open) {
       reset(formValues);
       setStatusActive(organisation?.isActive ?? true);
-      setJobPortalAccess(organisation?.jobPortalAccess ?? true);
+      setJobPortalAccess(organisation?.jobPortalAccess ?? false);
       setError("");
     }
   }, [open, formValues, reset, organisation]);
