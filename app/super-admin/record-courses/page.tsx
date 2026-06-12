@@ -20,6 +20,7 @@ type Course = {
   price: string;
   duration?: string | null;
   demoUrl?: string | null;
+  thumbnailUrl?: string | null;
   isActive: boolean;
   enrolledCount: number;
 };
@@ -62,7 +63,16 @@ export default function RecordCoursesPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {courses.map((course) => (
           <Card key={course.id}>
-            <div className="h-28 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center justify-between px-6 rounded-t-xl border-b border-border/40">
+            <div className="relative h-28 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center justify-between px-6 rounded-t-xl border-b border-border/40 overflow-hidden">
+              {course.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={course.thumbnailUrl}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover opacity-40"
+                />
+              ) : null}
+              <div className="relative z-10 flex items-center justify-between w-full">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-cyan-950 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
                   <Play className="h-5 w-5 fill-cyan-400/20" />
@@ -77,6 +87,7 @@ export default function RecordCoursesPage() {
                   Demo Available
                 </Badge>
               )}
+              </div>
             </div>
             <CardHeader>
               <div className="flex items-start justify-between">

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { GoogleAdsTag } from "@/components/analytics/GoogleAdsTag";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { fontSans, fontMono } from "@/lib/fonts";
@@ -33,6 +34,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${fontSans.variable} ${fontMono.variable}`}>
       <body className="font-sans antialiased">
+        <GoogleAdsTag />
         <AuthProvider>
           <QueryProvider>{children}</QueryProvider>
         </AuthProvider>

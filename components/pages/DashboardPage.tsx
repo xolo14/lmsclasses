@@ -109,7 +109,7 @@ export function DashboardPage({ scope = "global", userRole }: DashboardPageProps
         <h1 className="text-xl sm:text-2xl font-bold">Dashboard</h1>
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard title="My Students" value={stats?.totalStudents ?? 0} icon={GraduationCap} />
-          <KpiCard title="Active Courses" value={stats?.activeCourses ?? 0} icon={BookOpen} />
+          <KpiCard title="Active Live Courses" value={stats?.activeCourses ?? 0} icon={BookOpen} />
           <KpiCard title="Slots Remaining" value={stats?.slotsRemaining ?? 0} icon={Building2} />
           <KpiCard title="Payments Made" value={stats?.paymentsMade ?? 0} icon={IndianRupee} />
         </div>

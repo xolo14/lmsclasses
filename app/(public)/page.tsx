@@ -14,7 +14,7 @@ export default async function LandingPage() {
   } catch (err) {
     console.error("[landing] getPublicCourses failed:", err);
   }
-  const mapped = courses.map((c) => ({
+  const mapped = courses.map(({ demoVideoUrl: _d, ...c }) => ({
     ...c,
     description: c.description ?? "",
     price: parseFloat(c.price),
@@ -22,7 +22,6 @@ export default async function LandingPage() {
     language: c.language ?? "English",
     certificate: c.certificate ?? true,
     isFeatured: c.isFeatured ?? false,
-    demoVideoUrl: c.demoVideoUrl ?? undefined,
     thumbnailUrl: c.thumbnailUrl ?? undefined,
     totalHours: c.totalHours ?? undefined,
     totalLectures: c.totalLectures ?? undefined,

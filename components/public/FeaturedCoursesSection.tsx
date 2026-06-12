@@ -3,12 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { CourseCard, type CourseCardProps } from "@/components/public/CourseCard";
-import dynamic from "next/dynamic";
-
-const DemoVideoModal = dynamic(
-  () => import("@/components/public/DemoVideoModal").then((mod) => mod.DemoVideoModal),
-  { ssr: false }
-);
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +12,6 @@ const levels = ["All", "Beginner", "Intermediate", "Advanced"] as const;
 
 export function FeaturedCoursesSection({ courses }: { courses: Course[] }) {
   const [filter, setFilter] = useState<(typeof levels)[number]>("All");
-  const [demo, setDemo] = useState<{ url: string; title: string } | null>(null);
 
   const courseList = Array.isArray(courses) ? courses : [];
   const featured = courseList.filter((c) => c.isFeatured);
@@ -55,11 +48,7 @@ export function FeaturedCoursesSection({ courses }: { courses: Course[] }) {
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((course) => (
-            <CourseCard
-              key={course.id}
-              {...course}
-              onDemoClick={(url, title) => setDemo({ url, title })}
-            />
+            <CourseCard key={course.id} {...course} />
           ))}
         </div>
 
@@ -73,13 +62,6 @@ export function FeaturedCoursesSection({ courses }: { courses: Course[] }) {
           </Button>
         </div>
       </div>
-
-      <DemoVideoModal
-        isOpen={!!demo}
-        onClose={() => setDemo(null)}
-        videoUrl={demo?.url ?? ""}
-        courseTitle={demo?.title ?? ""}
-      />
     </section>
   );
 }

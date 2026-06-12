@@ -2,12 +2,6 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { CourseCard, type CourseCardProps } from "@/components/public/CourseCard";
-import dynamic from "next/dynamic";
-
-const DemoVideoModal = dynamic(
-  () => import("@/components/public/DemoVideoModal").then((mod) => mod.DemoVideoModal),
-  { ssr: false }
-);
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -25,7 +19,6 @@ export function CoursesListing({ courses }: { courses: Course[] }) {
   const [debounced, setDebounced] = useState("");
   const [level, setLevel] = useState("All");
   const [sort, setSort] = useState("newest");
-  const [demo, setDemo] = useState<{ url: string; title: string } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search), 300);
@@ -33,7 +26,7 @@ export function CoursesListing({ courses }: { courses: Course[] }) {
   }, [search]);
 
   const filtered = useMemo(() => {
-    let list = [...courses];
+    let list = [...courseList];
     if (debounced) {
       const q = debounced.toLowerCase();
       list = list.filter(
@@ -85,21 +78,10 @@ export function CoursesListing({ courses }: { courses: Course[] }) {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((course) => (
-            <CourseCard
-              key={course.id}
-              {...course}
-              onDemoClick={(url, title) => setDemo({ url, title })}
-            />
+            <CourseCard key={course.id} {...course} />
           ))}
         </div>
       )}
-
-      <DemoVideoModal
-        isOpen={!!demo}
-        onClose={() => setDemo(null)}
-        videoUrl={demo?.url ?? ""}
-        courseTitle={demo?.title ?? ""}
-      />
     </>
   );
 }

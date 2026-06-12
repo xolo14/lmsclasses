@@ -20,13 +20,23 @@ type Course = {
   enrolledCount: number;
 };
 
-export function DemosPage() {
+interface DemosPageProps {
+  /** Org admin: live courses only. Super admin: all course types. */
+  liveOnly?: boolean;
+}
+
+export function DemosPage({ liveOnly = false }: DemosPageProps) {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
-    queryKey: ["demos-courses"],
+    queryKey: ["demos-courses", liveOnly ? "live" : "all"],
     queryFn: async () => {
+      if (liveOnly) {
+        const res = await fetch("/api/live-courses");
+        const data = res.ok ? await res.json() : [];
+        return Array.isArray(data) ? data : [];
+      }
       const [liveRes, recordRes] = await Promise.all([
         fetch("/api/live-courses"),
         fetch("/api/record-courses"),

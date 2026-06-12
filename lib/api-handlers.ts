@@ -378,7 +378,8 @@ export async function POSTRecordCourse(request: Request) {
   if (error) return error;
 
   const body = await request.json();
-  const parsed = courseSchema.safeParse(body);
+  const { recordCourseSchema } = await import("@/lib/validations");
+  const parsed = recordCourseSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
@@ -386,13 +387,21 @@ export async function POSTRecordCourse(request: Request) {
   const { ensureUniqueRecordCourseSlug } = await import("@/lib/slug");
   const slug = await ensureUniqueRecordCourseSlug(parsed.data.title);
 
+  const demoUrl = parsed.data.demoUrl || null;
+  const thumbnailUrl =
+    "thumbnailUrl" in parsed.data && parsed.data.thumbnailUrl
+      ? parsed.data.thumbnailUrl
+      : null;
+
   const [course] = await db
     .insert(recordCourses)
     .values({
       title: parsed.data.title,
       description: parsed.data.description,
       price: parsed.data.price.toString(),
-      demoUrl: parsed.data.demoUrl,
+      demoUrl,
+      demoVideoUrl: demoUrl,
+      thumbnailUrl,
       duration: parsed.data.duration,
       slug,
       createdBy: session!.user.id,
@@ -452,15 +461,21 @@ export async function PATCHRecordCourse(request: Request, id: string) {
   if (error) return error;
 
   const body = await request.json();
-  const parsed = courseSchema.partial().safeParse(body);
+  const { recordCourseSchema } = await import("@/lib/validations");
+  const parsed = recordCourseSchema.partial().safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { price, courseType, ...rest } = parsed.data;
+  const { price, courseType, demoUrl, thumbnailUrl, ...rest } = parsed.data;
   const updateData: Record<string, unknown> = {
     ...rest,
     ...(price !== undefined && { price: price.toString() }),
+    ...(demoUrl !== undefined && {
+      demoUrl: demoUrl || null,
+      demoVideoUrl: demoUrl || null,
+    }),
+    ...(thumbnailUrl !== undefined && { thumbnailUrl: thumbnailUrl || null }),
     updatedAt: new Date(),
   };
 
@@ -555,6 +570,8 @@ export async function GETStudents(request: Request) {
 
   if (session!.user.role === "org_admin" && session!.user.organisationId) {
     conditions.push(eq(users.organisationId, session!.user.organisationId));
+  } else if (orgId === "direct") {
+    conditions.push(isNull(users.organisationId));
   } else if (orgId) {
     conditions.push(eq(users.organisationId, orgId));
   }
@@ -1528,8 +1545,10 @@ export async function GETPayments(request: Request) {
   const limitNum = Math.min(parseInt(limit), 100);
 
   const conditions = [];
-  if (session!.user.role === "org_admin" && session!.user.organisationId) {
-    conditions.push(eq(payments.organisationId, session!.user.organisationId));
+  const isOrgAdmin = session!.user.role === "org_admin" && session!.user.organisationId;
+  if (isOrgAdmin) {
+    conditions.push(eq(payments.organisationId, session!.user.organisationId!));
+    conditions.push(isNotNull(payments.liveCourseId));
   }
 
   if (cursor) {
@@ -1622,6 +1641,28 @@ export async function GETDashboardStats(scope?: "org" | "global", organisationId
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
+  const activeCoursesQuery =
+    scope === "org" && organisationId
+      ? db
+          .select({
+            count: sql<number>`count(distinct ${slots.courseId})::int`,
+          })
+          .from(slots)
+          .innerJoin(liveCourses, eq(slots.courseId, liveCourses.id))
+          .where(
+            and(
+              eq(slots.organisationId, organisationId),
+              eq(liveCourses.isActive, true),
+              isNull(liveCourses.deletedAt)
+            )
+          )
+      : db
+          .select({
+            count: sql<number>`(SELECT COUNT(*)::int FROM ${liveCourses} WHERE is_active = true AND deleted_at IS NULL) + (SELECT COUNT(*)::int FROM ${recordCourses} WHERE is_active = true AND deleted_at IS NULL)`,
+          })
+          .from(users)
+          .limit(1);
+
   // PERF: Fetch independent KPI metrics in parallel to reduce Time-To-First-Byte
   const [
     [totalOrgs],
@@ -1648,15 +1689,14 @@ export async function GETDashboardStats(scope?: "org" | "global", organisationId
       .from(payments)
       .where(
         orgFilter
-          ? and(eq(payments.status, "success"), eq(payments.organisationId, organisationId!))
+          ? and(
+              eq(payments.status, "success"),
+              eq(payments.organisationId, organisationId!),
+              isNotNull(payments.liveCourseId)
+            )
           : eq(payments.status, "success")
       ),
-    db
-      .select({
-        count: sql<number>`(SELECT COUNT(*)::int FROM ${liveCourses} WHERE is_active = true AND deleted_at IS NULL) + (SELECT COUNT(*)::int FROM ${recordCourses} WHERE is_active = true AND deleted_at IS NULL)`
-      })
-      .from(users)
-      .limit(1),
+    activeCoursesQuery,
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(liveClasses)
@@ -1677,7 +1717,8 @@ export async function GETDashboardStats(scope?: "org" | "global", organisationId
           .where(
             and(
               eq(payments.organisationId, organisationId),
-              eq(payments.status, "success")
+              eq(payments.status, "success"),
+              isNotNull(payments.liveCourseId)
             )
           )
       : Promise.resolve([{ count: 0 }])
@@ -1734,12 +1775,13 @@ export async function GETHistory(organisationId: string) {
       slotsCount: payments.slotsCount,
       status: payments.status,
       createdAt: payments.createdAt,
-      courseTitle: sql<string | null>`coalesce(${liveCourses.title}, ${recordCourses.title})`,
+      courseTitle: liveCourses.title,
     })
     .from(payments)
-    .leftJoin(liveCourses, eq(payments.liveCourseId, liveCourses.id))
-    .leftJoin(recordCourses, eq(payments.recordCourseId, recordCourses.id))
-    .where(eq(payments.organisationId, organisationId))
+    .innerJoin(liveCourses, eq(payments.liveCourseId, liveCourses.id))
+    .where(
+      and(eq(payments.organisationId, organisationId), isNotNull(payments.liveCourseId))
+    )
     .orderBy(desc(payments.createdAt));
 
   const studentActivity = await db

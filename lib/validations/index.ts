@@ -20,6 +20,17 @@ export const courseSchema = z.object({
   courseType: z.enum(["live", "record"]).default("live"),
 });
 
+export const recordCourseSchema = courseSchema.extend({
+  thumbnailUrl: z
+    .string()
+    .optional()
+    .or(z.literal(""))
+    .refine(
+      (v) => !v || v.startsWith("http://") || v.startsWith("https://") || v.startsWith("/uploads/"),
+      "Thumbnail must be a valid URL or uploaded image path"
+    ),
+});
+
 export const organisationSchema = z
   .object({
     orgName: z.string().min(1, "Organisation name is required"),
@@ -218,6 +229,7 @@ export const studentJobApplicationSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CourseInput = z.infer<typeof courseSchema>;
+export type RecordCourseInput = z.infer<typeof recordCourseSchema>;
 export type OrganisationInput = z.infer<typeof organisationSchema>;
 export type ManagerInput = z.infer<typeof managerSchema>;
 export type BatchInput = z.infer<typeof batchSchema>;

@@ -24,7 +24,6 @@ export default async function CoursesPage() {
     totalHours: c.totalHours ?? undefined,
     totalLectures: c.totalLectures ?? undefined,
     certificate: c.certificate ?? true,
-    demoVideoUrl: c.demoVideoUrl ?? undefined,
   }));
 
   return (

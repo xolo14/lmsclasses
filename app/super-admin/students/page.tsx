@@ -1,15 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AddDirectStudentModal } from "@/components/modals/AddDirectStudentModal";
 import { EditStudentModal } from "@/components/modals/EditStudentModal";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,10 +43,22 @@ type Student = {
   enrollmentId?: string | null;
 };
 
+type OrganisationOption = { id: string; name: string };
+
 export default function StudentsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [editStudent, setEditStudent] = useState<Student | undefined>();
+  const [organisationFilter, setOrganisationFilter] = useState("all");
   const queryClient = useQueryClient();
+
+  const { data: organisations = [] } = useQuery<OrganisationOption[]>({
+    queryKey: ["organisations"],
+    queryFn: async () => {
+      const res = await fetch("/api/organisations");
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+  });
 
   const {
     data,
@@ -49,9 +69,13 @@ export default function StudentsPage() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["students"],
+    queryKey: ["students", organisationFilter],
     queryFn: async ({ pageParam = "" }) => {
-      const res = await fetch(`/api/students?cursor=${pageParam}&limit=50`);
+      const params = new URLSearchParams({ cursor: String(pageParam), limit: "50" });
+      if (organisationFilter !== "all") {
+        params.set("organisationId", organisationFilter);
+      }
+      const res = await fetch(`/api/students?${params}`);
       const resData = await res.json();
       if (!res.ok) {
         throw new Error(typeof resData?.error === "string" ? resData.error : "Failed to load students");
@@ -186,6 +210,33 @@ export default function StudentsPage() {
         student={editStudent}
         showStatus
       />
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4">
+        <div className="space-y-2 sm:min-w-[280px]">
+          <Label htmlFor="org-filter">Organisation</Label>
+          <Select value={organisationFilter} onValueChange={setOrganisationFilter}>
+            <SelectTrigger id="org-filter">
+              <SelectValue placeholder="All students" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All students</SelectItem>
+              <SelectItem value="direct">Direct (no organisation)</SelectItem>
+              {organisations.map((org) => (
+                <SelectItem key={org.id} value={org.id}>
+                  {org.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {organisationFilter !== "all" && (
+          <p className="text-sm text-muted-foreground pb-2">
+            {organisationFilter === "direct"
+              ? "Showing students enrolled directly by super admin."
+              : `Showing students for ${organisations.find((o) => o.id === organisationFilter)?.name ?? "selected organisation"}.`}
+          </p>
+        )}
+      </div>
 
       <DataTable
         columns={columns}
