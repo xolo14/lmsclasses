@@ -7,8 +7,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { ExternalLink, Play } from "lucide-react";
+import { Play } from "lucide-react";
+import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
+import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
 
 interface WatchRecordingModalProps {
   open: boolean;
@@ -18,47 +19,14 @@ interface WatchRecordingModalProps {
 }
 
 export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: WatchRecordingModalProps) {
-  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
-  const [isDirectVideo, setIsDirectVideo] = useState(false);
+  const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
 
   useEffect(() => {
     if (!videoUrl) {
-      setEmbedUrl(null);
-      setIsDirectVideo(false);
+      setEmbed(null);
       return;
     }
-
-    const trimmedUrl = videoUrl.trim();
-
-    // YouTube regex
-    const ytReg = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const ytMatch = trimmedUrl.match(ytReg);
-    if (ytMatch && ytMatch[2].length === 11) {
-      setEmbedUrl(`https://www.youtube.com/embed/${ytMatch[2]}?autoplay=1`);
-      setIsDirectVideo(false);
-      return;
-    }
-
-    // Vimeo regex
-    const vimeoReg = /vimeo\.com\/(?:video\/)?([0-9]+)/;
-    const vimeoMatch = trimmedUrl.match(vimeoReg);
-    if (vimeoMatch) {
-      setEmbedUrl(`https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`);
-      setIsDirectVideo(false);
-      return;
-    }
-
-    // Check direct video file types
-    const directVideoRegex = /\.(mp4|webm|ogg|mov|m4v)(?:\?.*)?$/i;
-    if (directVideoRegex.test(trimmedUrl)) {
-      setIsDirectVideo(true);
-      setEmbedUrl(trimmedUrl);
-      return;
-    }
-
-    // Fallback — standard URL link out
-    setEmbedUrl(null);
-    setIsDirectVideo(false);
+    setEmbed(resolveVideoEmbed(videoUrl, true));
   }, [videoUrl]);
 
   return (
@@ -72,45 +40,7 @@ export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: Wat
         </DialogHeader>
 
         <div className="relative aspect-video w-full bg-black flex items-center justify-center">
-          {embedUrl && !isDirectVideo ? (
-            <iframe
-              src={embedUrl}
-              title={`Class recording: ${title}`}
-              className="absolute inset-0 w-full h-full border-0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-            />
-          ) : isDirectVideo && embedUrl ? (
-            <video
-              src={embedUrl}
-              controls
-              controlsList="nodownload"
-              onContextMenu={(e) => e.preventDefault()}
-              autoPlay
-              className="w-full h-full object-contain"
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center p-8 text-center max-w-md">
-              <div className="h-16 w-16 rounded-full bg-slate-800 flex items-center justify-center mb-4 text-cyan-400 animate-pulse">
-                <ExternalLink className="h-8 w-8" />
-              </div>
-              <p className="text-base text-slate-300 font-medium mb-2">
-                External Link
-              </p>
-              <p className="text-sm text-slate-400 mb-6">
-                This recording link is external and cannot be embedded directly in the player.
-              </p>
-              <Button
-                asChild
-                className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold shadow-lg shadow-cyan-500/10 flex items-center gap-2"
-              >
-                <a href={videoUrl} target="_blank" rel="noopener noreferrer">
-                  <span>Open Link</span>
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-              </Button>
-            </div>
-          )}
+          <EmbeddedVideoPlayer embed={embed} videoUrl={videoUrl} title={`Class recording: ${title}`} autoPlay />
         </div>
       </DialogContent>
     </Dialog>

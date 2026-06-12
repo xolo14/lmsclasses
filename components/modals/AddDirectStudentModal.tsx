@@ -26,6 +26,7 @@ import {
   DirectStudentSchema,
   type DirectStudentInput,
 } from "@/lib/validations/super-admin-student";
+import { generatePassword } from "@/lib/razorpay";
 
 interface AddDirectStudentModalProps {
   isOpen: boolean;
@@ -91,19 +92,20 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
 
   useEffect(() => {
     if (isOpen) {
+      const generatedPassword = generatePassword(12);
       form.reset({
         name: "",
         email: "",
         phone: "",
-        password: "",
-        confirmPassword: "",
+        password: generatedPassword,
+        confirmPassword: generatedPassword,
         collegeName: "",
         directEnrollment: true,
         courseId: undefined,
         batchId: undefined,
       });
       setSubmitError(undefined);
-      setShowPassword(false);
+      setShowPassword(true);
     }
   }, [isOpen, form]);
 
@@ -124,12 +126,13 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
       if (!res.ok) {
         throw new Error(typeof json.error === "string" ? json.error : "Failed to create student");
       }
+      const generatedPassword = generatePassword(12);
       form.reset({
         name: "",
         email: "",
         phone: "",
-        password: "",
-        confirmPassword: "",
+        password: generatedPassword,
+        confirmPassword: generatedPassword,
         collegeName: "",
         directEnrollment: true,
         courseId: undefined,
@@ -154,7 +157,7 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" autoComplete="off">
           <div className="space-y-4">
             <p className="text-sm font-medium text-muted-foreground">Student Details</p>
 
@@ -168,7 +171,14 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
 
             <div className="space-y-2">
               <Label htmlFor="ds-email">Email Address</Label>
-              <Input id="ds-email" type="email" {...form.register("email")} />
+              <Input
+                id="ds-email"
+                type="email"
+                autoComplete="off"
+                readOnly
+                onFocus={(e) => e.target.removeAttribute("readonly")}
+                {...form.register("email")}
+              />
               {form.formState.errors.email && (
                 <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
               )}
@@ -184,10 +194,12 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
 
             <div className="space-y-2">
               <Label htmlFor="ds-password">Password</Label>
+              <p className="text-xs text-muted-foreground">Auto-generated — sent in the welcome email. You can edit before saving.</p>
               <div className="relative">
                 <Input
                   id="ds-password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
                   {...form.register("password")}
                   className="pr-10"
                 />
@@ -206,7 +218,12 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
 
             <div className="space-y-2">
               <Label htmlFor="ds-confirm">Confirm Password</Label>
-              <Input id="ds-confirm" type="password" {...form.register("confirmPassword")} />
+              <Input
+                id="ds-confirm"
+                type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
+                {...form.register("confirmPassword")}
+              />
               {form.formState.errors.confirmPassword && (
                 <p className="text-xs text-destructive">
                   {form.formState.errors.confirmPassword.message}

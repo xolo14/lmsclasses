@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { ExternalLink, Play, Film, AlertCircle } from "lucide-react";
+import { Play, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
+import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
 
 type Course = {
   id: string;
@@ -21,8 +22,7 @@ type Course = {
 
 export function DemosPage() {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
-  const [isDirectVideo, setIsDirectVideo] = useState(false);
+  const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
     queryKey: ["demos-courses"],
@@ -52,45 +52,12 @@ export function DemosPage() {
     }
   }, [demoCourses, selectedCourse]);
 
-  // Parse embed URL when the selected course changes
   useEffect(() => {
-    if (!selectedCourse || !selectedCourse.demoUrl) {
-      setEmbedUrl(null);
-      setIsDirectVideo(false);
+    if (!selectedCourse?.demoUrl) {
+      setEmbed(null);
       return;
     }
-
-    const trimmedUrl = selectedCourse.demoUrl.trim();
-
-    // YouTube regex
-    const ytReg = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const ytMatch = trimmedUrl.match(ytReg);
-    if (ytMatch && ytMatch[2].length === 11) {
-      setEmbedUrl(`https://www.youtube.com/embed/${ytMatch[2]}?autoplay=1`);
-      setIsDirectVideo(false);
-      return;
-    }
-
-    // Vimeo regex
-    const vimeoReg = /vimeo\.com\/(?:video\/)?([0-9]+)/;
-    const vimeoMatch = trimmedUrl.match(vimeoReg);
-    if (vimeoMatch) {
-      setEmbedUrl(`https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`);
-      setIsDirectVideo(false);
-      return;
-    }
-
-    // Check direct video file types
-    const directVideoRegex = /\.(mp4|webm|ogg|mov|m4v)(?:\?.*)?$/i;
-    if (directVideoRegex.test(trimmedUrl)) {
-      setIsDirectVideo(true);
-      setEmbedUrl(trimmedUrl);
-      return;
-    }
-
-    // Fallback
-    setEmbedUrl(null);
-    setIsDirectVideo(false);
+    setEmbed(resolveVideoEmbed(selectedCourse.demoUrl, true));
   }, [selectedCourse]);
 
   if (isLoading) {
@@ -122,43 +89,13 @@ export function DemosPage() {
           {/* Main Video Player section (Left side) */}
           <div className="lg:col-span-3 space-y-4">
             <div className="relative aspect-video w-full rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shadow-xl flex items-center justify-center">
-              {selectedCourse && embedUrl && !isDirectVideo ? (
-                <iframe
-                  src={embedUrl}
+              {selectedCourse ? (
+                <EmbeddedVideoPlayer
+                  embed={embed}
+                  videoUrl={selectedCourse.demoUrl || ""}
                   title={`Demo video for ${selectedCourse.title}`}
-                  className="absolute inset-0 w-full h-full border-0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              ) : selectedCourse && isDirectVideo && embedUrl ? (
-                <video
-                  key={selectedCourse.id}
-                  src={embedUrl}
-                  controls
-                  controlsList="nodownload"
-                  onContextMenu={(e) => e.preventDefault()}
                   autoPlay
-                  className="w-full h-full object-contain"
                 />
-              ) : selectedCourse ? (
-                <div className="flex flex-col items-center justify-center p-8 text-center max-w-md">
-                  <div className="h-16 w-16 rounded-full bg-slate-900 flex items-center justify-center mb-4 text-cyan-400">
-                    <ExternalLink className="h-8 w-8" />
-                  </div>
-                  <p className="text-base text-slate-300 font-medium mb-2">External Demo URL</p>
-                  <p className="text-sm text-slate-400 mb-6">
-                    This demo video is hosted externally and cannot be embedded directly in the player.
-                  </p>
-                  <Button
-                    asChild
-                    className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold shadow-lg shadow-cyan-500/10 flex items-center gap-2"
-                  >
-                    <a href={selectedCourse.demoUrl || ""} target="_blank" rel="noopener noreferrer">
-                      <span>Open Demo Video</span>
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </Button>
-                </div>
               ) : null}
             </div>
 

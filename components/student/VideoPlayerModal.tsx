@@ -7,7 +7,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getYouTubeEmbedUrl, isYouTubeUrl } from "@/lib/youtube";
+import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
+import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
 
 interface VideoPlayerModalProps {
   isOpen: boolean;
@@ -17,22 +18,18 @@ interface VideoPlayerModalProps {
 }
 
 export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlayerModalProps) {
-  const [embedSrc, setEmbedSrc] = useState<string | null>(null);
+  const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
 
   useEffect(() => {
     if (isOpen && videoUrl) {
-      if (isYouTubeUrl(videoUrl)) {
-        setEmbedSrc(getYouTubeEmbedUrl(videoUrl, true));
-      } else {
-        setEmbedSrc(videoUrl);
-      }
+      setEmbed(resolveVideoEmbed(videoUrl, true));
     } else {
-      setEmbedSrc(null);
+      setEmbed(null);
     }
   }, [isOpen, videoUrl]);
 
   const handleClose = () => {
-    setEmbedSrc(null);
+    setEmbed(null);
     onClose();
   };
 
@@ -43,19 +40,7 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
-          {embedSrc && isYouTubeUrl(videoUrl) && (
-            <iframe
-              key={embedSrc}
-              src={embedSrc}
-              title={title}
-              className="h-full w-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          )}
-          {embedSrc && !isYouTubeUrl(videoUrl) && (
-            <video key={embedSrc} src={embedSrc} controls autoPlay className="h-full w-full" />
-          )}
+          <EmbeddedVideoPlayer embed={embed} videoUrl={videoUrl} title={title} autoPlay />
         </div>
       </DialogContent>
     </Dialog>

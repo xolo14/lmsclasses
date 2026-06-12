@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Play, Plus, Pencil, Trash2 } from "lucide-react";
+import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ export default function LiveClassesPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editClass, setEditClass] = useState<LiveClass | undefined>();
+  const [watchRecording, setWatchRecording] = useState<{ url: string; title: string } | null>(null);
 
   const { data: activeClasses = [], isLoading: loadingActive } = useQuery<LiveClass[]>({
     queryKey: ["live-classes", "active"],
@@ -116,14 +118,18 @@ export default function LiveClassesPage() {
       header: "Recording",
       cell: ({ row }) =>
         row.original.recordingUrl ? (
-          <a
-            href={row.original.recordingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-primary hover:underline"
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setWatchRecording({
+                url: row.original.recordingUrl!,
+                title: row.original.title,
+              })
+            }
           >
-            View
-          </a>
+            <Play className="h-3 w-3 mr-1" /> Watch
+          </Button>
         ) : (
           "—"
         ),
@@ -187,6 +193,12 @@ export default function LiveClassesPage() {
         open={!!editClass}
         onOpenChange={(o) => !o && setEditClass(undefined)}
         liveClass={editClass}
+      />
+      <WatchRecordingModal
+        open={!!watchRecording}
+        onOpenChange={(open) => !open && setWatchRecording(null)}
+        videoUrl={watchRecording?.url ?? ""}
+        title={watchRecording?.title ?? ""}
       />
     </div>
   );

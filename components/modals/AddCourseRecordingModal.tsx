@@ -14,8 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { courseRecordingSchema } from "@/lib/validations/course-recording";
-import { getYouTubeEmbedUrl, isYouTubeUrl } from "@/lib/youtube";
+import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
 import type { CourseRecording } from "@/lib/db/schema";
 import { z } from "zod";
 
@@ -41,6 +42,7 @@ export function AddCourseRecordingModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
   const [previewUrl, setPreviewUrl] = useState("");
+  const [previewEmbed, setPreviewEmbed] = useState<ResolvedVideoEmbed | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(courseRecordingSchema),
@@ -84,7 +86,9 @@ export function AddCourseRecordingModal({
   const videoUrl = form.watch("videoUrl");
 
   useEffect(() => {
-    setPreviewUrl(videoUrl || "");
+    const url = videoUrl || "";
+    setPreviewUrl(url);
+    setPreviewEmbed(url ? resolveVideoEmbed(url) : null);
   }, [videoUrl]);
 
   const onSubmit = async (data: FormValues) => {
@@ -110,8 +114,6 @@ export function AddCourseRecordingModal({
     }
   };
 
-  const embed = previewUrl && isYouTubeUrl(previewUrl) ? getYouTubeEmbedUrl(previewUrl) : null;
-
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -128,13 +130,14 @@ export function AddCourseRecordingModal({
           <div className="space-y-2">
             <Label htmlFor="videoUrl">Video URL</Label>
             <Input id="videoUrl" {...form.register("videoUrl")} placeholder="https://..." />
-            {embed && (
-              <div className="aspect-video overflow-hidden rounded-lg border">
-                <iframe src={embed} title="Preview" className="h-full w-full" allowFullScreen />
+            {previewUrl && (
+              <div className="aspect-video overflow-hidden rounded-lg border bg-black">
+                <EmbeddedVideoPlayer
+                  embed={previewEmbed}
+                  videoUrl={previewUrl}
+                  title="Recording preview"
+                />
               </div>
-            )}
-            {previewUrl && !embed && (
-              <video src={previewUrl} controls className="w-full rounded-lg border" />
             )}
           </div>
 

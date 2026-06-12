@@ -5,7 +5,8 @@ import { format } from "date-fns";
 import { Check, Lock } from "lucide-react";
 import { getPublicCourseBySlug } from "@/lib/public-courses";
 import { EnrollmentCard } from "@/components/public/CourseDetailClient";
-import { getYouTubeEmbedUrl, isYouTubeUrl } from "@/lib/youtube";
+import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
+import { resolveVideoEmbed } from "@/lib/video-embed";
 
 export const revalidate = 60;
 
@@ -33,11 +34,8 @@ export default async function CourseDetailPage({
   if (!course) notFound();
 
   const price = parseFloat(course.price);
-  const embedUrl = course.demoVideoUrl
-    ? isYouTubeUrl(course.demoVideoUrl)
-      ? getYouTubeEmbedUrl(course.demoVideoUrl)
-      : course.demoVideoUrl
-    : null;
+  const demoUrl = course.demoVideoUrl;
+  const demoEmbed = demoUrl ? resolveVideoEmbed(demoUrl) : null;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -82,20 +80,11 @@ export default async function CourseDetailPage({
             </section>
           )}
 
-          {embedUrl && (
+          {demoUrl && (
             <section>
               <h2 className="mb-4 text-xl font-semibold">Course Preview</h2>
               <div className="aspect-video overflow-hidden rounded-lg bg-black">
-                {isYouTubeUrl(course.demoVideoUrl!) ? (
-                  <iframe
-                    src={embedUrl}
-                    title="Course preview"
-                    className="h-full w-full"
-                    allowFullScreen
-                  />
-                ) : (
-                  <video src={embedUrl} controls className="h-full w-full" />
-                )}
+                <EmbeddedVideoPlayer embed={demoEmbed} videoUrl={demoUrl} title="Course preview" />
               </div>
             </section>
           )}
