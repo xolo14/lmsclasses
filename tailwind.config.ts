@@ -28,6 +28,11 @@ const config: Config = {
           red: "#FF5A5F",
           purple: "#9B6BFF",
         },
+        gold: {
+          DEFAULT: "#C9A84C",
+          light: "#E0C878",
+          muted: "#8A7340",
+        },
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
@@ -68,7 +73,8 @@ const config: Config = {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["var(--font-geist)", "system-ui", "sans-serif"],
+        sans: ["var(--font-outfit)", "system-ui", "sans-serif"],
+        display: ["var(--font-dm-serif)", "Georgia", "serif"],
         mono: ["var(--font-jetbrains)", "monospace"],
       },
     },

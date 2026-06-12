@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { recordCourses, studentCourses, courseRecordings } from "@/lib/db/schema";
+import { resolveCourseThumbnailUrl } from "@/lib/course-thumbnail";
 import { backfillMissingRecordCourseSlugs } from "@/lib/slug";
 import { and, eq, isNull, sql, desc, count } from "drizzle-orm";
 
@@ -56,7 +57,7 @@ export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
       description: c.description,
       price: c.price,
       duration: c.duration,
-      thumbnailUrl: c.thumbnailUrl,
+      thumbnailUrl: resolveCourseThumbnailUrl(c.thumbnailUrl, mapDemoUrl(c)),
       level: c.level,
       language: c.language,
       totalHours: c.totalHours,
@@ -118,7 +119,7 @@ export async function getPublicCourseBySlug(slug: string) {
     description: course.description,
     price: course.price,
     duration: course.duration,
-    thumbnailUrl: course.thumbnailUrl,
+    thumbnailUrl: resolveCourseThumbnailUrl(course.thumbnailUrl, mapDemoUrl(course)),
     level: course.level,
     language: course.language,
     totalHours: course.totalHours,

@@ -23,6 +23,12 @@ export function isYouTubeUrl(url: string): boolean {
   return youtubeVideoId(url.trim()) !== null;
 }
 
+/** Static poster image for a YouTube watch/embed URL (card thumbnails). */
+export function getYouTubeThumbnailUrl(url: string): string | null {
+  const id = youtubeVideoId(url.trim());
+  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null;
+}
+
 export function isVimeoUrl(url: string): boolean {
   return vimeoVideoId(url.trim()) !== null;
 }

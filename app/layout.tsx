@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { GoogleAdsTag } from "@/components/analytics/GoogleAdsTag";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
-import { fontSans, fontMono } from "@/lib/fonts";
+import { fontSans, fontDisplay, fontMono } from "@/lib/fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -32,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${fontSans.variable} ${fontMono.variable}`}>
+    <html lang="en" className={`${fontSans.variable} ${fontDisplay.variable} ${fontMono.variable}`}>
       <body className="font-sans antialiased">
         <GoogleAdsTag />
         <AuthProvider>

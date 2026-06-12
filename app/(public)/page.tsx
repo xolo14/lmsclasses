@@ -1,124 +1,282 @@
-import Link from "next/link";
 import { getPublicCourses } from "@/lib/public-courses";
+
 import { FeaturedCoursesSection } from "@/components/public/FeaturedCoursesSection";
+
 import { LandingHero } from "@/components/public/LandingHero";
-import { Button } from "@/components/ui/button";
+
+import { LandingStatsBand } from "@/components/public/LandingStatsBand";
+
+import { LandingTestimonials } from "@/components/public/LandingTestimonials";
+
+import { LandingCta } from "@/components/public/LandingCta";
+
 import { BookOpen, Video, Briefcase, Award, Search, CreditCard, PlayCircle } from "lucide-react";
 
-export const revalidate = 300;
+
+
+export const revalidate = 60;
+
+
 
 export default async function LandingPage() {
+
   let courses: Awaited<ReturnType<typeof getPublicCourses>> = [];
+
   try {
+
     courses = await getPublicCourses();
+
   } catch (err) {
+
     console.error("[landing] getPublicCourses failed:", err);
+
   }
+
   const mapped = courses.map(({ demoVideoUrl: _d, ...c }) => ({
+
     ...c,
+
     description: c.description ?? "",
+
     price: parseFloat(c.price),
+
     level: c.level ?? "Beginner",
+
     language: c.language ?? "English",
+
     certificate: c.certificate ?? true,
+
     isFeatured: c.isFeatured ?? false,
+
     thumbnailUrl: c.thumbnailUrl ?? undefined,
+
     totalHours: c.totalHours ?? undefined,
+
     totalLectures: c.totalLectures ?? undefined,
+
   }));
 
+
+
   return (
+
     <>
+
       <LandingHero />
 
-      <section id="how-it-works" className="border-y border-bg-border bg-bg-card py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <h2 className="mb-12 text-center text-3xl font-bold">From Purchase to Learning in Minutes</h2>
-          <div className="grid gap-8 md:grid-cols-3">
-            {[
-              {
-                step: 1,
-                icon: Search,
-                title: "Choose Your Course",
-                desc: "Browse catalogue, view demos, check syllabus",
-              },
-              {
-                step: 2,
-                icon: CreditCard,
-                title: "Enroll & Pay",
-                desc: "One-click Razorpay checkout, secure payment",
-              },
-              {
-                step: 3,
-                icon: PlayCircle,
-                title: "Start Learning",
-                desc: "Instant access to live classes + recordings",
-              },
-            ].map((item) => (
-              <div key={item.step} className="relative text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-cyan text-lg font-bold text-bg-base">
-                  {item.step}
-                </div>
-                <item.icon className="mx-auto mb-3 h-8 w-8 text-brand-cyan" />
-                <h3 className="mb-2 font-semibold">{item.title}</h3>
-                <p className="text-sm text-text-muted">{item.desc}</p>
-              </div>
-            ))}
+      <LandingStatsBand />
+
+
+
+      <section id="how-it-works" className="bg-bg-base py-24 md:py-32">
+
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+          <div className="mb-14 text-center">
+
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cyan">
+
+              How it works
+
+            </p>
+
+            <h2 className="mt-3 font-display text-3xl text-text-primary md:text-4xl">
+
+              Learning shouldn&apos;t be complicated
+
+            </h2>
+
           </div>
+
+
+
+          <div className="grid gap-6 md:grid-cols-3">
+
+            {[
+
+              {
+
+                step: 1,
+
+                icon: Search,
+
+                title: "Choose your course",
+
+                desc: "Browse our catalogue, preview demos, and find the program that fits your goals.",
+
+              },
+
+              {
+
+                step: 2,
+
+                icon: CreditCard,
+
+                title: "Enroll securely",
+
+                desc: "One-click Razorpay checkout with instant confirmation and secure payment.",
+
+              },
+
+              {
+
+                step: 3,
+
+                icon: PlayCircle,
+
+                title: "Start learning",
+
+                desc: "Get immediate access to live classes, recordings, and your student portal.",
+
+              },
+
+            ].map((item) => (
+
+              <div
+
+                key={item.step}
+
+                className="relative overflow-hidden rounded-xl border border-bg-border bg-bg-card p-8 md:p-10"
+
+              >
+
+                <span
+
+                  className="pointer-events-none absolute -right-2 -top-4 select-none font-display text-[80px] italic leading-none text-text-primary/[0.08]"
+
+                  aria-hidden
+
+                >
+
+                  {item.step}
+
+                </span>
+
+                <item.icon className="mb-5 h-6 w-6 text-brand-cyan" />
+
+                <h3 className="mb-3 text-lg font-semibold text-text-primary">{item.title}</h3>
+
+                <p className="text-sm leading-relaxed text-text-muted">{item.desc}</p>
+
+              </div>
+
+            ))}
+
+          </div>
+
         </div>
+
       </section>
+
+
 
       <FeaturedCoursesSection courses={mapped} />
 
-      <section id="why-choose-us" className="bg-bg-card py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <h2 className="mb-12 text-center text-3xl font-bold">Why Choose Us</h2>
-          <div className="grid gap-6 sm:grid-cols-2">
-            {[
-              {
-                icon: Video,
-                title: "Live Interactive Classes",
-                desc: "Real-time learning with mentor Q&A",
-              },
-              {
-                icon: BookOpen,
-                title: "Lifetime Recordings",
-                desc: "Re-watch at any time, no expiry",
-              },
-              {
-                icon: Briefcase,
-                title: "Integrated Job Portal",
-                desc: "Apply to curated job openings after course completion",
-              },
-              {
-                icon: Award,
-                title: "Certificate on Completion",
-                desc: "Industry-recognised certificate",
-              },
-            ].map((f) => (
-              <div
-                key={f.title}
-                className="rounded-xl border border-bg-border border-l-4 border-l-brand-cyan bg-bg-base p-6"
-              >
-                <f.icon className="mb-3 h-8 w-8 text-brand-cyan" />
-                <h3 className="mb-2 font-semibold">{f.title}</h3>
-                <p className="text-sm text-text-muted">{f.desc}</p>
-              </div>
-            ))}
+
+
+      <section id="about" className="bg-bg-card py-24 md:py-32">
+
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+          <div className="mb-14 max-w-2xl">
+
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cyan">
+
+              Why LMS Classes
+
+            </p>
+
+            <h2 className="mt-3 font-display text-3xl text-text-primary md:text-4xl">
+
+              Built for people who learn by doing
+
+            </h2>
+
           </div>
+
+
+
+          <div className="grid gap-8 sm:grid-cols-2">
+
+            {[
+
+              {
+
+                icon: Video,
+
+                title: "Live interactive classes",
+
+                desc: "Real-time learning with mentor Q&A, project reviews, and peer collaboration.",
+
+              },
+
+              {
+
+                icon: BookOpen,
+
+                title: "Lifetime recordings",
+
+                desc: "Re-watch every session at your own pace — no expiry, no limits.",
+
+              },
+
+              {
+
+                icon: Briefcase,
+
+                title: "Integrated job portal",
+
+                desc: "Apply to curated openings from partner companies after course completion.",
+
+              },
+
+              {
+
+                icon: Award,
+
+                title: "Certificate on completion",
+
+                desc: "Industry-recognised credentials that validate your skills to employers.",
+
+              },
+
+            ].map((f) => (
+
+              <div key={f.title} className="flex gap-5">
+
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-bg-border bg-bg-base">
+
+                  <f.icon className="h-5 w-5 text-brand-cyan" />
+
+                </div>
+
+                <div>
+
+                  <h3 className="mb-2 font-semibold text-text-primary">{f.title}</h3>
+
+                  <p className="text-sm leading-relaxed text-text-muted">{f.desc}</p>
+
+                </div>
+
+              </div>
+
+            ))}
+
+          </div>
+
         </div>
+
       </section>
 
-      <section className="py-16">
-        <div className="mx-auto max-w-4xl rounded-2xl bg-gradient-to-r from-brand-cyan-dim to-brand-cyan px-6 py-12 text-center">
-          <h2 className="text-2xl font-bold text-bg-base md:text-3xl">
-            Ready to Start Your Career Journey?
-          </h2>
-          <Button asChild className="mt-6 bg-bg-base text-brand-cyan hover:bg-bg-card">
-            <Link href="/courses">Browse All Courses</Link>
-          </Button>
-        </div>
-      </section>
+
+
+      <LandingTestimonials />
+
+      <LandingCta />
+
     </>
+
   );
+
 }
+

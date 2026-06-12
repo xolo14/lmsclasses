@@ -9,8 +9,8 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   { href: "/courses", label: "Courses" },
-  { href: "/#how-it-works", label: "How it Works" },
-  { href: "/#why-choose-us", label: "About" },
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#about", label: "About" },
 ];
 
 export function Navbar() {
@@ -28,21 +28,21 @@ export function Navbar() {
       className={cn(
         "sticky top-0 z-50 border-b transition-all duration-300",
         scrolled
-          ? "border-bg-border/80 bg-bg-base/90 backdrop-blur-md"
-          : "border-transparent bg-transparent"
+          ? "border-bg-border/80 bg-bg-base/95 backdrop-blur-md"
+          : "border-transparent bg-bg-base/40 backdrop-blur-sm"
       )}
     >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="text-lg font-bold text-brand-cyan">
-          LMSClasses.com
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="font-display text-xl text-text-primary">
+          LMS Classes
         </Link>
 
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-10 md:flex">
           {navLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="text-sm text-text-secondary transition-colors hover:text-brand-cyan"
+              className="text-sm text-text-muted transition-colors hover:text-text-primary"
             >
               {link.label}
             </Link>
@@ -50,11 +50,19 @@ export function Navbar() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          <Button asChild variant="outline" className="border-bg-border text-slate-950 hover:bg-slate-100 hover:text-slate-950 font-semibold transition-colors">
+          <Button
+            asChild
+            variant="ghost"
+            className="text-sm font-medium text-text-secondary hover:bg-bg-card hover:text-text-primary"
+          >
             <Link href="/login">Login</Link>
           </Button>
-          <Button asChild className="bg-brand-cyan text-bg-base hover:bg-brand-cyan-light">
-            <Link href="/courses">Get Started</Link>
+          <Button
+            asChild
+            variant="outline"
+            className="border-bg-border bg-transparent text-sm font-medium text-text-primary hover:bg-bg-card"
+          >
+            <Link href="/hr/login">HR Login</Link>
           </Button>
         </div>
 
@@ -80,20 +88,24 @@ export function Navbar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileOpen(false)}
-                className="text-text-secondary hover:text-brand-cyan"
+                className="text-text-secondary hover:text-text-primary"
               >
                 {link.label}
               </Link>
             ))}
-            <Link href="/login" onClick={() => setMobileOpen(false)} className="text-text-secondary">
+            <Link
+              href="/login"
+              onClick={() => setMobileOpen(false)}
+              className="text-text-secondary hover:text-text-primary"
+            >
               Login
             </Link>
             <Link
-              href="/courses"
+              href="/hr/login"
               onClick={() => setMobileOpen(false)}
-              className="font-semibold text-brand-cyan"
+              className="font-medium text-text-primary"
             >
-              Get Started
+              HR Login
             </Link>
           </nav>
         </motion.div>
