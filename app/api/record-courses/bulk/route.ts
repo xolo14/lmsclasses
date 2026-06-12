@@ -4,6 +4,7 @@ import { recordCourses } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { courseSchema } from "@/lib/validations";
+import { ensureUniqueRecordCourseSlug } from "@/lib/slug";
 
 export const runtime = "nodejs";
 
@@ -31,12 +32,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Row ${i + 1}: ${formatted}` }, { status: 400 });
       }
 
+      const slug = await ensureUniqueRecordCourseSlug(parsed.data.title);
+
       parsedCourses.push({
         title: parsed.data.title,
         description: parsed.data.description,
         price: parsed.data.price.toString(),
         demoUrl: parsed.data.demoUrl,
         duration: parsed.data.duration,
+        slug,
         createdBy: session!.user.id,
       });
     }

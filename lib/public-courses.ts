@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { recordCourses, studentCourses, courseRecordings } from "@/lib/db/schema";
+import { backfillMissingRecordCourseSlugs } from "@/lib/slug";
 import { and, eq, isNull, sql, desc, count } from "drizzle-orm";
 
 export type PublicCourseListItem = {
@@ -24,6 +25,8 @@ function mapDemoUrl(course: { demoVideoUrl: string | null; demoUrl: string | nul
 }
 
 export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
+  await backfillMissingRecordCourseSlugs();
+
   const rows = await db
     .select({
       id: recordCourses.id,
@@ -46,9 +49,7 @@ export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
     .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)))
     .orderBy(desc(recordCourses.createdAt));
 
-  return rows
-    .filter((c) => c.slug)
-    .map((c) => ({
+  return rows.map((c) => ({
       id: c.id,
       title: c.title,
       slug: c.slug!,

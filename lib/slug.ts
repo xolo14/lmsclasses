@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { liveCourses, recordCourses } from "@/lib/db/schema";
-import { eq, isNull, and } from "drizzle-orm";
+import { eq, isNull, and, or } from "drizzle-orm";
 
 export function toSlug(title: string): string {
   return title
@@ -51,4 +51,27 @@ export async function ensureUniqueRecordCourseSlug(title: string, excludeId?: st
     candidate = `${base}-${suffix}`;
     suffix += 1;
   }
+}
+
+/** Assign URL slugs to record courses that were bulk-imported or migrated without one. */
+export async function backfillMissingRecordCourseSlugs() {
+  const missing = await db
+    .select({ id: recordCourses.id, title: recordCourses.title })
+    .from(recordCourses)
+    .where(
+      and(
+        isNull(recordCourses.deletedAt),
+        or(isNull(recordCourses.slug), eq(recordCourses.slug, ""))
+      )
+    );
+
+  for (const course of missing) {
+    const slug = await ensureUniqueRecordCourseSlug(course.title, course.id);
+    await db
+      .update(recordCourses)
+      .set({ slug, updatedAt: new Date() })
+      .where(eq(recordCourses.id, course.id));
+  }
+
+  return missing.length;
 }

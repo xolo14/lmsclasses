@@ -458,11 +458,25 @@ export async function PATCHRecordCourse(request: Request, id: string) {
   }
 
   const { price, courseType, ...rest } = parsed.data;
-  const updateData = {
+  const updateData: Record<string, unknown> = {
     ...rest,
     ...(price !== undefined && { price: price.toString() }),
     updatedAt: new Date(),
   };
+
+  const [existing] = await db
+    .select({ slug: recordCourses.slug, title: recordCourses.title })
+    .from(recordCourses)
+    .where(eq(recordCourses.id, id))
+    .limit(1);
+
+  if (existing && !existing.slug) {
+    const { ensureUniqueRecordCourseSlug } = await import("@/lib/slug");
+    updateData.slug = await ensureUniqueRecordCourseSlug(
+      (rest.title as string | undefined) ?? existing.title,
+      id
+    );
+  }
 
   const [course] = await db
     .update(recordCourses)
