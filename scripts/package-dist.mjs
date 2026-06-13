@@ -47,12 +47,12 @@ Hostinger Node.js start command:
 Required: set all environment variables in hPanel (DATABASE_URL, AUTH_SECRET, NEXTAUTH_URL, etc.)
 Do NOT upload .env.local with secrets to public folders — use Hostinger env settings.
 
-Uploads (course images, HR logos, resumes) — persistent storage in public_html:
-  1. In hPanel File Manager, create: public_html/uploads
-  2. Set env var (replace USER with your Hostinger username):
-     UPLOADS_DIR=/home/USER/domains/lmsclasses.com/public_html/uploads
-  3. Ensure the Node app user can write to that folder (chmod 755 or 775)
-  Files are served at https://your-domain/uploads/... (not from the app bundle)
+Uploads (course images, HR logos, resumes) — stored outside public/:
+  Default path: {nodejs}/uploads/  (sibling to public/, survives redeploys better)
+  Optional override in hPanel:
+    UPLOADS_DIR=/home/USER/domains/lmsclasses.com/nodejs/uploads
+  Subfolders created automatically: course-thumbnails, hr-logos, resumes
+  Served by the app at https://your-domain/uploads/...
 
 Razorpay (live payments — NOT mock):
   RAZORPAY_KEY_ID=rzp_test_... or rzp_live_...

@@ -38,6 +38,6 @@ next-env.d.ts
 # drizzle
 /drizzle
 
-# user uploads (local dev)
-/public/uploads/**
-!/public/uploads/.gitkeep
+# user uploads (outside public/)
+/uploads/**
+!/uploads/.gitkeep

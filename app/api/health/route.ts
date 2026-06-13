@@ -124,11 +124,11 @@ export async function GET() {
     uploadsError = err instanceof Error ? err.message : "Uploads directory not writable";
     if (!process.env.UPLOADS_DIR?.trim()) {
       warnings.push(
-        "UPLOADS_DIR not set — uploads go to ./public/uploads inside the app bundle (lost on redeploy). On Hostinger set UPLOADS_DIR to public_html/uploads."
+        "UPLOADS_DIR not set — uploads use ./uploads next to server.js (outside public/). Set UPLOADS_DIR to override."
       );
     } else {
       warnings.push(
-        `Uploads directory not writable: ${uploadsRoot}. Create public_html/uploads in File Manager and check folder permissions.`
+        `Uploads directory not writable: ${uploadsRoot}. Create the uploads folder and check permissions (chmod 755).`
       );
     }
   }
