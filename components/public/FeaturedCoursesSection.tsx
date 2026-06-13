@@ -9,7 +9,7 @@ type Course = CourseCardProps & { isFeatured?: boolean };
 export function FeaturedCoursesSection({ courses }: { courses: Course[] }) {
   const courseList = Array.isArray(courses) ? courses : [];
   const featured = courseList.filter((c) => c.isFeatured);
-  const base = featured.length > 0 ? featured.slice(0, 6) : courseList.slice(0, 6);
+  const base = featured.length > 0 ? featured.slice(0, 20) : courseList.slice(0, 20);
 
   return (
     <section id="courses-section" className="bg-bg-base pb-12 pt-6 md:pb-16 md:pt-8">
@@ -32,7 +32,7 @@ export function FeaturedCoursesSection({ courses }: { courses: Course[] }) {
           </Link>
         </div>
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {base.map((course) => (
             <CourseCard key={course.id} {...course} variant="editorial" />
           ))}
