@@ -64,15 +64,17 @@ export default async function LandingPage() {
 
       <LandingHero />
 
+      <FeaturedCoursesSection courses={mapped} />
+
       <LandingStatsBand />
 
 
 
-      <section id="how-it-works" className="bg-bg-base py-24 md:py-32">
+      <section id="how-it-works" className="bg-bg-base py-12 md:py-16">
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
-          <div className="mb-14 text-center">
+          <div className="mb-8 text-center">
 
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cyan">
 
@@ -170,15 +172,11 @@ export default async function LandingPage() {
 
 
 
-      <FeaturedCoursesSection courses={mapped} />
-
-
-
-      <section id="about" className="bg-bg-card py-24 md:py-32">
+      <section id="about" className="bg-bg-card py-12 md:py-16">
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
-          <div className="mb-14 max-w-2xl">
+          <div className="mb-8 max-w-2xl">
 
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cyan">
 

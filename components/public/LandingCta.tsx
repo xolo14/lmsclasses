@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react";
 
 export function LandingCta() {
   return (
-    <section className="bg-bg-base py-24 md:py-32">
+    <section className="bg-bg-base py-12 md:py-16">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid items-center gap-10 rounded-2xl border border-bg-border bg-bg-card px-8 py-12 md:grid-cols-2 md:gap-16 md:px-14 md:py-16">
           <div>

@@ -18,7 +18,7 @@ export function LandingHero() {
   const studentCount = settings?.hero_card_student_count ?? "500+";
 
   return (
-    <section className="relative overflow-hidden pb-8 pt-16 md:pb-12 md:pt-24 lg:pt-28">
+    <section className="relative overflow-hidden pb-4 pt-8 md:pb-6 md:pt-12 lg:pt-14">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(0,194,224,0.08),transparent)]" />
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

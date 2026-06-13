@@ -13,7 +13,7 @@ export function LandingStatsBand() {
           <div
             key={stat.label}
             className={[
-              "flex flex-col items-center justify-center px-6 py-10 text-center md:py-14",
+              "flex flex-col items-center justify-center px-6 py-5 text-center md:py-7",
               i % 2 === 0 ? "border-r border-bg-border" : "",
               i < 2 ? "border-b border-bg-border lg:border-b-0" : "",
               i < 3 ? "lg:border-r lg:border-bg-border" : "",

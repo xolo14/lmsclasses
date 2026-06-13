@@ -12,9 +12,9 @@ export function FeaturedCoursesSection({ courses }: { courses: Course[] }) {
   const base = featured.length > 0 ? featured.slice(0, 6) : courseList.slice(0, 6);
 
   return (
-    <section id="courses-section" className="bg-bg-base py-24 md:py-32">
+    <section id="courses-section" className="bg-bg-base pb-12 pt-6 md:pb-16 md:pt-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="mb-14 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cyan">
               Our courses
