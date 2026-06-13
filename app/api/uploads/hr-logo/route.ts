@@ -1,8 +1,7 @@
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
+import { saveUploadFile } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
@@ -35,10 +34,8 @@ export async function POST(request: Request) {
 
   const ext = extensionFor(file.type);
   const safeName = `${session!.user.id}-${Date.now()}-${randomUUID()}.${ext}`;
-  const uploadDir = path.join(process.cwd(), "public", "uploads", "hr-logos");
-  await mkdir(uploadDir, { recursive: true });
   const bytes = Buffer.from(await file.arrayBuffer());
-  await writeFile(path.join(uploadDir, safeName), bytes);
+  const { url } = await saveUploadFile("hr-logos", safeName, bytes);
 
-  return NextResponse.json({ url: `/uploads/hr-logos/${safeName}` });
+  return NextResponse.json({ url });
 }

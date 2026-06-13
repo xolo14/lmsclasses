@@ -1,9 +1,12 @@
+import { access, mkdir } from "fs/promises";
+import { constants } from "fs";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { isNull, sql } from "drizzle-orm";
 import { useSecureCookies } from "@/lib/auth.config";
 import { getAppUrl } from "@/lib/app-url";
+import { getUploadsRootDir } from "@/lib/uploads";
 import {
   isRazorpayConfigured,
   getRazorpayKeyId,
@@ -110,6 +113,26 @@ export async function GET() {
 
   const razorpayOk = isRazorpayConfigured();
 
+  const uploadsRoot = getUploadsRootDir();
+  let uploadsWritable = false;
+  let uploadsError: string | null = null;
+  try {
+    await mkdir(uploadsRoot, { recursive: true });
+    await access(uploadsRoot, constants.W_OK);
+    uploadsWritable = true;
+  } catch (err) {
+    uploadsError = err instanceof Error ? err.message : "Uploads directory not writable";
+    if (!process.env.UPLOADS_DIR?.trim()) {
+      warnings.push(
+        "UPLOADS_DIR not set — uploads go to ./public/uploads inside the app bundle (lost on redeploy). On Hostinger set UPLOADS_DIR to public_html/uploads."
+      );
+    } else {
+      warnings.push(
+        `Uploads directory not writable: ${uploadsRoot}. Create public_html/uploads in File Manager and check folder permissions.`
+      );
+    }
+  }
+
   let emailOk = false;
   if (isSmtpConfigured()) {
     emailOk = smtpConnected;
@@ -155,6 +178,13 @@ export async function GET() {
       smtpPort,
       smtpConnected: isSmtpConfigured() ? smtpConnected : null,
       smtpError,
+    },
+    uploads: {
+      rootDir: uploadsRoot,
+      configured: !!process.env.UPLOADS_DIR?.trim(),
+      writable: uploadsWritable,
+      error: uploadsError,
+      publicUrlExample: `${appUrl}/uploads/course-thumbnails/example.jpg`,
     },
   });
 }
