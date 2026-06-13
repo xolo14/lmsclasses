@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RegistrationModal } from "@/components/public/RegistrationModal";
+import { trackGoogleAdsPurchase } from "@/lib/google-ads";
 import type { StudentRegistrationInput } from "@/lib/validations/public-enrollment";
 
 type FlowState =
@@ -146,6 +147,7 @@ export function EnrollmentFlow({ courseId, courseTitle, price, trigger }: Enroll
       setDoneEmail(data.user.email);
       setDoneLmsId(data.user.lmsId);
       setState("DONE");
+      trackGoogleAdsPurchase(paymentData.razorpayPaymentId);
     } catch {
       setBannerError(
         `Account creation failed. Your payment was recorded. Contact support with payment ID: ${paymentData.razorpayPaymentId}`

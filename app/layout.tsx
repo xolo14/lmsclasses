@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import { GoogleAdsTag } from "@/components/analytics/GoogleAdsTag";
+import {
+  GoogleTagManagerHead,
+  GoogleTagManagerNoscript,
+} from "@/components/analytics/GoogleTagManager";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { fontSans, fontDisplay, fontMono } from "@/lib/fonts";
@@ -33,7 +37,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${fontSans.variable} ${fontDisplay.variable} ${fontMono.variable}`}>
+      <head>
+        <GoogleTagManagerHead />
+      </head>
       <body className="font-sans antialiased">
+        <GoogleTagManagerNoscript />
         <GoogleAdsTag />
         <AuthProvider>
           <QueryProvider>{children}</QueryProvider>
