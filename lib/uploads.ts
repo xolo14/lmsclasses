@@ -1,7 +1,12 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
-export type UploadCategory = "course-thumbnails" | "hr-logos" | "resumes";
+export type UploadCategory =
+  | "course-thumbnails"
+  | "hr-logos"
+  | "resumes"
+  | "live-classes"
+  | "record-classes";
 
 /** URL path prefix — served by app/uploads/[...path]/route.ts */
 export const UPLOADS_URL_PREFIX = "/uploads";
@@ -10,6 +15,8 @@ const ALLOWED_CATEGORIES = new Set<UploadCategory>([
   "course-thumbnails",
   "hr-logos",
   "resumes",
+  "live-classes",
+  "record-classes",
 ]);
 
 /**

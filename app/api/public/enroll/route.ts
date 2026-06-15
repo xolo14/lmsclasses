@@ -7,6 +7,7 @@ import { PublicEnrollmentSchema } from "@/lib/validations/public-enrollment";
 import { verifySignature } from "@/lib/razorpay";
 import { logAction, getClientIp } from "@/lib/audit";
 import { sendWelcomeEmail } from "@/lib/email";
+import { generatePaymentInvoice } from "@/lib/invoice";
 import { buildSessionSetCookieHeader } from "@/lib/session-token";
 import { getAppUrl } from "@/lib/app-url";
 
@@ -109,6 +110,7 @@ export async function POST(request: Request) {
     let lmsId = generatePublicLmsId();
 
     let student: typeof users.$inferSelect | undefined;
+    let paymentId: string | undefined;
 
     try {
       student = await db.transaction(async (tx) => {
@@ -134,35 +136,43 @@ export async function POST(request: Request) {
           enrollmentSource: "public",
         });
 
-        await tx.insert(payments).values({
-          organisationId: null,
-          liveCourseId: null,
-          recordCourseId: enrolledCourseId,
-          adminId: null,
-          amount,
-          slotsCount: 1,
-          razorpayOrderId: paymentData.razorpayOrderId,
-          razorpayPaymentId: paymentData.razorpayPaymentId,
-          status: "success",
-        });
+        const [paymentRow] = await tx
+          .insert(payments)
+          .values({
+            organisationId: null,
+            liveCourseId: null,
+            recordCourseId: enrolledCourseId,
+            adminId: null,
+            amount,
+            slotsCount: 1,
+            razorpayOrderId: paymentData.razorpayOrderId,
+            razorpayPaymentId: paymentData.razorpayPaymentId,
+            status: "success",
+          })
+          .returning({ id: payments.id });
 
+        paymentId = paymentRow?.id;
         paymentRecorded = true;
         return newStudent;
       });
     } catch (txErr) {
       console.error("[public/enroll] transaction failed:", txErr);
       try {
-        await db.insert(payments).values({
-          organisationId: null,
-          liveCourseId: null,
-          recordCourseId: enrolledCourseId,
-          adminId: null,
-          amount,
-          slotsCount: 1,
-          razorpayOrderId: paymentData.razorpayOrderId,
-          razorpayPaymentId: paymentData.razorpayPaymentId,
-          status: "success",
-        });
+        const [paymentRow] = await db
+          .insert(payments)
+          .values({
+            organisationId: null,
+            liveCourseId: null,
+            recordCourseId: enrolledCourseId,
+            adminId: null,
+            amount,
+            slotsCount: 1,
+            razorpayOrderId: paymentData.razorpayOrderId,
+            razorpayPaymentId: paymentData.razorpayPaymentId,
+            status: "success",
+          })
+          .returning({ id: payments.id });
+        paymentId = paymentRow?.id;
         paymentRecorded = true;
       } catch (payErr) {
         console.error("[public/enroll] payment record failed:", payErr);
@@ -189,6 +199,19 @@ export async function POST(request: Request) {
     });
 
     try {
+      let invoice:
+        | Awaited<ReturnType<typeof generatePaymentInvoice>>
+        | null = null;
+      if (paymentId) {
+        try {
+          invoice = await generatePaymentInvoice(paymentId, {
+            customerName: studentData.name,
+          });
+        } catch (invoiceErr) {
+          console.error("[public/enroll] invoice generation failed:", invoiceErr);
+        }
+      }
+
       await sendWelcomeEmail({
         to: email,
         name: studentData.name,
@@ -196,6 +219,10 @@ export async function POST(request: Request) {
         password: plainPassword,
         courseTitle: course.title,
         loginUrl: `${getAppUrl()}/login`,
+        invoiceUrl: invoice?.absoluteUrl,
+        invoiceAttachment: invoice
+          ? { filename: invoice.filename, content: invoice.pdfBuffer }
+          : undefined,
       });
     } catch (err) {
       console.error("[public/enroll] welcome email failed:", err);

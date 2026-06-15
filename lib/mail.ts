@@ -85,6 +85,11 @@ export type SendMailPayload = {
   html: string;
   text?: string;
   from?: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+  }>;
 };
 
 export type DeliverEmailResult = {
@@ -124,6 +129,11 @@ export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEma
           subject: payload.subject,
           html: payload.html,
           text: payload.text,
+          attachments: payload.attachments?.map((a) => ({
+            filename: a.filename,
+            content: a.content,
+            contentType: a.contentType ?? "application/pdf",
+          })),
         });
         cachedTransport = transport;
         console.log("[Email] Sent via SMTP", { to, port, secure });
@@ -149,6 +159,10 @@ export async function deliverEmail(payload: SendMailPayload): Promise<DeliverEma
         subject: payload.subject,
         html: payload.html,
         text: payload.text,
+        attachments: payload.attachments?.map((a) => ({
+          filename: a.filename,
+          content: a.content.toString("base64"),
+        })),
       });
       if (res.error) {
         throw new Error(res.error.message || "Resend failed to send email");

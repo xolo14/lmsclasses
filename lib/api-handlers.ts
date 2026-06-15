@@ -14,6 +14,7 @@ import {
   liveClasses,
   auditLogs,
   jobApplications,
+  courseLeads,
 } from "@/lib/db/schema";
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
@@ -1543,12 +1544,17 @@ export async function GETPayments(request: Request) {
   const cursor = searchParams.get("cursor");
   const limit = searchParams.get("limit") || "50";
   const limitNum = Math.min(parseInt(limit), 100);
+  const type = searchParams.get("type");
 
   const conditions = [];
   const isOrgAdmin = session!.user.role === "org_admin" && session!.user.organisationId;
   if (isOrgAdmin) {
     conditions.push(eq(payments.organisationId, session!.user.organisationId!));
     conditions.push(isNotNull(payments.liveCourseId));
+  } else if (type === "live") {
+    conditions.push(isNotNull(payments.liveCourseId));
+  } else if (type === "record") {
+    conditions.push(isNotNull(payments.recordCourseId));
   }
 
   if (cursor) {
@@ -1563,6 +1569,7 @@ export async function GETPayments(request: Request) {
       status: payments.status,
       razorpayOrderId: payments.razorpayOrderId,
       razorpayPaymentId: payments.razorpayPaymentId,
+      invoiceUrl: payments.invoiceUrl,
       createdAt: payments.createdAt,
       courseTitle: sql<string | null>`coalesce(${liveCourses.title}, ${recordCourses.title})`,
       orgName: organisations.name,
@@ -1575,6 +1582,42 @@ export async function GETPayments(request: Request) {
     .leftJoin(users, eq(payments.adminId, users.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(payments.createdAt))
+    .limit(limitNum + 1);
+
+  const hasNextPage = result.length > limitNum;
+  const data = hasNextPage ? result.slice(0, limitNum) : result;
+  const nextCursor = hasNextPage && data.length ? data[data.length - 1].createdAt?.toISOString() : null;
+
+  return NextResponse.json({ data, nextCursor, hasNextPage });
+}
+
+// ============ COURSE LEADS ============
+export async function GETCourseLeads(request: Request) {
+  const { error } = await requireAuth(["super_admin"]);
+  if (error) return error;
+
+  const { searchParams } = new URL(request.url);
+  const cursor = searchParams.get("cursor");
+  const limit = searchParams.get("limit") || "50";
+  const limitNum = Math.min(parseInt(limit), 100);
+
+  const conditions = [];
+  if (cursor) {
+    conditions.push(sql`${courseLeads.createdAt} < ${new Date(cursor)}`);
+  }
+
+  const result = await db
+    .select({
+      id: courseLeads.id,
+      name: courseLeads.name,
+      phone: courseLeads.phone,
+      courseSlug: courseLeads.courseSlug,
+      courseTitle: courseLeads.courseTitle,
+      createdAt: courseLeads.createdAt,
+    })
+    .from(courseLeads)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(courseLeads.createdAt))
     .limit(limitNum + 1);
 
   const hasNextPage = result.length > limitNum;

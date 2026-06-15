@@ -17,12 +17,29 @@ async function sendEmail(payload: {
   html: string;
   text?: string;
   from?: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+  }>;
 }) {
   const result = await deliverEmail(payload);
   if (!result.ok) {
     throw new Error(result.error ?? "Failed to send email");
   }
   return result;
+}
+
+function invoiceEmailBlock(invoiceUrl?: string): string {
+  if (!invoiceUrl) return "";
+  return `
+        <div style="background-color: #f0fdf4; border-left: 4px solid #16a34a; padding: 16px; margin: 20px 0; border-radius: 6px;">
+          <h3 style="margin: 0 0 8px 0; color: #0f172a; font-size: 16px;">Payment Invoice</h3>
+          <p style="margin: 0 0 12px 0; color: #475569; font-size: 14px; line-height: 1.5;">
+            Your invoice is attached to this email. You can also download it using the link below.
+          </p>
+          <a href="${escapeHtml(invoiceUrl)}" style="color: #0f766e; font-weight: bold; text-decoration: none;">Download invoice (PDF)</a>
+        </div>`;
 }
 
 export type WelcomeEmailResult = {
@@ -125,6 +142,8 @@ export async function sendWelcomeEmail({
   password,
   courseTitle,
   loginUrl: loginUrlOverride,
+  invoiceUrl,
+  invoiceAttachment,
 }: {
   to: string;
   name: string;
@@ -132,6 +151,8 @@ export async function sendWelcomeEmail({
   password: string;
   courseTitle?: string;
   loginUrl?: string;
+  invoiceUrl?: string;
+  invoiceAttachment?: { filename: string; content: Buffer };
 }) {
   const safeEmail = to.trim().toLowerCase();
   const loginUrl = loginUrlOverride ?? `${appUrl}/login`;
@@ -161,13 +182,16 @@ export async function sendWelcomeEmail({
         </p>`;
 
   const textBody = courseTitle
-    ? `Welcome, ${name}!\n\nYou've been enrolled in: ${courseTitle}\n\nLMS ID: ${lmsId}\nEmail: ${safeEmail}\nPassword: ${password}\n\nLogin: ${loginUrl}`
+    ? `Welcome, ${name}!\n\nYou've been enrolled in: ${courseTitle}\n\nLMS ID: ${lmsId}\nEmail: ${safeEmail}\nPassword: ${password}\n\nLogin: ${loginUrl}${invoiceUrl ? `\n\nInvoice: ${invoiceUrl}` : ""}`
     : `Welcome, ${name}!\n\nYour student account is ready. Log in and browse courses at any time.\n\nLMS ID: ${lmsId}\nEmail: ${safeEmail}\nPassword: ${password}\n\nLogin: ${loginUrl}`;
 
   return sendEmail({
     to: safeEmail,
     subject,
     text: textBody,
+    attachments: invoiceAttachment
+      ? [{ filename: invoiceAttachment.filename, content: invoiceAttachment.content }]
+      : undefined,
     html: `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1a202c;">
         <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
@@ -176,6 +200,7 @@ export async function sendWelcomeEmail({
         
         ${intro}
         ${courseBlock}
+        ${invoiceEmailBlock(invoiceUrl)}
 
         <div style="background-color: #f8fafc; border-left: 4px solid #0f766e; padding: 16px; margin: 20px 0; border-radius: 6px;">
           <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px;">Student Credentials</h3>
@@ -456,6 +481,8 @@ export async function sendSlotPurchaseEmail({
   slotsCount,
   amount,
   paymentId,
+  invoiceUrl,
+  invoiceAttachment,
 }: {
   email: string;
   adminName: string;
@@ -464,12 +491,17 @@ export async function sendSlotPurchaseEmail({
   slotsCount: number;
   amount: string;
   paymentId: string;
+  invoiceUrl?: string;
+  invoiceAttachment?: { filename: string; content: Buffer };
 }) {
   const loginUrl = `${appUrl}/org-admin`;
 
   return sendEmail({
     to: email.trim().toLowerCase(),
     subject: `Slots Purchased Successfully — LMS Classes`,
+    attachments: invoiceAttachment
+      ? [{ filename: invoiceAttachment.filename, content: invoiceAttachment.content }]
+      : undefined,
     html: `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1a202c;">
         <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
@@ -494,6 +526,8 @@ export async function sendSlotPurchaseEmail({
           </ul>
         </div>
 
+        ${invoiceEmailBlock(invoiceUrl)}
+
         <p style="font-size: 16px; line-height: 1.5; color: #334155;">
           You can now start adding students to this course from your administrator dashboard.
         </p>
@@ -503,7 +537,7 @@ export async function sendSlotPurchaseEmail({
         </div>
 
         <div style="color: #64748b; font-size: 13px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 32px; line-height: 1.6;">
-          If you have any questions or require an official invoice, please reach out to support.
+          If you have any questions, please contact support.
         </div>
         <div style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 12px;">
           — LMS Classes (info@lmsclasses.com)

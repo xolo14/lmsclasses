@@ -1,9 +1,5 @@
 import type { Metadata } from "next";
-import { GoogleAdsTag } from "@/components/analytics/GoogleAdsTag";
-import {
-  GoogleTagManagerHead,
-  GoogleTagManagerNoscript,
-} from "@/components/analytics/GoogleTagManager";
+import { Analytics } from "@/components/analytics/Analytics";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { fontSans, fontDisplay, fontMono } from "@/lib/fonts";
@@ -16,9 +12,7 @@ export const metadata: Metadata = {
   },
   description: "Learning Management System",
   icons: {
-    icon: [
-      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
-    ],
+    icon: [{ url: "/favicon.png", sizes: "32x32", type: "image/png" }],
     apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/site.webmanifest",
@@ -37,12 +31,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${fontSans.variable} ${fontDisplay.variable} ${fontMono.variable}`}>
-      <head>
-        <GoogleTagManagerHead />
-      </head>
       <body className="font-sans antialiased">
-        <GoogleTagManagerNoscript />
-        <GoogleAdsTag />
+        <Analytics />
         <AuthProvider>
           <QueryProvider>{children}</QueryProvider>
         </AuthProvider>

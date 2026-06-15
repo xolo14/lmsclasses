@@ -203,6 +203,7 @@ export const payments = pgTable("payments", {
   discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }),
   razorpayOrderId: text("razorpay_order_id"),
   razorpayPaymentId: text("razorpay_payment_id"),
+  invoiceUrl: text("invoice_url"),
   status: paymentStatusEnum("status").default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
@@ -429,6 +430,17 @@ export const systemSettings = pgTable("system_settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const courseLeads = pgTable("course_leads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  phone: text("phone").notNull(),
+  courseSlug: text("course_slug").notNull(),
+  courseTitle: text("course_title").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("course_leads_created_at_idx").on(table.createdAt),
+]);
+
 export type User = typeof users.$inferSelect;
 export type Organisation = typeof organisations.$inferSelect;
 export type LiveCourse = typeof liveCourses.$inferSelect;
@@ -448,5 +460,6 @@ export type HrEmailVerification = typeof hrEmailVerifications.$inferSelect;
 export type JobPosting = typeof jobPostings.$inferSelect;
 export type JobApplication = typeof jobApplications.$inferSelect;
 export type Coupon = typeof coupons.$inferSelect;
+export type CourseLead = typeof courseLeads.$inferSelect;
 export type SystemSetting = typeof systemSettings.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];

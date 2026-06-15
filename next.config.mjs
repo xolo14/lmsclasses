@@ -7,6 +7,7 @@ const withBundleAnalyzer = bundleAnalyzer({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   ...(process.env.BUILD_STANDALONE === "1" ? { output: "standalone" } : {}),
+  serverExternalPackages: ["pdfkit"],
   poweredByHeader: false,
   compress: true,
   images: {
@@ -38,6 +39,10 @@ const nextConfig = {
       {
         source: "/lms-logo.jpg",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+      {
+        source: "/uploads/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }],
       },
       {
         source: "/site.webmanifest",

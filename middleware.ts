@@ -59,5 +59,11 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon$|apple-icon$|.*\\..*).*)"],
+  matcher: [
+    /*
+     * Skip static assets, Next internals, and uploaded files.
+     * Avoid running auth middleware on paths that must return raw bytes/HTML.
+     */
+    "/((?!_next/static|_next/image|_next/webpack-hmr|favicon.ico|icon|apple-icon|uploads|.*\\..*).*)",
+  ],
 };

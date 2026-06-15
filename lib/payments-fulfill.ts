@@ -4,6 +4,7 @@ import { payments, slots, coupons, organisations, liveCourses, users } from "@/l
 import { logAction } from "@/lib/audit";
 import type { Role } from "@/lib/db/schema";
 import { trySendWelcomeEmail, sendSlotPurchaseEmail } from "@/lib/email";
+import { generatePaymentInvoice } from "@/lib/invoice";
 
 export async function fulfillSlotPurchase(
   paymentId: string,
@@ -103,6 +104,16 @@ export async function fulfillSlotPurchase(
       }
 
       if (adminEmail) {
+        let invoice: Awaited<ReturnType<typeof generatePaymentInvoice>> | null = null;
+        try {
+          invoice = await generatePaymentInvoice(paymentId, {
+            customerName: adminName,
+            orgName: org.name,
+          });
+        } catch (invoiceErr) {
+          console.error("[FulfillPayment] invoice generation failed:", invoiceErr);
+        }
+
         await trySendWelcomeEmail("slot purchase email", () =>
           sendSlotPurchaseEmail({
             email: adminEmail!,
@@ -112,6 +123,10 @@ export async function fulfillSlotPurchase(
             slotsCount: payment.slotsCount,
             amount: payment.amount,
             paymentId: payment.id,
+            invoiceUrl: invoice?.absoluteUrl,
+            invoiceAttachment: invoice
+              ? { filename: invoice.filename, content: invoice.pdfBuffer }
+              : undefined,
           })
         );
       }

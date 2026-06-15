@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { RegistrationModal } from "@/components/public/RegistrationModal";
 import { trackGoogleAdsPurchase } from "@/lib/google-ads";
+import { trackMetaPurchase } from "@/lib/meta-pixel";
 import type { StudentRegistrationInput } from "@/lib/validations/public-enrollment";
 
 type FlowState =
@@ -148,6 +149,7 @@ export function EnrollmentFlow({ courseId, courseTitle, price, trigger }: Enroll
       setDoneLmsId(data.user.lmsId);
       setState("DONE");
       trackGoogleAdsPurchase(paymentData.razorpayPaymentId);
+      trackMetaPurchase(paymentData.razorpayPaymentId, price);
     } catch {
       setBannerError(
         `Account creation failed. Your payment was recorded. Contact support with payment ID: ${paymentData.razorpayPaymentId}`
