@@ -55,6 +55,7 @@ export async function sendInteraktTemplateMessage(opts: {
   phoneNumber: string;
   countryCode?: string;
   bodyValues: string[];
+  buttonValues?: Record<string, string[]>;
   callbackData?: string;
   templateName?: string;
   languageCode?: string;
@@ -84,6 +85,7 @@ export async function sendInteraktTemplateMessage(opts: {
           name: templateName,
           languageCode,
           bodyValues: opts.bodyValues,
+          ...(opts.buttonValues ? { buttonValues: opts.buttonValues } : {}),
         },
       }),
     });
@@ -136,6 +138,13 @@ function formatScheduledAt(scheduledAt: Date | string): string {
   });
 }
 
+/** Template URL is `https://{{6}}` — pass host/path only (no protocol). */
+function meetingLinkButtonValue(meetingLink: string): string {
+  const trimmed = meetingLink.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/^https?:\/\//i, "");
+}
+
 export async function sendLiveClassMeetingLinkWhatsApp(opts: {
   studentName: string;
   phone: string;
@@ -153,6 +162,10 @@ export async function sendLiveClassMeetingLinkWhatsApp(opts: {
 
   const batchLabel = opts.batchName?.trim() || "—";
   const scheduledLabel = formatScheduledAt(opts.scheduledAt);
+  const linkButton = meetingLinkButtonValue(opts.meetingLink);
+  if (!linkButton) {
+    return { ok: false, error: "Meeting link is required" };
+  }
 
   return sendInteraktTemplateMessage({
     countryCode: parsed.countryCode,
@@ -164,7 +177,9 @@ export async function sendLiveClassMeetingLinkWhatsApp(opts: {
       opts.courseName,
       batchLabel,
       scheduledLabel,
-      opts.meetingLink,
     ],
+    buttonValues: {
+      "1": [linkButton],
+    },
   });
 }
