@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { runTransaction } from "@/lib/db/transaction";
 import { recordCourses, payments, studentCourses, users } from "@/lib/db/schema";
 import { PublicEnrollmentSchema } from "@/lib/validations/public-enrollment";
 import { verifySignature } from "@/lib/razorpay";
@@ -26,7 +27,7 @@ async function insertUniqueStudent(
     collegeName: string;
     lmsId: string;
   },
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0]
+  tx: Parameters<Parameters<typeof runTransaction>[0]>[0]
 ) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
     let paymentId: string | undefined;
 
     try {
-      student = await db.transaction(async (tx) => {
+      student = await runTransaction(async (tx) => {
         const newStudent = await insertUniqueStudent(
           {
             name: studentData.name,

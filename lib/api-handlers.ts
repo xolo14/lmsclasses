@@ -19,6 +19,8 @@ import {
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { organisationSchema, editOrganisationSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, studentSchema } from "@/lib/validations";
+import { orgAdminVisibleBatches } from "@/lib/batch-scope";
+import { runTransaction } from "@/lib/db/transaction";
 import { sendOrgAdminWelcomeEmail,
   sendStudentWelcomeEmail,
   sendMentorLiveClassEmail,
@@ -758,7 +760,7 @@ export async function POSTStudent(request: Request) {
         isNull(batches.deletedAt),
       ];
       if (isOrgAdmin) {
-        batchConditions.push(eq(batches.organisationId, organisationId));
+        batchConditions.push(orgAdminVisibleBatches(organisationId));
       }
       const [batch] = await db
         .select({ id: batches.id, courseId: batches.courseId })
@@ -832,7 +834,7 @@ export async function POSTStudent(request: Request) {
     const enrollmentSource = "org_admin";
 
     // BUG FIX: student + enrollment + slot decrement in one transaction (org admin path)
-    const student = await db.transaction(async (tx) => {
+    const student = await runTransaction(async (tx) => {
       const [created] = await tx
         .insert(users)
         .values({
@@ -1017,7 +1019,7 @@ export async function DELETEStudent(request: Request, id: string) {
 
   if (session!.user.role === "org_admin") {
     // BUG FIX: soft-delete enrollment + free slot atomically (no hard deletes)
-    await db.transaction(async (tx) => {
+    await runTransaction(async (tx) => {
       const activeEnrollments = await tx
         .select({
           id: studentCourses.id,
@@ -1232,7 +1234,7 @@ export async function GETBatches(request: Request) {
         { status: 403 }
       );
     }
-    conditions.push(eq(batches.organisationId, orgId));
+    conditions.push(orgAdminVisibleBatches(orgId));
   } else if (organisationIdParam) {
     conditions.push(eq(batches.organisationId, organisationIdParam));
   }

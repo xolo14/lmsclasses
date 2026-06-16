@@ -348,9 +348,10 @@ export function AddStudentModal({
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {batches.map((b: { id: string; name: string; startDate?: string | null }) => (
+                  {batches.map((b: { id: string; name: string; startDate?: string | null; organisationId?: string | null }) => (
                     <SelectItem key={b.id} value={b.id}>
                       {b.name}
+                      {!b.organisationId ? " (All orgs)" : ""}
                       {b.startDate ? ` (${formatDate(b.startDate)})` : ""}
                     </SelectItem>
                   ))}

@@ -116,6 +116,9 @@ export function AddBatchModal({ open, onOpenChange, defaultCourseId, orgAdminMod
           {!orgAdminMode && (
             <div className="space-y-2">
               <Label>Organisation</Label>
+              <p className="text-xs text-muted-foreground">
+                Leave empty to create a batch visible to all org admins.
+              </p>
               <Select onValueChange={(v) => setValue("organisationId", v)} value={watch("organisationId")}>
                 <SelectTrigger><SelectValue placeholder="Select organisation" /></SelectTrigger>
                 <SelectContent>
