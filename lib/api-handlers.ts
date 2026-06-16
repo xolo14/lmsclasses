@@ -19,14 +19,14 @@ import {
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { organisationSchema, editOrganisationSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, studentSchema } from "@/lib/validations";
-import {
-  sendOrgAdminWelcomeEmail,
+import { sendOrgAdminWelcomeEmail,
   sendStudentWelcomeEmail,
   sendMentorLiveClassEmail,
   sendManagerWelcomeEmail,
   sendMentorWelcomeEmail,
   trySendWelcomeEmail,
 } from "@/lib/email";
+import { notifyStudentsLiveClassMeetingLink } from "@/lib/live-class-whatsapp";
 import { generatePassword, generateLmsId } from "@/lib/razorpay";
 
 /** Mark scheduled/live classes as completed once end time (start + duration) has passed. */
@@ -1472,6 +1472,22 @@ export async function POSTLiveClass(request: Request) {
     });
   }
 
+  if (parsed.data.meetingLink?.trim()) {
+    try {
+      const wa = await notifyStudentsLiveClassMeetingLink({
+        liveClassId: liveClass.id,
+        courseId: parsed.data.courseId,
+        batchId: parsed.data.batchId || null,
+        title: parsed.data.title,
+        scheduledAt: new Date(parsed.data.scheduledAt),
+        meetingLink: parsed.data.meetingLink,
+      });
+      console.log("[live-class] WhatsApp notify:", wa);
+    } catch (waErr) {
+      console.error("[live-class] WhatsApp notify failed:", waErr);
+    }
+  }
+
   await logAction({
     userId: session!.user.id,
     role: session!.user.role,
@@ -1487,6 +1503,16 @@ export async function POSTLiveClass(request: Request) {
 export async function PATCHLiveClass(request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
+
+  const [existing] = await db
+    .select()
+    .from(liveClasses)
+    .where(and(eq(liveClasses.id, id), isNull(liveClasses.deletedAt)))
+    .limit(1);
+
+  if (!existing) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const body = await request.json();
   const parsed = liveClassSchema.partial().safeParse(body);
@@ -1504,6 +1530,26 @@ export async function PATCHLiveClass(request: Request, id: string) {
     .set(updateData)
     .where(eq(liveClasses.id, id))
     .returning();
+
+  const newMeetingLink = parsed.data.meetingLink?.trim();
+  const meetingLinkChanged =
+    !!newMeetingLink && newMeetingLink !== (existing.meetingLink?.trim() ?? "");
+
+  if (meetingLinkChanged && liveClass) {
+    try {
+      const wa = await notifyStudentsLiveClassMeetingLink({
+        liveClassId: liveClass.id,
+        courseId: liveClass.courseId,
+        batchId: liveClass.batchId,
+        title: liveClass.title,
+        scheduledAt: liveClass.scheduledAt ?? new Date(),
+        meetingLink: newMeetingLink,
+      });
+      console.log("[live-class] WhatsApp notify (update):", wa);
+    } catch (waErr) {
+      console.error("[live-class] WhatsApp notify (update) failed:", waErr);
+    }
+  }
 
   await logAction({
     userId: session!.user.id,
