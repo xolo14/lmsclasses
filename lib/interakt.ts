@@ -124,10 +124,19 @@ export async function sendInteraktTemplateMessage(opts: {
   }
 }
 
+/** First name for a friendly, professional greeting in WhatsApp templates. */
+function formatStudentGreeting(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "Student";
+  const first = trimmed.split(/\s+/)[0] ?? trimmed;
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+}
+
 function formatScheduledAt(scheduledAt: Date | string): string {
   const date = typeof scheduledAt === "string" ? new Date(scheduledAt) : scheduledAt;
   if (Number.isNaN(date.getTime())) return String(scheduledAt);
-  return date.toLocaleString("en-IN", {
+  const formatted = date.toLocaleString("en-IN", {
+    weekday: "short",
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -136,6 +145,7 @@ function formatScheduledAt(scheduledAt: Date | string): string {
     hour12: true,
     timeZone: "Asia/Kolkata",
   });
+  return `${formatted} IST`;
 }
 
 /** Template URL is `https://{{6}}` — pass host/path only (no protocol). */
@@ -160,7 +170,7 @@ export async function sendLiveClassMeetingLinkWhatsApp(opts: {
     return { ok: false, error: `Invalid phone number: ${opts.phone}` };
   }
 
-  const batchLabel = opts.batchName?.trim() || "—";
+  const batchLabel = opts.batchName?.trim() || "Not assigned";
   const scheduledLabel = formatScheduledAt(opts.scheduledAt);
   const linkButton = meetingLinkButtonValue(opts.meetingLink);
   if (!linkButton) {
@@ -172,9 +182,9 @@ export async function sendLiveClassMeetingLinkWhatsApp(opts: {
     phoneNumber: parsed.phoneNumber,
     callbackData: `live-class-${opts.liveClassId}`,
     bodyValues: [
-      opts.studentName,
-      opts.classTitle,
-      opts.courseName,
+      formatStudentGreeting(opts.studentName),
+      opts.classTitle.trim(),
+      opts.courseName.trim(),
       batchLabel,
       scheduledLabel,
     ],
