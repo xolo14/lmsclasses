@@ -11,7 +11,7 @@ export function getInteraktApiKey(): string | null {
 }
 
 export function getInteraktTemplateName(): string {
-  return process.env.INTERAKT_TEMPLATE_NAME?.trim() || "live_class_meeting_link";
+  return process.env.INTERAKT_TEMPLATE_NAME?.trim() || "live_class_link";
 }
 
 export function getInteraktCountryCode(): string {
