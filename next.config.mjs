@@ -48,6 +48,27 @@ const nextConfig = {
         source: "/site.webmanifest",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },
+      {
+        source: "/login",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "CDN-Cache-Control", value: "no-store" },
+        ],
+      },
+      {
+        source: "/hr/login",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "CDN-Cache-Control", value: "no-store" },
+        ],
+      },
+      {
+        source: "/hr/register",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "CDN-Cache-Control", value: "no-store" },
+        ],
+      },
     ];
   },
 };

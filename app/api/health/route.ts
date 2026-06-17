@@ -1,5 +1,6 @@
-import { access, mkdir } from "fs/promises";
+import { access, mkdir, readFile } from "fs/promises";
 import { constants } from "fs";
+import { join } from "path";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -144,12 +145,20 @@ export async function GET() {
 
   const coreOk = dbConnected && secretSet && razorpayOk;
 
+  let nextBuildId: string | null = null;
+  try {
+    nextBuildId = (await readFile(join(process.cwd(), ".next", "BUILD_ID"), "utf8")).trim();
+  } catch {
+    // optional — missing in some dev setups
+  }
+
   return NextResponse.json({
     ok: coreOk && emailOk,
     coreOk,
     emailOk,
     version: HEALTH_VERSION,
     deployVersion: PAYMENTS_DEPLOY_VERSION,
+    nextBuildId,
     warnings,
     database: { connected: dbConnected, activeUsers, error: dbError },
     auth: {

@@ -26,6 +26,15 @@ cpSync(standaloneDir, distDir, { recursive: true });
 cpSync(join(root, ".next", "static"), join(distDir, ".next", "static"), {
   recursive: true,
 });
+const buildIdPath = join(root, ".next", "BUILD_ID");
+if (existsSync(buildIdPath)) {
+  cpSync(buildIdPath, join(distDir, ".next", "BUILD_ID"));
+}
+const staticDir = join(distDir, ".next", "static");
+if (!existsSync(staticDir)) {
+  console.error("Missing dist/.next/static — login and UI will break (404 on JS/CSS).");
+  process.exit(1);
+}
 const publicDir = join(root, "public");
 if (existsSync(publicDir)) {
   cpSync(publicDir, join(distDir, "public"), { recursive: true });

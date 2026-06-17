@@ -74,7 +74,13 @@ export default function LoginPage() {
           <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent className="px-6 pb-6">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <noscript>
+            <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              JavaScript is required to sign in. If the page looks unstyled, hard-refresh (Ctrl+F5) or
+              clear your browser cache, then try again.
+            </p>
+          </noscript>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" method="post" action="/login">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
