@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { runTransaction } from "@/lib/db/transaction";
 import { courseRecordings } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { reorderRecordingsSchema } from "@/lib/validations/course-recording";
@@ -16,14 +15,12 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  await runTransaction(async (tx) => {
-    for (const { id, sortOrder } of parsed.data.updates) {
-      await tx
-        .update(courseRecordings)
-        .set({ sortOrder, updatedAt: new Date() })
-        .where(eq(courseRecordings.id, id));
-    }
-  });
+  for (const { id, sortOrder } of parsed.data.updates) {
+    await db
+      .update(courseRecordings)
+      .set({ sortOrder, updatedAt: new Date() })
+      .where(eq(courseRecordings.id, id));
+  }
 
   return NextResponse.json({ success: true });
 }

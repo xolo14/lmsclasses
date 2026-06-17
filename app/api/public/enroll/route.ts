@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { runTransaction } from "@/lib/db/transaction";
 import { recordCourses, payments, studentCourses, users } from "@/lib/db/schema";
 import { PublicEnrollmentSchema } from "@/lib/validations/public-enrollment";
 import { verifySignature } from "@/lib/razorpay";
@@ -18,20 +17,17 @@ function generatePublicLmsId(): string {
   return `LMS${Date.now().toString(36).toUpperCase().slice(-5)}`;
 }
 
-async function insertUniqueStudent(
-  data: {
-    name: string;
-    email: string;
-    phone: string;
-    hashedPassword: string;
-    collegeName: string;
-    lmsId: string;
-  },
-  tx: Parameters<Parameters<typeof runTransaction>[0]>[0]
-) {
+async function insertUniqueStudent(data: {
+  name: string;
+  email: string;
+  phone: string;
+  hashedPassword: string;
+  collegeName: string;
+  lmsId: string;
+}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const [student] = await tx
+      const [student] = await db
         .insert(users)
         .values({
           name: data.name,
@@ -55,6 +51,15 @@ async function insertUniqueStudent(
     }
   }
   throw new Error("Failed to generate unique LMS ID");
+}
+
+async function rollbackEnrolledStudent(studentId: string) {
+  try {
+    await db.delete(studentCourses).where(eq(studentCourses.studentId, studentId));
+    await db.delete(users).where(eq(users.id, studentId));
+  } catch (rollbackErr) {
+    console.error("[public/enroll] rollback failed:", rollbackErr);
+  }
 }
 
 export async function POST(request: Request) {
@@ -114,49 +119,48 @@ export async function POST(request: Request) {
     let paymentId: string | undefined;
 
     try {
-      student = await runTransaction(async (tx) => {
-        const newStudent = await insertUniqueStudent(
-          {
-            name: studentData.name,
-            email,
-            phone: studentData.phone,
-            hashedPassword,
-            collegeName: studentData.collegeName,
-            lmsId,
-          },
-          tx
-        );
-        lmsId = newStudent.lmsId!;
+      const newStudent = await insertUniqueStudent({
+        name: studentData.name,
+        email,
+        phone: studentData.phone,
+        hashedPassword,
+        collegeName: studentData.collegeName,
+        lmsId,
+      });
+      student = newStudent;
+      lmsId = newStudent.lmsId!;
 
-        await tx.insert(studentCourses).values({
-          studentId: newStudent.id,
+      await db.insert(studentCourses).values({
+        studentId: newStudent.id,
+        liveCourseId: null,
+        recordCourseId: enrolledCourseId,
+        batchId: null,
+        organisationId: null,
+        enrollmentSource: "public",
+      });
+
+      const [paymentRow] = await db
+        .insert(payments)
+        .values({
+          organisationId: null,
           liveCourseId: null,
           recordCourseId: enrolledCourseId,
-          batchId: null,
-          organisationId: null,
-          enrollmentSource: "public",
-        });
+          adminId: null,
+          amount,
+          slotsCount: 1,
+          razorpayOrderId: paymentData.razorpayOrderId,
+          razorpayPaymentId: paymentData.razorpayPaymentId,
+          status: "success",
+        })
+        .returning({ id: payments.id });
 
-        const [paymentRow] = await tx
-          .insert(payments)
-          .values({
-            organisationId: null,
-            liveCourseId: null,
-            recordCourseId: enrolledCourseId,
-            adminId: null,
-            amount,
-            slotsCount: 1,
-            razorpayOrderId: paymentData.razorpayOrderId,
-            razorpayPaymentId: paymentData.razorpayPaymentId,
-            status: "success",
-          })
-          .returning({ id: payments.id });
-
-        paymentId = paymentRow?.id;
-        paymentRecorded = true;
-        return newStudent;
-      });
+      paymentId = paymentRow?.id;
+      paymentRecorded = true;
     } catch (txErr) {
+      if (student?.id) {
+        await rollbackEnrolledStudent(student.id);
+        student = undefined;
+      }
       console.error("[public/enroll] transaction failed:", txErr);
       try {
         const [paymentRow] = await db

@@ -20,7 +20,6 @@ import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { organisationSchema, editOrganisationSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, studentSchema } from "@/lib/validations";
 import { orgAdminVisibleBatches } from "@/lib/batch-scope";
-import { runTransaction } from "@/lib/db/transaction";
 import { sendOrgAdminWelcomeEmail,
   sendStudentWelcomeEmail,
   sendMentorLiveClassEmail,
@@ -31,7 +30,28 @@ import { sendOrgAdminWelcomeEmail,
 import { notifyStudentsLiveClassMeetingLink } from "@/lib/live-class-whatsapp";
 import { generatePassword, generateLmsId } from "@/lib/razorpay";
 
-/** Mark scheduled/live classes as completed once end time (start + duration) has passed. */
+/** Remove a partially created student if enrollment or slot steps fail (HTTP driver has no transactions). */
+async function rollbackNewStudent(studentId: string) {
+  try {
+    await db.delete(studentCourses).where(eq(studentCourses.studentId, studentId));
+    await db.delete(users).where(eq(users.id, studentId));
+  } catch (rollbackErr) {
+    console.error("[rollbackNewStudent]", rollbackErr);
+  }
+}
+
+/** Atomically consume one slot; returns false when none remain. */
+async function consumeSlot(slotId: string): Promise<boolean> {
+  const [updated] = await db
+    .update(slots)
+    .set({ usedSlots: sql`COALESCE(${slots.usedSlots}, 0) + 1` })
+    .where(
+      and(eq(slots.id, slotId), sql`COALESCE(${slots.usedSlots}, 0) < ${slots.totalSlots}`)
+    )
+    .returning({ id: slots.id });
+  return !!updated;
+}
+
 async function autoCompletePastLiveClasses(filters?: { courseId?: string; mentorId?: string }) {
   const conditions = [
     isNull(liveClasses.deletedAt),
@@ -833,9 +853,9 @@ export async function POSTStudent(request: Request) {
 
     const enrollmentSource = "org_admin";
 
-    // BUG FIX: student + enrollment + slot decrement in one transaction (org admin path)
-    const student = await runTransaction(async (tx) => {
-      const [created] = await tx
+    let created: (typeof users.$inferSelect) | undefined;
+    try {
+      const [row] = await db
         .insert(users)
         .values({
           name,
@@ -848,8 +868,9 @@ export async function POSTStudent(request: Request) {
           organisationId,
         })
         .returning();
+      created = row;
 
-      await tx.insert(studentCourses).values({
+      await db.insert(studentCourses).values({
         studentId: created.id,
         liveCourseId: isLive ? courseId : null,
         recordCourseId: isLive ? null : courseId,
@@ -864,20 +885,17 @@ export async function POSTStudent(request: Request) {
           if (!slotToUpdate) {
             throw new Error("SLOT_EXCEEDED");
           }
-          await tx
-            .update(slots)
-            .set({ usedSlots: (slotToUpdate.usedSlots ?? 0) + 1 })
-            .where(eq(slots.id, slotToUpdate.id));
+          const consumed = await consumeSlot(slotToUpdate.id);
+          if (!consumed) {
+            throw new Error("SLOT_EXCEEDED");
+          }
         } else if (slotRecords.length > 0) {
           const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
           if (slotToUpdate) {
-            await tx
-              .update(slots)
-              .set({ usedSlots: (slotToUpdate.usedSlots ?? 0) + 1 })
-              .where(eq(slots.id, slotToUpdate.id));
+            await consumeSlot(slotToUpdate.id);
           }
         } else {
-          await tx.insert(slots).values({
+          await db.insert(slots).values({
             organisationId,
             courseId,
             totalSlots: 50,
@@ -885,9 +903,14 @@ export async function POSTStudent(request: Request) {
           });
         }
       }
+    } catch (createErr) {
+      if (created?.id) {
+        await rollbackNewStudent(created.id);
+      }
+      throw createErr;
+    }
 
-      return created;
-    });
+    const student = created!;
 
     const emailResult = await trySendWelcomeEmail("student welcome", () =>
       sendStudentWelcomeEmail({
@@ -1018,49 +1041,46 @@ export async function DELETEStudent(request: Request, id: string) {
   if (error) return error;
 
   if (session!.user.role === "org_admin") {
-    // BUG FIX: soft-delete enrollment + free slot atomically (no hard deletes)
-    await runTransaction(async (tx) => {
-      const activeEnrollments = await tx
-        .select({
-          id: studentCourses.id,
-          liveCourseId: studentCourses.liveCourseId,
-          recordCourseId: studentCourses.recordCourseId,
-          organisationId: studentCourses.organisationId,
-        })
-        .from(studentCourses)
-        .where(and(eq(studentCourses.studentId, id), eq(studentCourses.isActive, true)));
+    const activeEnrollments = await db
+      .select({
+        id: studentCourses.id,
+        liveCourseId: studentCourses.liveCourseId,
+        recordCourseId: studentCourses.recordCourseId,
+        organisationId: studentCourses.organisationId,
+      })
+      .from(studentCourses)
+      .where(and(eq(studentCourses.studentId, id), eq(studentCourses.isActive, true)));
 
-      for (const enrollment of activeEnrollments) {
-        if (enrollment.organisationId && enrollment.liveCourseId) {
-          const orgSlots = await tx
-            .select()
-            .from(slots)
-            .where(
-              and(
-                eq(slots.organisationId, enrollment.organisationId),
-                eq(slots.courseId, enrollment.liveCourseId)
-              )
-            );
-          const slotToDecrement = orgSlots.find((s) => (s.usedSlots ?? 0) > 0);
-          if (slotToDecrement) {
-            await tx
-              .update(slots)
-              .set({ usedSlots: (slotToDecrement.usedSlots ?? 0) - 1 })
-              .where(eq(slots.id, slotToDecrement.id));
-          }
+    for (const enrollment of activeEnrollments) {
+      if (enrollment.organisationId && enrollment.liveCourseId) {
+        const orgSlots = await db
+          .select()
+          .from(slots)
+          .where(
+            and(
+              eq(slots.organisationId, enrollment.organisationId),
+              eq(slots.courseId, enrollment.liveCourseId)
+            )
+          );
+        const slotToDecrement = orgSlots.find((s) => (s.usedSlots ?? 0) > 0);
+        if (slotToDecrement) {
+          await db
+            .update(slots)
+            .set({ usedSlots: (slotToDecrement.usedSlots ?? 0) - 1 })
+            .where(eq(slots.id, slotToDecrement.id));
         }
       }
+    }
 
-      await tx
-        .update(studentCourses)
-        .set({ isActive: false })
-        .where(eq(studentCourses.studentId, id));
+    await db
+      .update(studentCourses)
+      .set({ isActive: false })
+      .where(eq(studentCourses.studentId, id));
 
-      await tx
-        .update(users)
-        .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
-        .where(eq(users.id, id));
-    });
+    await db
+      .update(users)
+      .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(users.id, id));
   } else {
     await db
       .update(studentCourses)
