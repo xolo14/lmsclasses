@@ -16,7 +16,7 @@ export function LandingStatsBand() {
           span="col-span-2 md:col-span-2 lg:col-span-3"
           className="!border-r !border-neutral-950/10 lg:[&:nth-child(4n)]:border-r-0"
         >
-          <p className="text-4xl font-bold tracking-[-0.04em] text-neutral-950 md:text-5xl">
+          <p className="text-4xl font-bold tracking-[-0.04em] text-swiss-red md:text-5xl">
             {stat.value}
           </p>
           <p className={`mt-3 ${landingLayout.label}`}>{stat.label}</p>

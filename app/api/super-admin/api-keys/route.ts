@@ -88,7 +88,6 @@ export async function POST(request: Request) {
         environment: data.environment ?? "live",
         isActive: true,
         createdBy: session!.user.id,
-        expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
         notes: data.notes ?? null,
       })
       .returning();

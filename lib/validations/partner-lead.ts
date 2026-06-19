@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+export const externalPaymentCreateOrderSchema = z.object({
+  leadId: z.string().uuid(),
+});
+
 export const externalPaymentConfirmSchema = z.object({
   leadId: z.string().uuid(),
   razorpayPaymentId: z.string().min(1).optional(),

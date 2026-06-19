@@ -195,7 +195,7 @@ export function EnrollmentFlow({ courseId, courseTitle, price, trigger }: Enroll
 
       {(state === "CREATING" || state === "PAYMENT_FAILED") && bannerError && (
         <Dialog open onOpenChange={() => setState("IDLE")}>
-          <DialogContent className="border-bg-border bg-bg-card text-text-primary">
+          <DialogContent className="border-swiss-black/10 bg-swiss-white text-swiss-black">
             <p className="text-status-red">{bannerError}</p>
           </DialogContent>
         </Dialog>
@@ -203,9 +203,9 @@ export function EnrollmentFlow({ courseId, courseTitle, price, trigger }: Enroll
 
       {state === "CREATING" && !bannerError && (
         <Dialog open>
-          <DialogContent className="border-bg-border bg-bg-card text-text-primary">
+          <DialogContent className="border-swiss-black/10 bg-swiss-white text-swiss-black">
             <div className="flex flex-col items-center gap-4 py-6">
-              <Loader2 className="h-10 w-10 animate-spin text-brand-cyan" />
+              <Loader2 className="h-10 w-10 animate-spin text-swiss-red" />
               <p>Creating your account...</p>
             </div>
           </DialogContent>
@@ -213,7 +213,7 @@ export function EnrollmentFlow({ courseId, courseTitle, price, trigger }: Enroll
       )}
 
       <Dialog open={state === "DONE"} onOpenChange={() => {}}>
-        <DialogContent className="border-bg-border bg-bg-card text-center text-text-primary">
+        <DialogContent className="border-swiss-black/10 bg-swiss-white text-center text-swiss-black">
           <DialogHeader>
             <motion.div
               initial={{ scale: 0, opacity: 0 }}
@@ -224,19 +224,19 @@ export function EnrollmentFlow({ courseId, courseTitle, price, trigger }: Enroll
             </motion.div>
             <DialogTitle className="text-xl">Welcome to LMSClasses! 🎓</DialogTitle>
           </DialogHeader>
-          <p className="text-text-secondary">
+          <p className="text-swiss-muted">
             Your account has been created. We&apos;ve sent your login credentials to {doneEmail}.
           </p>
           <p className="font-mono text-sm">
             Your LMS ID:{" "}
-            <span className="rounded bg-brand-cyan/20 px-2 py-1 text-brand-cyan">{doneLmsId}</span>
+            <span className="rounded bg-swiss-red/20 px-2 py-1 text-swiss-red">{doneLmsId}</span>
           </p>
-          <p className="text-sm text-text-muted">
+          <p className="text-sm text-swiss-muted">
             Redirecting you to your courses in {countdown}...
           </p>
           <Button
             onClick={goToCourses}
-            className="w-full bg-brand-cyan text-bg-base hover:bg-brand-cyan-light"
+            className="w-full bg-swiss-red text-white hover:bg-swiss-red-light"
           >
             Go to My Courses Now →
           </Button>

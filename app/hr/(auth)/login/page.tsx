@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
+import { SwissAuthShell } from "@/components/layout/SwissAuthShell";
 import { useRecoverStaleChunks } from "@/lib/use-recover-stale-chunks";
 
 export default function HrLoginPage() {
@@ -44,12 +45,12 @@ export default function HrLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-md overflow-hidden p-0">
+    <SwissAuthShell title="HR Portal" subtitle="Recruiter sign in">
+      <Card className="w-full overflow-hidden p-0 border-swiss-black/10 shadow-none rounded-sm">
         <AuthPageBrand />
         <CardHeader className="space-y-1.5 px-6 pt-6 pb-4 text-center">
-          <CardTitle>HR Login</CardTitle>
-          <CardDescription>Sign in with your HR account</CardDescription>
+          <CardTitle className="font-bold">HR Login</CardTitle>
+          <CardDescription className="text-swiss-muted">Sign in with your HR account</CardDescription>
         </CardHeader>
         <CardContent className="px-6 pb-6">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -73,7 +74,7 @@ export default function HrLoginPage() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </SwissAuthShell>
   );
 }
 

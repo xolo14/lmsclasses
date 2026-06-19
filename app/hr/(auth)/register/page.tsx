@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Eye, EyeOff } from "lucide-react";
 import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
+import { SwissAuthShell } from "@/components/layout/SwissAuthShell";
 
 type HrEmailInput = z.infer<typeof hrEmailSchema>;
 type HrOtpInput = z.infer<typeof hrOtpSchema>;
@@ -84,12 +85,12 @@ export default function HrRegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-xl overflow-hidden p-0">
+    <SwissAuthShell title="HR Registration" subtitle="Create your recruiter account">
+      <Card className="w-full overflow-hidden p-0 border-swiss-black/10 shadow-none rounded-sm">
         <AuthPageBrand />
         <CardHeader className="space-y-1.5 px-6 pt-6 pb-4 text-center">
-          <CardTitle>HR Registration</CardTitle>
-          <CardDescription>
+          <CardTitle className="font-bold">HR Registration</CardTitle>
+          <CardDescription className="text-swiss-muted">
             Step {step} of 3 — {step === 1 ? "Company Email Verification" : step === 2 ? "OTP Verification" : "Company & HR Details"}
           </CardDescription>
         </CardHeader>
@@ -183,7 +184,7 @@ export default function HrRegisterPage() {
           {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
       </Card>
-    </div>
+    </SwissAuthShell>
   );
 }
 

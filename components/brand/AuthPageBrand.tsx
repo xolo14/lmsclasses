@@ -10,7 +10,7 @@ export function AuthPageBrand({ className }: AuthPageBrandProps) {
   return (
     <div
       className={cn(
-        "flex w-full justify-center border-b border-border/60 bg-muted/40 px-6 py-7",
+        "flex w-full justify-center border-b-4 border-swiss-red bg-swiss-cream px-6 py-7",
         className
       )}
     >

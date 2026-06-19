@@ -115,7 +115,7 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h2 className="text-xl font-bold text-foreground">{selectedCourse.title}</h2>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="border-cyan-500/30 text-cyan-400 bg-cyan-950/20 font-mono">
+                      <Badge variant="outline" className="border-swiss-red/30 text-swiss-red bg-swiss-red/5/20 font-mono">
                         {formatCurrency(selectedCourse.price)}
                       </Badge>
                       <Badge variant={selectedCourse.isActive ? "success" : "destructive"}>
@@ -143,9 +143,9 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
                 return (
                   <Card
                     key={course.id}
-                    className={`cursor-pointer transition-all duration-200 border hover:border-cyan-500/40 shadow-sm ${
+                    className={`cursor-pointer transition-all duration-200 border hover:border-swiss-red/40 shadow-sm ${
                       isSelected
-                        ? "border-cyan-500 bg-cyan-950/10 ring-1 ring-cyan-500"
+                        ? "border-swiss-red bg-swiss-red/5/10 ring-1 ring-swiss-red"
                         : "border-border/60 hover:bg-muted/30"
                     }`}
                     onClick={() => setSelectedCourse(course)}
@@ -153,10 +153,10 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
                     <CardContent className="p-4 flex gap-3 items-start">
                       <div
                         className={`h-9 w-9 rounded-lg shrink-0 flex items-center justify-center transition-colors ${
-                          isSelected ? "bg-cyan-950 text-cyan-400 border border-cyan-500/30" : "bg-muted text-muted-foreground"
+                          isSelected ? "bg-swiss-red/5 text-swiss-red border border-swiss-red/30" : "bg-muted text-muted-foreground"
                         }`}
                       >
-                        <Play className={`h-4 w-4 ${isSelected ? "fill-cyan-400/20" : ""}`} />
+                        <Play className={`h-4 w-4 ${isSelected ? "fill-swiss-red/20" : ""}`} />
                       </div>
                       <div className="space-y-1 min-w-0">
                         <p className="text-sm font-semibold text-foreground truncate">{course.title}</p>

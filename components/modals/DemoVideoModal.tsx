@@ -33,8 +33,8 @@ export function DemoVideoModal({ open, onOpenChange, videoUrl, courseTitle }: De
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl bg-slate-900 border-slate-800 text-slate-100 p-0 overflow-hidden shadow-2xl">
         <DialogHeader className="p-4 border-b border-slate-800/60 bg-slate-950/40">
-          <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-cyan-400">
-            <Play className="h-5 w-5 fill-cyan-400 text-cyan-400" />
+          <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-swiss-red">
+            <Play className="h-5 w-5 fill-swiss-red text-swiss-red" />
             <span>Demo: {courseTitle}</span>
           </DialogTitle>
         </DialogHeader>

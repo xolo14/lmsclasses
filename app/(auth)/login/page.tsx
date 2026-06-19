@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Eye, EyeOff } from "lucide-react";
 import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
+import { SwissAuthShell } from "@/components/layout/SwissAuthShell";
 import { useRecoverStaleChunks } from "@/lib/use-recover-stale-chunks";
 
 export default function LoginPage() {
@@ -67,13 +68,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-background p-4 safe-top safe-bottom">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-100 via-transparent to-transparent" />
-      <Card className="w-full max-w-md relative z-10 overflow-hidden p-0">
+    <SwissAuthShell title="Sign In" subtitle="Student & staff portal">
+      <Card className="w-full overflow-hidden p-0 border-swiss-black/10 shadow-none rounded-sm">
         <AuthPageBrand />
         <CardHeader className="space-y-1.5 px-6 pt-6 pb-4 text-center">
-          <CardTitle className="text-2xl">LMS Platform</CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
+          <CardTitle className="text-2xl font-bold tracking-tight">LMS Classes</CardTitle>
+          <CardDescription className="text-swiss-muted">Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent className="px-6 pb-6">
           <noscript>
@@ -132,6 +132,6 @@ export default function LoginPage() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </SwissAuthShell>
   );
 }

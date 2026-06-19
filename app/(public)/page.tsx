@@ -85,7 +85,7 @@ export default async function LandingPage() {
             span="col-span-4 md:col-span-4 lg:col-span-4"
             className="!border-r !border-neutral-950/10"
           >
-            <p className="text-5xl font-bold tracking-[-0.05em] text-neutral-950/10">{item.step}</p>
+            <p className="text-5xl font-bold tracking-[-0.05em] text-swiss-red/25">{item.step}</p>
             <h3 className="mt-4 text-lg font-bold text-neutral-950">{item.title}</h3>
             <p className="mt-3 text-sm leading-relaxed text-neutral-600">{item.desc}</p>
           </LandingCell>

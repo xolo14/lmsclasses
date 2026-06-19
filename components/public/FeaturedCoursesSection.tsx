@@ -25,7 +25,7 @@ export function FeaturedCoursesSection({ courses }: { courses: Course[] }) {
             href="/courses"
             className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 hover:text-neutral-950"
           >
-            View all courses <span className="text-[#E30613]">→</span>
+            View all courses <span className="text-swiss-red">→</span>
           </Link>
         </div>
       </LandingCell>

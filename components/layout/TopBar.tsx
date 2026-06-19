@@ -31,17 +31,19 @@ export function TopBar({ userName, userRole, onMenuClick }: TopBarProps) {
   const settingsPath = `/${userRole.replace("_", "-")}/settings`;
 
   return (
-    <header className="z-40 flex h-14 sm:h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/80 backdrop-blur-md px-3 sm:px-6 safe-top">
+    <header className="z-40 flex h-14 sm:h-16 shrink-0 items-center justify-between gap-2 border-b border-swiss-black/10 border-t-4 border-t-swiss-red bg-swiss-white/95 backdrop-blur-md px-3 sm:px-6 safe-top">
       <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
-        <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={onMenuClick} aria-label="Open menu">
+        <Button variant="ghost" size="icon" className="lg:hidden shrink-0 text-swiss-black" onClick={onMenuClick} aria-label="Open menu">
           <Menu className="h-5 w-5" />
         </Button>
         <div className="lg:hidden shrink-0">
           <AppLogo size="sm" />
         </div>
         <div className="min-w-0">
-          <h2 className="text-base sm:text-lg font-semibold truncate">{ROLE_LABELS[userRole] || userRole}</h2>
-          <p className="text-xs text-muted-foreground truncate hidden sm:block">
+          <h2 className="text-base sm:text-lg font-bold uppercase tracking-[0.12em] truncate">
+            {ROLE_LABELS[userRole] || userRole}
+          </h2>
+          <p className="text-xs text-swiss-muted truncate hidden sm:block">
             Welcome back, {userName}
           </p>
         </div>
@@ -51,7 +53,7 @@ export function TopBar({ userName, userRole, onMenuClick }: TopBarProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0 flex items-center justify-center focus-visible:ring-0 focus-visible:ring-offset-0">
               <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-primary/10 text-primary">{initials}</AvatarFallback>
+                <AvatarFallback className="bg-swiss-red/10 text-swiss-red font-semibold">{initials}</AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>

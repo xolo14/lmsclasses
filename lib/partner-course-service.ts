@@ -7,6 +7,7 @@ import type { ApiKey } from "@/lib/db/schema";
 import { courseAllowed } from "@/lib/api-key-service";
 
 export type PublicCourseItem = {
+  id: string;
   name: string;
   slug: string;
   price: number;
@@ -96,6 +97,7 @@ export async function resolveCourseByName(courseName: string) {
 export async function getCoursesForApiKey(apiKey: ApiKey): Promise<PublicCourseItem[]> {
   const rows = await db
     .select({
+      id: recordCourses.id,
       title: recordCourses.title,
       slug: recordCourses.slug,
       price: recordCourses.price,
@@ -112,6 +114,7 @@ export async function getCoursesForApiKey(apiKey: ApiKey): Promise<PublicCourseI
   return rows
     .filter((c) => c.slug && courseAllowed(apiKey, c.title))
     .map((c) => ({
+      id: c.id,
       name: c.title,
       slug: c.slug!,
       price: parseFloat(c.price),

@@ -112,7 +112,7 @@ export default function StudentsPage() {
       cell: ({ row }) => {
         const src = row.original.enrollmentSource ?? row.original.source;
         if (src === "super_admin") {
-          return <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">Direct</Badge>;
+          return <Badge className="bg-swiss-red/15 text-swiss-red border-swiss-red/30">Direct</Badge>;
         }
         if (src === "public") {
           return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Self Enrolled</Badge>;

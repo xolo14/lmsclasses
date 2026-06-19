@@ -6,7 +6,7 @@ const Badge = ({ className, variant = "default", ...props }: React.HTMLAttribute
     default: "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
     secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
     destructive: "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
-    outline: "text-foreground border border-border",
+    outline: "text-swiss-black border border-swiss-black/15",
     success: "border-transparent bg-emerald-500/10 text-emerald-700 border border-emerald-500/20",
     warning: "border-transparent bg-amber-500/10 text-amber-700 border border-amber-500/20",
   };

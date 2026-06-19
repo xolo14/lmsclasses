@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 export function Footer() {
   return (
-    <footer className="border-t border-neutral-950/10 bg-[#F4F4F0]">
+    <footer className="border-t border-swiss-black/10 bg-swiss-cream">
       <div className={landingLayout.frame}>
         <div className={cn(landingLayout.grid, "border-x", landingLayout.rule)}>
           <div className="col-span-4 border-b border-neutral-950/10 px-4 py-10 md:col-span-4 lg:col-span-4 lg:border-b-0 lg:px-8">
@@ -38,7 +38,7 @@ export function Footer() {
             <p className={landingLayout.label}>Contact</p>
             <a
               href="mailto:info@lmsclasses.com"
-              className="mt-3 block text-sm font-medium text-neutral-950 hover:text-[#E30613]"
+              className="mt-3 block text-sm font-medium text-neutral-950 hover:text-swiss-red"
             >
               info@lmsclasses.com
             </a>

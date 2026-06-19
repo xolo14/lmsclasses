@@ -20,7 +20,7 @@ export type StudentEnrollment = {
 
 function SourceBadge({ source }: { source: string }) {
   if (source === "super_admin") {
-    return <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">Direct Enrollment</Badge>;
+    return <Badge className="bg-swiss-red/15 text-swiss-red border-swiss-red/30">Direct Enrollment</Badge>;
   }
   if (source === "public") {
     return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Self Enrolled</Badge>;

@@ -292,7 +292,7 @@ export default function SuperAdminHrsPage() {
                         <div key={`j-${point.month}`} className="flex items-center gap-2">
                           <span className="w-20 text-xs text-muted-foreground">{point.month}</span>
                           <div className="h-2 flex-1 rounded bg-muted">
-                            <div className="h-2 rounded bg-cyan-500" style={{ width: `${(point.count / chartMax) * 100}%` }} />
+                            <div className="h-2 rounded bg-swiss-red" style={{ width: `${(point.count / chartMax) * 100}%` }} />
                           </div>
                           <span className="w-8 text-right text-xs">{point.count}</span>
                         </div>

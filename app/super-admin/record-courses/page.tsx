@@ -74,8 +74,8 @@ export default function RecordCoursesPage() {
               ) : null}
               <div className="relative z-10 flex items-center justify-between w-full">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-cyan-950 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                  <Play className="h-5 w-5 fill-cyan-400/20" />
+                <div className="h-10 w-10 rounded-lg bg-swiss-red/5 border border-swiss-red/30 flex items-center justify-center text-swiss-red">
+                  <Play className="h-5 w-5 fill-swiss-red/20" />
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Course Module</p>
@@ -83,7 +83,7 @@ export default function RecordCoursesPage() {
                 </div>
               </div>
               {course.demoUrl && (
-                <Badge variant="secondary" className="bg-cyan-950/40 text-cyan-400 border border-cyan-500/20 text-[10px]">
+                <Badge variant="secondary" className="bg-swiss-red/10 text-swiss-red border border-swiss-red/20 text-[10px]">
                   Demo Available
                 </Badge>
               )}
@@ -128,14 +128,14 @@ export default function RecordCoursesPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-cyan-500/30 text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/20"
+                    className="border-swiss-red/30 text-swiss-red hover:text-swiss-red-dark hover:bg-swiss-red/5/20"
                     onClick={() => {
                       setDemoVideoUrl(course.demoUrl || "");
                       setDemoCourseTitle(course.title);
                       setDemoModalOpen(true);
                     }}
                   >
-                    <Play className="h-3 w-3 mr-1 fill-cyan-400/20" /> Demo
+                    <Play className="h-3 w-3 mr-1 fill-swiss-red/20" /> Demo
                   </Button>
                 )}
               </div>

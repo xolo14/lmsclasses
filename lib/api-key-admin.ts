@@ -22,7 +22,6 @@ export function serializeApiKey(k: ApiKey, includeSecrets = false) {
     isActive: k.isActive,
     lastUsedAt: k.lastUsedAt,
     usageCount: k.usageCount,
-    expiresAt: k.expiresAt,
     notes: k.notes,
     createdAt: k.createdAt,
     updatedAt: k.updatedAt,

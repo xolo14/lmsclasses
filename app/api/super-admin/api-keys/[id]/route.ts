@@ -81,9 +81,6 @@ export async function PATCH(
         ...(data.ipWhitelist !== undefined && { ipWhitelist: data.ipWhitelist }),
         ...(data.environment !== undefined && { environment: data.environment }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
-        ...(data.expiresAt !== undefined && {
-          expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
-        }),
         ...(data.notes !== undefined && { notes: data.notes }),
         updatedAt: new Date(),
       })

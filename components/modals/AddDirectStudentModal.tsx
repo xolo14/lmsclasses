@@ -267,20 +267,20 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
             </div>
 
             {!courseId && (
-              <p className="rounded-md border border-cyan-500/30 bg-cyan-500/10 p-3 text-sm text-muted-foreground">
+              <p className="rounded-md border border-swiss-red/30 bg-swiss-red/10 p-3 text-sm text-muted-foreground">
                 ℹ️ Select a course to determine batching options. Live courses support batches for live class access, while record courses are self-paced curriculum.
               </p>
             )}
 
             {courseId && isLiveCourse && !form.watch("batchId") && (
-              <p className="rounded-md border border-cyan-500/30 bg-cyan-500/10 p-3 text-sm text-muted-foreground">
+              <p className="rounded-md border border-swiss-red/30 bg-swiss-red/10 p-3 text-sm text-muted-foreground">
                 ℹ️ Without a batch, this student will only access course recordings. To grant live
                 class access, select a batch for this course.
               </p>
             )}
 
             {courseId && !isLiveCourse && (
-              <p className="rounded-md border border-cyan-500/30 bg-cyan-500/10 p-3 text-sm text-muted-foreground">
+              <p className="rounded-md border border-swiss-red/30 bg-swiss-red/10 p-3 text-sm text-muted-foreground">
                 ℹ️ Record courses do not support batches. The student will have self-paced access to the course recorded curriculum.
               </p>
             )}

@@ -48,11 +48,11 @@ export function Sidebar({ items, title, collapsed, onNavigate, brandLogoUrl }: S
   return (
     <aside
       className={cn(
-        "flex h-full flex-col border-r border-border bg-card transition-all duration-300 w-full",
+        "flex h-full flex-col border-r border-swiss-black/10 bg-swiss-white transition-all duration-300 w-full",
         collapsed ? "lg:w-16" : "lg:w-64"
       )}
     >
-      <div className="flex min-h-16 items-center border-b border-border px-3 py-3">
+      <div className="flex min-h-16 items-center border-b border-swiss-black/10 border-t-4 border-t-swiss-red px-3 py-3">
         {!collapsed ? (
           <div className="w-full space-y-2">
             <AppLogo size="sm" />
@@ -60,16 +60,18 @@ export function Sidebar({ items, title, collapsed, onNavigate, brandLogoUrl }: S
               <img
                 src={brandLogoUrl}
                 alt={`${title} organisation logo`}
-                className="h-8 w-8 rounded object-contain border border-border bg-muted/30"
+                className="h-8 w-8 rounded-sm object-contain border border-swiss-black/10 bg-swiss-cream"
               />
             ) : null}
-            <p className="text-sm font-semibold text-foreground leading-tight">{title}</p>
+            <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-swiss-muted leading-tight">
+              {title}
+            </p>
           </div>
         ) : (
           <AppLogo size="sm" className="mx-auto" />
         )}
       </div>
-      <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
+      <nav className="flex-1 space-y-0.5 p-2 overflow-y-auto">
         {items.map((item) => {
           const isActive = pathname.startsWith(item.href);
           return (
@@ -79,10 +81,10 @@ export function Sidebar({ items, title, collapsed, onNavigate, brandLogoUrl }: S
               prefetch={false}
               onClick={onNavigate}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
+                "flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium transition-all",
                 isActive
-                  ? "bg-primary/10 text-primary border-l-2 border-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-swiss-red/10 text-swiss-red border-l-4 border-swiss-red"
+                  : "text-swiss-muted hover:bg-swiss-cream hover:text-swiss-black border-l-4 border-transparent"
               )}
             >
               <item.icon className="h-4 w-4 shrink-0" />
@@ -103,6 +105,7 @@ export function SuperAdminSidebar(props: Omit<SidebarProps, "items" | "title">) 
     { label: "HRs", href: "/super-admin/hrs", icon: Building2 },
     { label: "Job Postings", href: "/super-admin/job-postings", icon: Briefcase },
     { label: "Students", href: "/super-admin/students", icon: GraduationCap },
+    { label: "Enrollments", href: "/super-admin/enrollments", icon: Layers },
     { label: "Leads", href: "/super-admin/leads", icon: Contact },
     { label: "API Keys", href: "/super-admin/api-keys", icon: Key },
     { label: "Live Courses", href: "/super-admin/live-courses", icon: BookOpen },
@@ -146,6 +149,7 @@ export function OrgAdminSidebar(props: Omit<SidebarProps, "items" | "title">) {
     { label: "Record Courses", href: "/org-admin/record-courses", icon: Film },
     { label: "Course Demos", href: "/org-admin/demos", icon: Play },
     { label: "Live Students", href: "/org-admin/students", icon: GraduationCap },
+    { label: "Enrollments", href: "/org-admin/enrollments", icon: Layers },
     { label: "Record Students", href: "/org-admin/record-students", icon: GraduationCap },
     { label: "History", href: "/org-admin/history", icon: History },
     { label: "Coupons", href: "/org-admin/coupons", icon: Tag },

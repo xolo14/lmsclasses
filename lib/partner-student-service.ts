@@ -6,6 +6,7 @@ import type { ApiKey, PartnerLead } from "@/lib/db/schema";
 import { generatePartnerLmsId, generateStudentPassword, generateUsername } from "@/lib/generate-credentials";
 import { sendPartnerStudentCredentialsEmail } from "@/lib/email";
 import { logAction } from "@/lib/audit";
+import { getAppUrl } from "@/lib/app-url";
 import { resolveCourseByName } from "@/lib/partner-course-service";
 import { notifyPartnerWebhook } from "@/lib/partner-webhook";
 import { isTestKey } from "@/lib/api-key-service";
@@ -30,6 +31,8 @@ export type CreateStudentFromLeadResult = {
   created: boolean;
   emailSent: boolean;
   username: string;
+  loginUrl: string;
+  lmsId: string;
 };
 
 export async function createStudentFromLead(
@@ -58,7 +61,14 @@ export async function createStudentFromLead(
         updatedAt: new Date(),
       })
       .where(eq(partnerLeads.id, lead.id));
-    return { studentId: "test-mode", created: true, emailSent: false, username };
+    return {
+      studentId: "test-mode",
+      created: true,
+      emailSent: false,
+      username,
+      loginUrl: `${getAppUrl()}/login`,
+      lmsId: "TEST",
+    };
   }
 
   if (!lead.recordCourseId) {
@@ -210,7 +220,14 @@ export async function createStudentFromLead(
     ipAddress: options?.ipAddress,
   });
 
-  return { studentId, created, emailSent, username };
+  return {
+    studentId,
+    created,
+    emailSent,
+    username,
+    loginUrl: `${getAppUrl()}/login`,
+    lmsId,
+  };
 }
 
 export async function resendPartnerStudentCredentials(

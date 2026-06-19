@@ -12,8 +12,6 @@ export function apiKeyError(
 export const ApiKeyErrors = {
   invalidKey: () =>
     apiKeyError("INVALID_API_KEY", "API key is missing or invalid", 401),
-  expired: (date: string) =>
-    apiKeyError("KEY_EXPIRED", `This API key expired on ${date}`, 401),
   disabled: () =>
     apiKeyError("KEY_DISABLED", "This API key has been deactivated", 403),
   permissionDenied: (perm: string) =>

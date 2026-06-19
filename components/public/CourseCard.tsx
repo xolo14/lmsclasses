@@ -96,7 +96,7 @@ export function CourseCard({
             <button
               type="button"
               onClick={requestView}
-              className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-950 transition-colors hover:text-[#E30613]"
+              className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-950 transition-colors hover:text-[#FF0A18]"
             >
               View →
             </button>
@@ -114,13 +114,13 @@ export function CourseCard({
 
   if (variant === "editorial") {
     return (
-      <article className="group flex flex-col overflow-hidden rounded-xl border border-bg-border bg-bg-card transition-colors hover:border-bg-border/80 hover:bg-bg-card-hover">
-        <div className="relative aspect-[16/10] w-full overflow-hidden bg-gradient-to-br from-brand-cyan-dim/30 to-bg-base">
+      <article className="group flex flex-col overflow-hidden rounded-xl border border-swiss-black/10 bg-swiss-white transition-colors hover:border-swiss-black/10/80 hover:bg-swiss-cream">
+        <div className="relative aspect-[16/10] w-full overflow-hidden bg-gradient-to-br from-swiss-red/15 to-swiss-black">
           {imageSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={imageSrc} alt={title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
           ) : (
-            <div className="flex h-full items-center justify-center text-brand-cyan/40">
+            <div className="flex h-full items-center justify-center text-swiss-red/40">
               <BookOpen className="h-10 w-10" />
             </div>
           )}
@@ -132,8 +132,8 @@ export function CourseCard({
               className={cn(
                 "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
                 showPopular
-                  ? "bg-brand-cyan/15 text-brand-cyan"
-                  : "bg-bg-base text-text-muted"
+                  ? "bg-swiss-red/15 text-swiss-red"
+                  : "bg-swiss-cream text-swiss-muted"
               )}
             >
               {badgeLabel}
@@ -143,18 +143,18 @@ export function CourseCard({
             </p>
           </div>
 
-          <h3 className="font-display text-xl leading-snug text-text-primary">{title}</h3>
-          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-text-muted">{description}</p>
+          <h3 className="font-display text-xl leading-snug text-swiss-black">{title}</h3>
+          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-swiss-muted">{description}</p>
 
-          <div className="mt-auto flex items-center justify-between border-t border-bg-border pt-5">
-            <span className="flex items-center gap-1.5 text-xs text-text-muted">
+          <div className="mt-auto flex items-center justify-between border-t border-swiss-black/10 pt-5">
+            <span className="flex items-center gap-1.5 text-xs text-swiss-muted">
               <Video className="h-3.5 w-3.5" />
               Live sessions
             </span>
             <button
               type="button"
               onClick={requestView}
-              className="text-sm font-medium text-brand-cyan transition-colors hover:text-brand-cyan-light"
+              className="text-sm font-medium text-swiss-red transition-colors hover:text-swiss-red-light"
             >
               View Course →
             </button>
@@ -171,13 +171,13 @@ export function CourseCard({
   }
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-xl border border-bg-border bg-bg-card transition-all duration-300 hover:-translate-y-1 hover:bg-bg-card-hover hover:shadow-lg hover:shadow-brand-cyan/10">
-      <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-brand-cyan-dim/40 to-bg-base">
+    <div className="group flex flex-col overflow-hidden rounded-xl border border-swiss-black/10 bg-swiss-white transition-all duration-300 hover:-translate-y-1 hover:bg-swiss-cream hover:shadow-lg hover:shadow-swiss-red/10">
+      <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-swiss-red/20 to-swiss-black">
         {imageSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageSrc} alt={title} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center text-brand-cyan/60">
+          <div className="flex h-full items-center justify-center text-swiss-red/60">
             <BookOpen className="h-12 w-12" />
           </div>
         )}
@@ -190,7 +190,7 @@ export function CourseCard({
             }}
             className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
           >
-            <span className="rounded-full bg-brand-cyan px-4 py-2 text-sm font-semibold text-bg-base">
+            <span className="rounded-full bg-swiss-red px-4 py-2 text-sm font-semibold text-white">
               ▶ Watch Demo
             </span>
           </button>
@@ -207,15 +207,15 @@ export function CourseCard({
           >
             {level}
           </span>
-          <span className="rounded-full border border-bg-border bg-bg-base px-2 py-0.5 text-xs text-text-muted">
+          <span className="rounded-full border border-swiss-black/10 bg-swiss-cream px-2 py-0.5 text-xs text-swiss-muted">
             {language}
           </span>
         </div>
 
-        <h3 className="line-clamp-2 font-semibold text-text-primary">{title}</h3>
-        <p className="line-clamp-2 text-sm text-text-muted">{description}</p>
+        <h3 className="line-clamp-2 font-semibold text-swiss-black">{title}</h3>
+        <p className="line-clamp-2 text-sm text-swiss-muted">{description}</p>
 
-        <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-swiss-muted">
           {totalHours != null && (
             <span className="flex items-center gap-1">
               <Clock className="h-3.5 w-3.5" />
@@ -229,7 +229,7 @@ export function CourseCard({
             </span>
           )}
           {certificate && (
-            <span className="flex items-center gap-1 text-brand-cyan">
+            <span className="flex items-center gap-1 text-swiss-red">
               <Award className="h-3.5 w-3.5" />
               Certificate
             </span>
@@ -237,11 +237,11 @@ export function CourseCard({
         </div>
 
         <div className="mt-auto flex flex-col gap-3 pt-2">
-          <p className="text-2xl font-bold text-brand-cyan">₹{price.toLocaleString("en-IN")}</p>
+          <p className="text-2xl font-bold text-swiss-red">₹{price.toLocaleString("en-IN")}</p>
           <button
             type="button"
             onClick={requestView}
-            className="block w-full rounded-lg bg-brand-cyan py-2.5 text-center text-sm font-semibold text-bg-base transition-colors hover:bg-brand-cyan-light"
+            className="block w-full rounded-lg bg-swiss-red py-2.5 text-center text-sm font-semibold text-white transition-colors hover:bg-swiss-red-light"
           >
             View Course →
           </button>

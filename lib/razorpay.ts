@@ -74,6 +74,34 @@ export type RazorpayOrderResult = {
   currency: string;
 };
 
+export async function createPartnerLeadOrder(
+  amountRupees: number,
+  meta: { leadId: string; courseId: string; apiKeyId: string }
+): Promise<RazorpayOrderResult> {
+  assertRazorpayEnv();
+  const razorpay = getRazorpayInstance();
+  if (!razorpay) {
+    throw new Error("Razorpay is not configured");
+  }
+
+  const order = await razorpay.orders.create({
+    amount: Math.round(amountRupees * 100),
+    currency: "INR",
+    notes: {
+      source: "partner_api",
+      leadId: meta.leadId,
+      courseId: meta.courseId,
+      apiKeyId: meta.apiKeyId,
+    },
+  });
+
+  return {
+    id: order.id,
+    amount: Number(order.amount),
+    currency: order.currency,
+  };
+}
+
 export async function createPublicOrder(
   amount: number,
   courseId: string

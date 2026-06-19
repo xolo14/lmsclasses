@@ -20,7 +20,6 @@ type ApiKeyRow = {
   usageCount?: number;
   isActive: boolean;
   lastUsedAt: string | null;
-  expiresAt: string | null;
   createdAt: string;
 };
 
@@ -125,12 +124,6 @@ export default function SuperAdminApiKeysPage() {
       header: "Last Used",
       cell: ({ row }) =>
         row.original.lastUsedAt ? formatDateTime(row.original.lastUsedAt) : "Never",
-    },
-    {
-      accessorKey: "expiresAt",
-      header: "Expiry",
-      cell: ({ row }) =>
-        row.original.expiresAt ? formatDateTime(row.original.expiresAt) : "Never",
     },
     {
       id: "actions",

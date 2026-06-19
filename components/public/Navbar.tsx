@@ -16,7 +16,7 @@ export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-neutral-950/10 bg-[#F4F4F0]/95 backdrop-blur-[2px]">
+    <header className="sticky top-0 z-50 border-b border-swiss-black/10 bg-swiss-cream/95 backdrop-blur-[2px]">
       <div className={landingLayout.frame}>
         <div
           className={cn(
@@ -56,7 +56,7 @@ export function Navbar() {
             </Link>
             <Link
               href="/hr/login"
-              className="border border-neutral-950 px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-neutral-950 transition-colors hover:bg-neutral-950 hover:text-white"
+              className="border-2 border-swiss-red bg-swiss-red px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-swiss-red-dark hover:border-swiss-red-dark"
             >
               HR
             </Link>

@@ -52,7 +52,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
       resolver: zodResolver(createApiKeySchema),
       defaultValues: {
         name: "",
-        permissions: ["submit_lead", "get_lead_status", "confirm_payment"],
+        permissions: ["submit_lead", "get_lead_status", "create_payment_order", "confirm_payment", "get_course_list"],
         allowedCourses: [],
         allowedPaymentGateway: "any",
         environment: "live",
@@ -61,7 +61,6 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
         notifyWebhook: false,
         rateLimit: { requests: 200, windowMinutes: 60 },
         ipWhitelist: [],
-        expiresAt: null,
         notes: "",
       },
     });
@@ -88,7 +87,6 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
         body: JSON.stringify({
           ...data,
           allowedCourses: allCourses ? [] : data.allowedCourses,
-          expiresAt: data.expiresAt || null,
         }),
       });
       const json = await res.json();
@@ -253,24 +251,18 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Label>Rate limit (requests / hour)</Label>
-              <Input
-                type="number"
-                defaultValue={200}
-                onChange={(e) =>
-                  setValue("rateLimit", {
-                    requests: parseInt(e.target.value, 10) || 200,
-                    windowMinutes: 60,
-                  })
-                }
-              />
-            </div>
-            <div>
-              <Label>Expiry (optional)</Label>
-              <Input type="datetime-local" {...register("expiresAt")} />
-            </div>
+          <div>
+            <Label>Rate limit (requests / hour)</Label>
+            <Input
+              type="number"
+              defaultValue={200}
+              onChange={(e) =>
+                setValue("rateLimit", {
+                  requests: parseInt(e.target.value, 10) || 200,
+                  windowMinutes: 60,
+                })
+              }
+            />
           </div>
 
           <div>

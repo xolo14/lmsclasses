@@ -50,10 +50,10 @@ export function RegistrationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={() => {}}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto border-bg-border bg-bg-card text-text-primary sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto border-swiss-black/10 bg-swiss-white text-swiss-black sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Complete Your Enrollment 🎉</DialogTitle>
-          <DialogDescription className="text-text-muted">
+          <DialogDescription className="text-swiss-muted">
             Payment successful! Set up your student account to get started.
           </DialogDescription>
         </DialogHeader>
@@ -61,7 +61,7 @@ export function RegistrationModal({
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Full Name</Label>
-            <Input id="name" {...form.register("name")} className="border-bg-border bg-bg-base" />
+            <Input id="name" {...form.register("name")} className="border-swiss-black/10 bg-swiss-cream" />
             {form.formState.errors.name && (
               <p className="text-xs text-status-red">{form.formState.errors.name.message}</p>
             )}
@@ -73,11 +73,11 @@ export function RegistrationModal({
               id="email"
               type="email"
               {...form.register("email")}
-              className="border-bg-border bg-bg-base"
+              className="border-swiss-black/10 bg-swiss-cream"
             />
             {emailError && <p className="text-xs text-status-red">{emailError}</p>}
             {emailError && (
-              <Link href="/login" className="text-xs text-brand-cyan hover:underline">
+              <Link href="/login" className="text-xs text-swiss-red hover:underline">
                 Go to Login →
               </Link>
             )}
@@ -88,7 +88,7 @@ export function RegistrationModal({
 
           <div className="space-y-2">
             <Label htmlFor="phone">Phone Number</Label>
-            <Input id="phone" {...form.register("phone")} className="border-bg-border bg-bg-base" />
+            <Input id="phone" {...form.register("phone")} className="border-swiss-black/10 bg-swiss-cream" />
             {form.formState.errors.phone && (
               <p className="text-xs text-status-red">{form.formState.errors.phone.message}</p>
             )}
@@ -101,12 +101,12 @@ export function RegistrationModal({
                 id="password"
                 type={showPassword ? "text" : "password"}
                 {...form.register("password")}
-                className="border-bg-border bg-bg-base pr-10"
+                className="border-swiss-black/10 bg-swiss-cream pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-swiss-muted"
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -122,7 +122,7 @@ export function RegistrationModal({
               id="confirmPassword"
               type="password"
               {...form.register("confirmPassword")}
-              className="border-bg-border bg-bg-base"
+              className="border-swiss-black/10 bg-swiss-cream"
             />
             {form.formState.errors.confirmPassword && (
               <p className="text-xs text-status-red">
@@ -136,7 +136,7 @@ export function RegistrationModal({
             <Input
               id="collegeName"
               {...form.register("collegeName")}
-              className="border-bg-border bg-bg-base"
+              className="border-swiss-black/10 bg-swiss-cream"
             />
             {form.formState.errors.collegeName && (
               <p className="text-xs text-status-red">{form.formState.errors.collegeName.message}</p>
@@ -145,13 +145,13 @@ export function RegistrationModal({
 
           <div className="space-y-2">
             <Label htmlFor="city">City (optional)</Label>
-            <Input id="city" {...form.register("city")} className="border-bg-border bg-bg-base" />
+            <Input id="city" {...form.register("city")} className="border-swiss-black/10 bg-swiss-cream" />
           </div>
 
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-brand-cyan text-bg-base hover:bg-brand-cyan-light"
+            className="w-full bg-swiss-red text-white hover:bg-swiss-red-light"
           >
             {isSubmitting ? (
               <>
@@ -163,7 +163,7 @@ export function RegistrationModal({
             )}
           </Button>
 
-          <p className="text-center text-xs text-text-muted">
+          <p className="text-center text-xs text-swiss-muted">
             Your LMS ID and login credentials will be emailed to you.
           </p>
         </form>

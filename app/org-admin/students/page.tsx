@@ -295,7 +295,7 @@ function CourseSlotCard({
 
   return (
     <Card
-      className={`cursor-pointer transition-all ${selected ? "ring-2 ring-cyan-400" : "hover:border-cyan-400/30"}`}
+      className={`cursor-pointer transition-all ${selected ? "ring-2 ring-swiss-red" : "hover:border-swiss-red/30"}`}
       onClick={onClick}
     >
       <CardHeader>

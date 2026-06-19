@@ -608,3 +608,45 @@ export async function sendSlotPurchaseEmail({
     `,
   });
 }
+
+export async function sendEnrollmentConfirmationEmail({
+  to,
+  studentName,
+  courses,
+  loginUrl,
+}: {
+  to: string;
+  studentName: string;
+  courses: { title: string; accessLabel: string }[];
+  loginUrl: string;
+}) {
+  const blocks = courses
+    .map(
+      (c) =>
+        `<li><strong>${escapeHtml(c.title)}</strong> — ${escapeHtml(c.accessLabel)}</li>`
+    )
+    .join("");
+  await sendEmail({
+    to,
+    subject: `You're enrolled in ${courses.length} course(s) on LMS Classes`,
+    html: `<p>Hi ${escapeHtml(studentName)},</p><ul>${blocks}</ul><p><a href="${loginUrl}">Login to your portal</a></p>`,
+  });
+}
+
+export async function sendEnrollmentRevokedEmail({
+  to,
+  studentName,
+  courseTitle,
+  reason,
+}: {
+  to: string;
+  studentName: string;
+  courseTitle: string;
+  reason: string;
+}) {
+  await sendEmail({
+    to,
+    subject: `Enrollment update for ${courseTitle}`,
+    html: `<p>Hi ${escapeHtml(studentName)}, your enrollment in ${escapeHtml(courseTitle)} was deactivated. Reason: ${escapeHtml(reason)}</p>`,
+  });
+}

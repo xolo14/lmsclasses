@@ -25,7 +25,6 @@ export const createApiKeySchema = z.object({
     .optional(),
   ipWhitelist: z.array(z.string()).optional().default([]),
   environment: z.enum(["live", "test"]).optional().default("live"),
-  expiresAt: z.string().optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
 });
 

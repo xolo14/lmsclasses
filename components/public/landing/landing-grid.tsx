@@ -6,6 +6,7 @@ export const swiss = {
   white: "bg-swiss-white",
   black: "text-swiss-black",
   red: "text-swiss-red",
+  "red-bg": "bg-swiss-red",
   border: "border-swiss-black/10",
   label: "text-[0.6875rem] font-semibold uppercase tracking-[0.24em] text-swiss-muted",
 } as const;

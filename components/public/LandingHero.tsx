@@ -44,7 +44,7 @@ export function LandingHero() {
           </div>
 
           <div className="col-span-4 mt-6 flex items-end md:col-span-2 md:col-start-7 lg:col-span-4 lg:col-start-9 lg:mt-0 lg:row-span-2 lg:self-end">
-            <div className="border-l-4 border-[#E30613] pl-5">
+            <div className="border-l-4 border-swiss-red pl-5">
               <p className="text-sm font-medium leading-relaxed text-neutral-600 md:text-base">
                 Live instruction, structured programs, and job-ready outcomes — one platform for
                 serious learners.
@@ -59,7 +59,7 @@ export function LandingHero() {
                 className="group inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-neutral-950"
               >
                 Browse courses
-                <span className="text-[#E30613] transition-transform group-hover:translate-x-1">
+                <span className="text-swiss-red transition-transform group-hover:translate-x-1">
                   →
                 </span>
               </Link>

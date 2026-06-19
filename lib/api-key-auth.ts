@@ -21,10 +21,6 @@ export type ApiKeyContext = {
   startTime: number;
 };
 
-function formatExpiryIST(date: Date): string {
-  return date.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
-}
-
 async function countRecentUsage(
   apiKeyId: string,
   windowMinutes: number
@@ -103,11 +99,6 @@ export async function requireApiKey(
   if (!apiKey.isActive) {
     await logApiKeyUsage({ apiKey, endpoint, method: request.method, ipAddress, statusCode: 403 });
     return { error: ApiKeyErrors.disabled() };
-  }
-
-  if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
-    await logApiKeyUsage({ apiKey, endpoint, method: request.method, ipAddress, statusCode: 401 });
-    return { error: ApiKeyErrors.expired(formatExpiryIST(apiKey.expiresAt)) };
   }
 
   const whitelist = (apiKey.ipWhitelist ?? []) as string[];

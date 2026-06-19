@@ -9,6 +9,7 @@ import { createStudentFromLead } from "@/lib/partner-student-service";
 import { verifyRazorpaySignature } from "@/lib/razorpay";
 import { notifyPartnerWebhook } from "@/lib/partner-webhook";
 import { logAction } from "@/lib/audit";
+import { getAppUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -131,32 +132,45 @@ export async function POST(request: Request) {
     const [updated] = await db.select().from(partnerLeads).where(eq(partnerLeads.id, leadId)).limit(1);
 
     let studentCreated = updated!.studentCreated;
+    let studentResult: Awaited<ReturnType<typeof createStudentFromLead>> | null = null;
     if (ctx.apiKey.autoCreateStudent && !studentCreated) {
-      const result = await createStudentFromLead(updated!, {
+      studentResult = await createStudentFromLead(updated!, {
         ipAddress: ctx.ipAddress,
         apiKey: ctx.apiKey,
       });
       studentCreated = true;
-      void result;
     }
 
+    const [finalLead] = await db.select().from(partnerLeads).where(eq(partnerLeads.id, leadId)).limit(1);
+    const loginUrl = studentResult?.loginUrl ?? `${getAppUrl()}/login`;
+    const studentUsername = finalLead?.studentUsername ?? studentResult?.username ?? null;
+    const lmsId = studentResult?.lmsId ?? null;
+
     if (ctx.apiKey.notifyWebhook) {
-      notifyPartnerWebhook(ctx.apiKey, "payment.completed", updated!).catch(console.error);
+      notifyPartnerWebhook(ctx.apiKey, "payment.completed", finalLead ?? updated!).catch(console.error);
     }
 
     await logAction({
       action: "EXTERNAL_PAYMENT_CONFIRMED",
       entity: "PartnerLead",
       entityId: leadId,
-      metadata: { amount, currency, apiKeyId: ctx.apiKey.id },
+      metadata: { amount, currency, apiKeyId: ctx.apiKey.id, studentCreated },
       ipAddress: ctx.ipAddress,
     });
 
+    const emailPending = studentCreated && studentResult && !studentResult.emailSent;
     const response = NextResponse.json({
       success: true,
-      message: "Payment confirmed. Student credentials will be emailed shortly.",
+      message: emailPending
+        ? "Payment confirmed. Student account is ready — redirect using loginUrl."
+        : studentResult?.emailSent
+          ? "Payment confirmed. Credentials have been emailed to the student."
+          : "Payment confirmed.",
       leadId,
       studentCreated,
+      loginUrl,
+      studentUsername,
+      ...(lmsId ? { lmsId } : {}),
     });
     return finishApiKeyRequest(ctx, ENDPOINT, response, { requestBody: body, leadId });
   } catch (err) {

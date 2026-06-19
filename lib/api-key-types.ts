@@ -7,6 +7,7 @@ export const API_PERMISSIONS = [
   "get_lead_status",
   "list_own_leads",
   "confirm_payment",
+  "create_payment_order",
   "verify_payment",
   "get_course_list",
   "get_batch_schedule",
@@ -18,7 +19,7 @@ export type ApiPermission = (typeof API_PERMISSIONS)[number];
 
 export const PERMISSION_GROUPS = {
   Lead: ["submit_lead", "update_lead", "get_lead_status", "list_own_leads"] as const,
-  Payment: ["confirm_payment", "verify_payment"] as const,
+  Payment: ["create_payment_order", "confirm_payment", "verify_payment"] as const,
   Student: ["resend_credentials", "check_student_exists"] as const,
   Info: ["get_course_list", "get_batch_schedule"] as const,
 };

@@ -9,7 +9,35 @@ import {
   decimal,
   jsonb,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+/** JSON shape for live_schedule on courses */
+export type LiveScheduleJson = {
+  batchName?: string;
+  startDate?: string;
+  endDate?: string;
+  days?: ("Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun")[];
+  timeIST?: string;
+  mentorId?: string;
+  meetLink?: string;
+  totalSessions?: number;
+};
+
+/** JSON shape for recorded_modules on courses */
+export type RecordedModuleJson = {
+  index: number;
+  title: string;
+  description?: string;
+  videoUrl: string;
+  durationSeconds: number;
+  isPreview?: boolean;
+  resources?: { name: string; url: string; type: "pdf" | "zip" | "link" }[];
+  releasedAt?: string;
+};
+
+export type EnrollmentAccessType = "live" | "recorded" | "both";
+export type EnrollmentStatus = "active" | "paused" | "revoked" | "expired" | "completed";
 
 export const roleEnum = pgEnum("role", [
   "super_admin",
@@ -61,6 +89,20 @@ export const applicationStatusEnum = pgEnum("application_status", [
 ]);
 
 export const courseTypeEnum = pgEnum("course_type", ["live", "record"]);
+
+export const enrollmentAccessTypeEnum = pgEnum("enrollment_access_type", [
+  "live",
+  "recorded",
+  "both",
+]);
+
+export const enrollmentStatusEnum = pgEnum("enrollment_status", [
+  "active",
+  "paused",
+  "revoked",
+  "expired",
+  "completed",
+]);
 
 export const partnerLeadStatusEnum = pgEnum("partner_lead_status", [
   "new",
@@ -135,6 +177,12 @@ export const liveCourses = pgTable("live_courses", {
   totalHours: integer("total_hours"),
   totalLectures: integer("total_lectures"),
   certificate: boolean("certificate").default(true),
+  hasLive: boolean("has_live").notNull().default(true),
+  hasRecorded: boolean("has_recorded").notNull().default(false),
+  liveSchedule: jsonb("live_schedule").$type<LiveScheduleJson>(),
+  recordedModules: jsonb("recorded_modules").$type<RecordedModuleJson[]>(),
+  totalModules: integer("total_modules").default(0),
+  totalLiveHours: integer("total_live_hours").default(0),
   isFeatured: boolean("is_featured").default(false),
   isActive: boolean("is_active").default(true),
   deletedAt: timestamp("deleted_at"),
@@ -161,6 +209,12 @@ export const recordCourses = pgTable("record_courses", {
   totalHours: integer("total_hours"),
   totalLectures: integer("total_lectures"),
   certificate: boolean("certificate").default(true),
+  hasLive: boolean("has_live").notNull().default(false),
+  hasRecorded: boolean("has_recorded").notNull().default(true),
+  liveSchedule: jsonb("live_schedule").$type<LiveScheduleJson>(),
+  recordedModules: jsonb("recorded_modules").$type<RecordedModuleJson[]>(),
+  totalModules: integer("total_modules").default(0),
+  totalLiveHours: integer("total_live_hours").default(0),
   isFeatured: boolean("is_featured").default(false),
   isActive: boolean("is_active").default(true),
   deletedAt: timestamp("deleted_at"),
@@ -250,23 +304,105 @@ export const slots = pgTable("slots", {
 export const studentCourses = pgTable("student_courses", {
   id: uuid("id").primaryKey().defaultRandom(),
   studentId: uuid("student_id")
-    .references(() => users.id)
+    .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
   liveCourseId: uuid("live_course_id").references(() => liveCourses.id),
   recordCourseId: uuid("record_course_id").references(() => recordCourses.id),
-  // null = no live class access (public / direct without batch)
   batchId: uuid("batch_id").references(() => batches.id),
-  // null = direct enrollment (public purchase or super admin add)
   organisationId: uuid("organisation_id").references(() => organisations.id),
+  assignedBy: uuid("assigned_by").references(() => users.id),
   enrollmentSource: text("enrollment_source").notNull().default("org_admin"),
+
+  accessType: enrollmentAccessTypeEnum("access_type").notNull().default("recorded"),
+  liveAccess: boolean("live_access").notNull().default(false),
+  liveAccessFrom: timestamp("live_access_from", { withTimezone: true }),
+  liveAccessUntil: timestamp("live_access_until", { withTimezone: true }),
+  recordedAccess: boolean("recorded_access").notNull().default(true),
+  recordedAccessFrom: timestamp("recorded_access_from", { withTimezone: true }),
+  recordedAccessUntil: timestamp("recorded_access_until", { withTimezone: true }),
+
+  liveClassesAttended: integer("live_classes_attended").notNull().default(0),
+  recordedModulesWatched: integer("recorded_modules_watched").notNull().default(0),
+  totalWatchTimeMinutes: integer("total_watch_time_minutes").notNull().default(0),
+  lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }),
+  completionPercentage: integer("completion_percentage").notNull().default(0),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+
+  slotConsumed: boolean("slot_consumed").notNull().default(true),
+  paymentId: text("payment_id"),
+  isFree: boolean("is_free").notNull().default(false),
+
+  status: enrollmentStatusEnum("status").notNull().default("active"),
+  pausedAt: timestamp("paused_at", { withTimezone: true }),
+  pauseReason: text("pause_reason"),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokeReason: text("revoke_reason"),
+
+  adminNotes: text("admin_notes"),
+  certificate: boolean("certificate").notNull().default(false),
+  certificateIssuedAt: timestamp("certificate_issued_at", { withTimezone: true }),
+
   enrolledAt: timestamp("enrolled_at").defaultNow(),
   isActive: boolean("is_active").default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  // PERF: The most-queried pattern: "what courses is this student in?"
   index("sc_student_id_idx").on(table.studentId),
-  // PERF: Batch queries — "which students are in this batch?"
   index("sc_batch_id_idx").on(table.batchId),
+  index("sc_live_course_id_idx").on(table.liveCourseId),
+  index("sc_record_course_id_idx").on(table.recordCourseId),
+  index("sc_org_id_idx").on(table.organisationId),
+  index("sc_status_idx").on(table.status),
+  uniqueIndex("sc_student_live_course_uq").on(table.studentId, table.liveCourseId),
+  uniqueIndex("sc_student_record_course_uq").on(table.studentId, table.recordCourseId),
 ]);
+
+export const recordedModuleProgress = pgTable("recorded_module_progress", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  enrollmentId: uuid("enrollment_id")
+    .notNull()
+    .references(() => studentCourses.id, { onDelete: "cascade" }),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  liveCourseId: uuid("live_course_id").references(() => liveCourses.id),
+  recordCourseId: uuid("record_course_id").references(() => recordCourses.id),
+  moduleIndex: integer("module_index").notNull(),
+  moduleTitle: text("module_title").notNull(),
+  watchedSeconds: integer("watched_seconds").notNull().default(0),
+  durationSeconds: integer("duration_seconds").notNull().default(0),
+  isCompleted: boolean("is_completed").notNull().default(false),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  lastWatchedAt: timestamp("last_watched_at", { withTimezone: true }),
+  notes: text("notes"),
+}, (table) => [
+  uniqueIndex("rmp_enrollment_module_uq").on(table.enrollmentId, table.moduleIndex),
+  index("rmp_student_id_idx").on(table.studentId),
+]);
+
+export const liveClassAttendance = pgTable("live_class_attendance", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  enrollmentId: uuid("enrollment_id")
+    .notNull()
+    .references(() => studentCourses.id, { onDelete: "cascade" }),
+  studentId: uuid("student_id")
+    .notNull()
+    .references(() => users.id),
+  liveCourseId: uuid("live_course_id").references(() => liveCourses.id),
+  recordCourseId: uuid("record_course_id").references(() => recordCourses.id),
+  liveClassId: uuid("live_class_id")
+    .notNull()
+    .references(() => liveClasses.id),
+  joinedAt: timestamp("joined_at", { withTimezone: true }).notNull(),
+  leftAt: timestamp("left_at", { withTimezone: true }),
+  durationMinutes: integer("duration_minutes").default(0),
+  wasRecorded: boolean("was_recorded").default(false),
+  recordingUrl: text("recording_url"),
+}, (table) => [
+  uniqueIndex("lca_enrollment_class_uq").on(table.enrollmentId, table.liveClassId),
+]);
+
+/** Spec alias — enrollments live in student_courses (live + record course IDs). */
+export const studentCourseEnrollments = studentCourses;
 
 /** Course-scoped recordings (base curriculum) — no batchId; distinct from class_recordings */
 export const courseRecordings = pgTable("course_recordings", {
@@ -485,7 +621,6 @@ export const apiKeys = pgTable("api_keys", {
   createdBy: uuid("created_by").references(() => users.id),
   lastUsedAt: timestamp("last_used_at"),
   usageCount: integer("usage_count").default(0).notNull(),
-  expiresAt: timestamp("expires_at"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -573,6 +708,9 @@ export type Batch = typeof batches.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type Slot = typeof slots.$inferSelect;
 export type StudentCourse = typeof studentCourses.$inferSelect;
+export type StudentCourseEnrollment = StudentCourse;
+export type RecordedModuleProgress = typeof recordedModuleProgress.$inferSelect;
+export type LiveClassAttendance = typeof liveClassAttendance.$inferSelect;
 export type LiveClass = typeof liveClasses.$inferSelect;
 export type ClassRecording = typeof classRecordings.$inferSelect;
 export type CourseRecording = typeof courseRecordings.$inferSelect;

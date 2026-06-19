@@ -13,17 +13,21 @@ interface CourseDetailClientProps {
 
 export function EnrollmentCard({ courseId, courseTitle, price, thumbnailUrl }: CourseDetailClientProps) {
   return (
-    <div className="sticky top-24 rounded-xl border border-bg-border bg-bg-card p-6">
-      <div className="mb-4 aspect-video overflow-hidden rounded-lg bg-gradient-to-br from-brand-cyan-dim/30 to-bg-base">
+    <div className="sticky top-24 border border-swiss-black/10 bg-swiss-white p-6">
+      <div className="mb-4 aspect-video overflow-hidden bg-gradient-to-br from-swiss-red/15 to-swiss-black">
         {thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={thumbnailUrl} alt={courseTitle} className="h-full w-full object-cover" />
         ) : null}
       </div>
-      <p className="text-3xl font-bold text-brand-cyan">₹{price.toLocaleString("en-IN")}</p>
-      <p className="text-sm text-text-muted">per slot · one-time payment</p>
+      <p className="text-4xl font-bold tracking-[-0.03em] text-swiss-red">
+        ₹{price.toLocaleString("en-IN")}
+      </p>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-swiss-muted">
+        per slot · one-time payment
+      </p>
 
-      <ul className="mt-4 space-y-2 text-sm text-text-secondary">
+      <ul className="mt-4 space-y-2 text-sm text-swiss-muted border-t border-swiss-black/10 pt-4">
         <li>✓ All live class links</li>
         <li>✓ Lifetime access to recordings</li>
         <li>✓ Course completion certificate</li>
@@ -36,15 +40,15 @@ export function EnrollmentCard({ courseId, courseTitle, price, thumbnailUrl }: C
           courseTitle={courseTitle}
           price={price}
           trigger={
-            <Button className="w-full bg-brand-cyan py-6 text-base font-semibold text-bg-base hover:bg-brand-cyan-light">
+            <Button className="w-full py-6 text-base">
               Enroll Now
             </Button>
           }
         />
       </div>
 
-      <p className="mt-4 flex items-center gap-2 text-xs text-text-muted">
-        <Shield className="h-4 w-4 text-brand-cyan" />
+      <p className="mt-4 flex items-center gap-2 text-xs text-swiss-muted">
+        <Shield className="h-4 w-4 text-swiss-red" />
         30-day refund policy
       </p>
     </div>

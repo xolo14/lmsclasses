@@ -35,7 +35,7 @@ export function DemoVideoModal({ isOpen, onClose, videoUrl, courseTitle }: DemoV
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-3xl border-bg-border bg-bg-card text-text-primary">
+      <DialogContent className="max-w-3xl border-swiss-black/10 bg-swiss-white text-swiss-black">
         <DialogHeader>
           <DialogTitle>Demo: {courseTitle}</DialogTitle>
         </DialogHeader>
