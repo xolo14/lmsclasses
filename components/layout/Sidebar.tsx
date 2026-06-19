@@ -24,6 +24,7 @@ import {
   Tag,
   Play,
   Contact,
+  Key,
   type LucideIcon,
 } from "lucide-react";
 
@@ -103,6 +104,7 @@ export function SuperAdminSidebar(props: Omit<SidebarProps, "items" | "title">) 
     { label: "Job Postings", href: "/super-admin/job-postings", icon: Briefcase },
     { label: "Students", href: "/super-admin/students", icon: GraduationCap },
     { label: "Leads", href: "/super-admin/leads", icon: Contact },
+    { label: "API Keys", href: "/super-admin/api-keys", icon: Key },
     { label: "Live Courses", href: "/super-admin/live-courses", icon: BookOpen },
     { label: "Record Courses", href: "/super-admin/record-courses", icon: BookOpen },
     { label: "Course Demos", href: "/super-admin/demos", icon: Play },

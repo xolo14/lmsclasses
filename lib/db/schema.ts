@@ -62,6 +62,19 @@ export const applicationStatusEnum = pgEnum("application_status", [
 
 export const courseTypeEnum = pgEnum("course_type", ["live", "record"]);
 
+export const partnerLeadStatusEnum = pgEnum("partner_lead_status", [
+  "new",
+  "contacted",
+  "enrolled",
+  "lost",
+]);
+
+export const partnerLeadPaymentStatusEnum = pgEnum("partner_lead_payment_status", [
+  "pending",
+  "completed",
+  "failed",
+]);
+
 export const organisations = pgTable("organisations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -441,6 +454,68 @@ export const courseLeads = pgTable("course_leads", {
   index("course_leads_created_at_idx").on(table.createdAt),
 ]);
 
+export const apiKeys = pgTable("api_keys", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  keyPrefix: text("key_prefix").notNull(),
+  keyHash: text("key_hash").notNull(),
+  permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdBy: uuid("created_by").references(() => users.id),
+  lastUsedAt: timestamp("last_used_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("api_keys_key_hash_idx").on(table.keyHash),
+  index("api_keys_is_active_idx").on(table.isActive),
+]);
+
+export const partnerLeads = pgTable("partner_leads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  course: text("course").notNull(),
+  courseSlug: text("course_slug"),
+  recordCourseId: uuid("record_course_id").references(() => recordCourses.id),
+  source: text("source"),
+  utmParams: jsonb("utm_params").$type<{
+    utm_source?: string;
+    utm_medium?: string;
+    utm_campaign?: string;
+  }>(),
+  status: partnerLeadStatusEnum("status").default("new").notNull(),
+  apiKeyId: uuid("api_key_id").references(() => apiKeys.id),
+  paymentStatus: partnerLeadPaymentStatusEnum("payment_status").default("pending").notNull(),
+  paymentId: text("payment_id"),
+  paymentAmount: decimal("payment_amount", { precision: 10, scale: 2 }),
+  paymentCurrency: text("payment_currency"),
+  paymentGateway: text("payment_gateway"),
+  studentCreated: boolean("student_created").default(false).notNull(),
+  studentId: uuid("student_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("partner_leads_email_idx").on(table.email),
+  index("partner_leads_status_idx").on(table.status),
+  index("partner_leads_payment_status_idx").on(table.paymentStatus),
+  index("partner_leads_created_at_idx").on(table.createdAt),
+  index("partner_leads_api_key_id_idx").on(table.apiKeyId),
+]);
+
+export const apiKeyUsageLogs = pgTable("api_key_usage_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  apiKeyId: uuid("api_key_id").references(() => apiKeys.id).notNull(),
+  apiKeyName: text("api_key_name"),
+  endpoint: text("endpoint").notNull(),
+  ipAddress: text("ip_address"),
+  statusCode: integer("status_code"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("api_key_usage_logs_key_created_idx").on(table.apiKeyId, table.createdAt),
+]);
+
 export type User = typeof users.$inferSelect;
 export type Organisation = typeof organisations.$inferSelect;
 export type LiveCourse = typeof liveCourses.$inferSelect;
@@ -461,5 +536,8 @@ export type JobPosting = typeof jobPostings.$inferSelect;
 export type JobApplication = typeof jobApplications.$inferSelect;
 export type Coupon = typeof coupons.$inferSelect;
 export type CourseLead = typeof courseLeads.$inferSelect;
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type PartnerLead = typeof partnerLeads.$inferSelect;
+export type ApiKeyUsageLog = typeof apiKeyUsageLogs.$inferSelect;
 export type SystemSetting = typeof systemSettings.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];

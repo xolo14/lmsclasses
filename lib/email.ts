@@ -473,6 +473,65 @@ export async function sendApplicationRejectedEmail({
   });
 }
 
+export async function sendPartnerStudentCredentialsEmail({
+  to,
+  name,
+  courseTitle,
+  lmsId,
+  password,
+}: {
+  to: string;
+  name: string;
+  courseTitle: string;
+  lmsId: string;
+  password: string;
+}) {
+  const loginUrl = `${appUrl}/login`;
+  const safeEmail = to.trim().toLowerCase();
+
+  return sendEmail({
+    to: safeEmail,
+    subject: "Your Login Credentials for lmsclasses.com",
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1a202c;">
+        <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
+          <h2 style="color: #E30613; margin: 0; font-size: 24px;">Welcome to LMS Classes</h2>
+          <p style="color: #64748b; font-size: 14px; margin-top: 8px;">Your course access is ready</p>
+        </div>
+
+        <p style="font-size: 16px; line-height: 1.5; color: #334155;">
+          Hello ${escapeHtml(name)},
+        </p>
+        <p style="font-size: 16px; line-height: 1.5; color: #334155;">
+          You have been enrolled in <strong>${escapeHtml(courseTitle)}</strong>. Use the credentials below to log in.
+        </p>
+
+        <div style="background-color: #F4F4F0; border-left: 4px solid #E30613; padding: 16px; margin: 20px 0; border-radius: 6px;">
+          <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px;">Your Login Credentials</h3>
+          <ul style="margin: 0; padding-left: 20px; color: #475569; line-height: 1.8; font-family: monospace; font-size: 15px;">
+            <li><strong>LMS ID:</strong> ${escapeHtml(lmsId)}</li>
+            <li><strong>Email:</strong> ${safeEmail}</li>
+            <li><strong>Password:</strong> ${escapeHtml(password)}</li>
+          </ul>
+        </div>
+
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${loginUrl}" style="background-color: #E30613; color: #ffffff; padding: 14px 36px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; font-size: 16px;">Login to Your Course</a>
+        </div>
+
+        <div style="color: #64748b; font-size: 13px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 32px; line-height: 1.6;">
+          Please change your password after your first login.<br/>
+          Login URL: <a href="${loginUrl}" style="color: #0f766e;">${loginUrl}</a>
+        </div>
+        <div style="color: #94a3b8; font-size: 11px; text-align: center; margin-top: 12px;">
+          — LMS Classes (info@lmsclasses.com)
+        </div>
+      </div>
+    `,
+    text: `Welcome ${name}!\n\nCourse: ${courseTitle}\nLMS ID: ${lmsId}\nEmail: ${safeEmail}\nPassword: ${password}\n\nLogin: ${loginUrl}\n\nPlease change your password after first login.`,
+  });
+}
+
 export async function sendSlotPurchaseEmail({
   email,
   adminName,

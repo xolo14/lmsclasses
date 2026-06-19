@@ -33,6 +33,14 @@ const config: Config = {
           light: "#E0C878",
           muted: "#8A7340",
         },
+        swiss: {
+          cream: "#F4F4F0",
+          white: "#FFFFFF",
+          black: "#0A0A0A",
+          red: "#E30613",
+          muted: "#5C5C5C",
+          rule: "rgba(10,10,10,0.12)",
+        },
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {

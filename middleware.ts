@@ -19,6 +19,7 @@ export default auth((req) => {
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/bootstrap") ||
     pathname.startsWith("/api/payments/webhook") ||
+    pathname.startsWith("/api/external") ||
     pathname === "/api/payments/create-order";
 
   if (isPublic) {
