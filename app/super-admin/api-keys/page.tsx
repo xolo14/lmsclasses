@@ -29,12 +29,17 @@ export default function SuperAdminApiKeysPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
 
-  const { data: keys = [], isLoading } = useQuery<ApiKeyRow[]>({
+  const { data: keys = [], isLoading, isError, error, refetch } = useQuery<ApiKeyRow[]>({
     queryKey: ["api-keys"],
     queryFn: async () => {
       const res = await fetch("/api/super-admin/api-keys");
-      if (!res.ok) throw new Error("Failed to load API keys");
-      return res.json();
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body?.error === "string" ? body.error : "Failed to load API keys"
+        );
+      }
+      return body;
     },
   });
 
@@ -161,6 +166,25 @@ export default function SuperAdminApiKeysPage() {
 
   if (isLoading) return <div className="text-muted-foreground">Loading...</div>;
 
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="API Keys"
+          description="Manage keys for digital marketing partners to submit leads and confirm payments."
+        />
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 space-y-3">
+          <p className="text-destructive font-medium">
+            Could not load API keys: {error instanceof Error ? error.message : "Unknown error"}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -171,7 +195,26 @@ export default function SuperAdminApiKeysPage() {
           <Plus className="h-4 w-4 mr-2" /> Generate New API Key
         </Button>
       </PageHeader>
-      <DataTable columns={columns} data={keys} searchPlaceholder="Search API keys..." />
+      {keys.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-10 text-center space-y-3">
+          <Key className="h-10 w-10 mx-auto text-muted-foreground" />
+          <p className="font-medium">No API keys yet</p>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Generate a key for each digital marketing partner. Each key is tied to one course and
+            includes the permissions needed for leads and payments.
+          </p>
+          <Button onClick={() => setModalOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" /> Generate New API Key
+          </Button>
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={keys}
+          searchKey="name"
+          searchPlaceholder="Search API keys..."
+        />
+      )}
       <AddApiKeyModal open={modalOpen} onOpenChange={setModalOpen} />
     </div>
   );

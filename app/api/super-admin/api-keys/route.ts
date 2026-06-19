@@ -67,8 +67,20 @@ export async function GET(request: Request) {
       })
     );
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error("[api/super-admin/api-keys] GET:", err);
-    return NextResponse.json({ error: "Failed to fetch API keys" }, { status: 500 });
+    const schemaOutdated =
+      /course_id/i.test(message) &&
+      (/does not exist|unknown column/i.test(message) || /column/i.test(message));
+    return NextResponse.json(
+      {
+        error: schemaOutdated
+          ? "Database schema is outdated. Run npm run db:push on the server, then try again."
+          : "Failed to fetch API keys",
+        ...(process.env.NODE_ENV !== "production" ? { details: message } : {}),
+      },
+      { status: 500 }
+    );
   }
 }
 

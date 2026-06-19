@@ -42,9 +42,23 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
   const [generated, setGenerated] = useState<GeneratedKey | null>(null);
   const [copiedField, setCopiedField] = useState<"key" | "courseId" | null>(null);
 
-  const { data: courses = [] } = useQuery<{ id: string; name: string; price?: number }[]>({
+  const {
+    data: courses = [],
+    isLoading: coursesLoading,
+    isError: coursesError,
+  } = useQuery<{ id: string; name: string; price?: number }[]>({
     queryKey: ["partner-courses"],
-    queryFn: () => fetch("/api/super-admin/partner-courses").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/super-admin/partner-courses");
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof json?.error === "string" ? json.error : "Failed to load courses");
+      }
+      if (!Array.isArray(json)) {
+        throw new Error("Invalid courses response");
+      }
+      return json;
+    },
     enabled: open,
   });
 
@@ -223,7 +237,13 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
 
             <div className="sm:col-span-2">
               <Label>Course *</Label>
-              {courses.length === 0 ? (
+              {coursesLoading ? (
+                <p className="text-sm text-muted-foreground mt-1">Loading courses…</p>
+              ) : coursesError ? (
+                <p className="text-sm text-destructive mt-1">
+                  Could not load courses. Close and reopen this dialog to retry.
+                </p>
+              ) : courses.length === 0 ? (
                 <p className="text-sm text-destructive mt-1">
                   No active record courses found. Create a record course first.
                 </p>
@@ -359,7 +379,16 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={mutation.isPending || !selectedCourseId || courses.length === 0}>
+            <Button
+              type="submit"
+              disabled={
+                mutation.isPending ||
+                coursesLoading ||
+                coursesError ||
+                !selectedCourseId ||
+                courses.length === 0
+              }
+            >
               {mutation.isPending ? "Generating…" : "Generate Key"}
             </Button>
           </DialogFooter>
