@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -21,9 +21,11 @@ type CourseOption = {
 type Props = {
   studentId: string;
   onSuccess?: () => void;
+  /** Auto-check these course IDs when the form loads (e.g. from org course dialog). */
+  preselectedCourseIds?: string[];
 };
 
-export function AssignCoursesForm({ studentId, onSuccess }: Props) {
+export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [accessType, setAccessType] = useState<EnrollmentAccessType>("both");
   const [isFree, setIsFree] = useState(false);
@@ -42,6 +44,16 @@ export function AssignCoursesForm({ studentId, onSuccess }: Props) {
   });
 
   const mutation = useAssignCoursesMutation(studentId);
+
+  useEffect(() => {
+    if (!preselectedCourseIds?.length || !courses.length) return;
+    const valid = preselectedCourseIds.filter((id) =>
+      courses.some((c) => c.id === id && !c.enrolled)
+    );
+    if (valid.length) {
+      setSelected((prev) => [...new Set([...prev, ...valid])]);
+    }
+  }, [preselectedCourseIds, courses]);
 
   const toggle = (id: string) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -99,6 +111,7 @@ export function AssignCoursesForm({ studentId, onSuccess }: Props) {
                 />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm">{c.title}</p>
+                  <p className="text-[10px] font-mono text-swiss-muted truncate">{c.id}</p>
                   <p className="text-xs text-swiss-muted">
                     {c.type === "live" ? "Live" : "Recorded"}
                     {c.hasLive && " · LIVE"}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,7 @@ import { DataTable } from "@/components/tables/DataTable";
 import { AddStudentModal } from "@/components/modals/AddStudentModal";
 import { EditStudentModal } from "@/components/modals/EditStudentModal";
 import { AddBatchModal } from "@/components/modals/AddBatchModal";
+import { SelectStudentForAssignModal } from "@/components/modals/SelectStudentForAssignModal";
 import { ColumnDef } from "@tanstack/react-table";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
@@ -52,6 +54,7 @@ export default function OrgAdminStudentsPage() {
   const queryClient = useQueryClient();
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [studentModalOpen, setStudentModalOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [editStudent, setEditStudent] = useState<Student | undefined>();
 
@@ -118,6 +121,15 @@ export default function OrgAdminStudentsPage() {
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setEditStudent(row.original)}>
             <Pencil className="h-3 w-3 mr-1" /> Edit
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link
+              href={`/org-admin/students/${row.original.id}/courses${
+                selectedCourse ? `?courseId=${selectedCourse.id}` : ""
+              }`}
+            >
+              <Layers className="h-3 w-3 mr-1" /> Assign
+            </Link>
           </Button>
           <Button
             variant="destructive"
@@ -235,11 +247,16 @@ export default function OrgAdminStudentsPage() {
               </Card>
 
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-lg font-semibold">{selectedCourse.title} — Students</h2>
-                  <Button size="sm" onClick={() => setStudentModalOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" /> Add Student
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setAssignOpen(true)}>
+                      <Layers className="h-4 w-4 mr-2" /> Assign Courses
+                    </Button>
+                    <Button size="sm" onClick={() => setStudentModalOpen(true)}>
+                      <Plus className="h-4 w-4 mr-2" /> Add Student
+                    </Button>
+                  </div>
                 </div>
                 <DataTable columns={columns} data={students} searchPlaceholder="Search students..." />
               </div>
@@ -250,6 +267,14 @@ export default function OrgAdminStudentsPage() {
 
       {selectedCourse && (
         <>
+          <SelectStudentForAssignModal
+            open={assignOpen}
+            onOpenChange={setAssignOpen}
+            assignBasePath="/org-admin/students"
+            courseId={selectedCourse.id}
+            title="Assign courses to org student"
+            description="Select one of your organisation's students to assign additional courses. Only students linked to your organisation are shown."
+          />
           <AddStudentModal
             key={selectedCourse.id}
             open={studentModalOpen}

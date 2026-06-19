@@ -94,6 +94,49 @@ export async function resolveCourseByName(courseName: string) {
   return null;
 }
 
+export async function resolveCourseById(courseId: string) {
+  const [course] = await db
+    .select({
+      id: recordCourses.id,
+      title: recordCourses.title,
+      slug: recordCourses.slug,
+      price: recordCourses.price,
+      level: recordCourses.level,
+      language: recordCourses.language,
+      thumbnailUrl: recordCourses.thumbnailUrl,
+      demoVideoUrl: recordCourses.demoVideoUrl,
+      demoUrl: recordCourses.demoUrl,
+    })
+    .from(recordCourses)
+    .where(
+      and(eq(recordCourses.id, courseId), eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt))
+    )
+    .limit(1);
+
+  if (!course?.slug) return null;
+
+  return {
+    id: course.id,
+    title: course.title,
+    slug: course.slug,
+    price: parseFloat(course.price),
+    level: course.level,
+    language: course.language,
+    thumbnail: resolveCourseThumbnailUrl(course.thumbnailUrl, course.demoVideoUrl || course.demoUrl),
+  };
+}
+
+export async function resolvePartnerCourse(input: { courseId?: string; courseName?: string }) {
+  if (input.courseId) {
+    const byId = await resolveCourseById(input.courseId);
+    if (byId) return byId;
+  }
+  if (input.courseName) {
+    return resolveCourseByName(input.courseName);
+  }
+  return null;
+}
+
 export async function getCoursesForApiKey(apiKey: ApiKey): Promise<PublicCourseItem[]> {
   const rows = await db
     .select({
@@ -112,7 +155,11 @@ export async function getCoursesForApiKey(apiKey: ApiKey): Promise<PublicCourseI
 
   const appUrl = getAppUrl();
   return rows
-    .filter((c) => c.slug && courseAllowed(apiKey, c.title))
+    .filter((c) => {
+      if (!c.slug) return false;
+      if (apiKey.courseId) return c.id === apiKey.courseId;
+      return courseAllowed(apiKey, c.title, c.id);
+    })
     .map((c) => ({
       id: c.id,
       name: c.title,

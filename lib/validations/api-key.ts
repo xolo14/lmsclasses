@@ -3,6 +3,7 @@ import { API_PERMISSIONS } from "@/lib/api-key-types";
 
 export const createApiKeySchema = z.object({
   name: z.string().min(2).max(120),
+  courseId: z.string().uuid({ message: "Select a course" }),
   permissions: z.array(z.enum(API_PERMISSIONS)).min(1),
   allowedCourses: z.array(z.string()).optional().default([]),
   allowedPaymentGateway: z.enum(["razorpay", "manual", "any"]).optional().default("any"),

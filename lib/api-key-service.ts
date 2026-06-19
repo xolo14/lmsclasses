@@ -69,9 +69,26 @@ export function isTestKey(apiKey: { environment?: string | null }): boolean {
   return apiKey.environment === "test";
 }
 
-export function courseAllowed(apiKey: { allowedCourses?: string[] | null }, courseName: string): boolean {
+export function courseAllowed(
+  apiKey: { allowedCourses?: string[] | null; courseId?: string | null },
+  courseName: string,
+  courseId?: string
+): boolean {
+  const boundCourseId =
+    apiKey.courseId ??
+    (apiKey.allowedCourses?.length === 1 ? apiKey.allowedCourses[0] : null);
+
+  if (boundCourseId) {
+    return courseId ? courseId === boundCourseId : false;
+  }
+
   const allowed = (apiKey.allowedCourses ?? []) as string[];
   if (allowed.length === 0) return true;
-  const normalized = courseName.trim().toLowerCase();
-  return allowed.some((c) => c.trim().toLowerCase() === normalized);
+  const normalizedName = courseName.trim().toLowerCase();
+  if (courseId && allowed.includes(courseId)) return true;
+  return allowed.some((c) => {
+    const value = c.trim();
+    if (courseId && value === courseId) return true;
+    return value.toLowerCase() === normalizedName;
+  });
 }

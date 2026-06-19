@@ -36,10 +36,19 @@ export function validateLeadFields(
   const config = (apiKey.leadFields as { required?: string[]; optional?: string[] }) ?? DEFAULT_LEAD_FIELDS;
   const required = config.required ?? DEFAULT_LEAD_FIELDS.required;
   const optional = config.optional ?? DEFAULT_LEAD_FIELDS.optional;
-  const allowed = new Set([...required, ...optional]);
+  const allowed = new Set([...required, ...optional, "courseId"]);
   const fields: Record<string, string> = {};
 
   for (const field of required) {
+    if (field === "course") {
+      const hasCourse =
+        (body.course !== undefined && body.course !== null && String(body.course).trim() !== "") ||
+        (body.courseId !== undefined && body.courseId !== null && String(body.courseId).trim() !== "");
+      if (!hasCourse) {
+        fields.course = "course or courseId is required";
+      }
+      continue;
+    }
     const val = body[field];
     if (val === undefined || val === null || String(val).trim() === "") {
       fields[field] = `${field} is required`;

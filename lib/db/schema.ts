@@ -600,6 +600,7 @@ export const apiKeys = pgTable("api_keys", {
   keyPrefix: text("key_prefix").notNull(),
   keyHash: text("key_hash").notNull(),
   permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+  courseId: uuid("course_id").references(() => recordCourses.id),
   allowedCourses: jsonb("allowed_courses").$type<string[]>().notNull().default([]),
   allowedPaymentGateway: text("allowed_payment_gateway").notNull().default("any"),
   webhookUrl: text("webhook_url"),

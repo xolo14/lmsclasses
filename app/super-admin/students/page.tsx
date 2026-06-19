@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal } from "lucide-react";
@@ -11,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AddDirectStudentModal } from "@/components/modals/AddDirectStudentModal";
 import { EditStudentModal } from "@/components/modals/EditStudentModal";
+import { SelectStudentForAssignModal } from "@/components/modals/SelectStudentForAssignModal";
 import {
   Select,
   SelectContent,
@@ -47,6 +49,7 @@ type OrganisationOption = { id: string; name: string };
 
 export default function StudentsPage() {
   const [addOpen, setAddOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
   const [editStudent, setEditStudent] = useState<Student | undefined>();
   const [organisationFilter, setOrganisationFilter] = useState("all");
   const queryClient = useQueryClient();
@@ -157,6 +160,9 @@ export default function StudentsPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem asChild>
+              <Link href={`/super-admin/students/${row.original.id}/courses`}>Assign courses</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setEditStudent(row.original)}>Edit</DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
@@ -195,8 +201,19 @@ export default function StudentsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <PageHeader title="Students" />
-        <Button onClick={() => setAddOpen(true)}>+ Add Student</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setAssignOpen(true)}>
+            Assign Course
+          </Button>
+          <Button onClick={() => setAddOpen(true)}>+ Add Student</Button>
+        </div>
       </div>
+
+      <SelectStudentForAssignModal
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        assignBasePath="/super-admin/students"
+      />
 
       <AddDirectStudentModal
         isOpen={addOpen}

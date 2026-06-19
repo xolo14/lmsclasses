@@ -15,6 +15,8 @@ type ApiKeyRow = {
   id: string;
   name: string;
   maskedKey: string;
+  courseId: string | null;
+  courseTitle: string | null;
   permissions: string[];
   environment?: string;
   usageCount?: number;
@@ -68,6 +70,20 @@ export default function SuperAdminApiKeysPage() {
       header: "Masked Key",
       cell: ({ row }) => (
         <code className="text-xs font-mono text-muted-foreground">{row.original.maskedKey}</code>
+      ),
+    },
+    {
+      accessorKey: "courseTitle",
+      header: "Course",
+      cell: ({ row }) => (
+        <div className="max-w-[180px]">
+          <p className="text-sm font-medium truncate">{row.original.courseTitle ?? "—"}</p>
+          {row.original.courseId && (
+            <code className="text-[10px] font-mono text-muted-foreground truncate block">
+              {row.original.courseId.slice(0, 8)}…
+            </code>
+          )}
+        </div>
       ),
     },
     {

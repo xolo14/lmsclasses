@@ -25,6 +25,7 @@ export async function GET() {
 
   return NextResponse.json(
     courses.map((c) => ({
+      id: c.id,
       name: c.name,
       slug: c.slug,
       price: parseFloat(c.price),

@@ -25,7 +25,7 @@ export async function GET(
 
   const [row] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(serializeApiKey(row, true));
+  return NextResponse.json(serializeApiKey(row, { includeSecrets: true }));
 }
 
 export async function PATCH(
@@ -66,8 +66,13 @@ export async function PATCH(
       .update(apiKeys)
       .set({
         ...(data.name !== undefined && { name: data.name }),
+        ...(data.courseId !== undefined && {
+          courseId: data.courseId,
+          allowedCourses: [data.courseId],
+        }),
         ...(data.permissions !== undefined && { permissions: data.permissions }),
-        ...(data.allowedCourses !== undefined && { allowedCourses: data.allowedCourses }),
+        ...(data.allowedCourses !== undefined &&
+          data.courseId === undefined && { allowedCourses: data.allowedCourses }),
         ...(data.allowedPaymentGateway !== undefined && {
           allowedPaymentGateway: data.allowedPaymentGateway,
         }),
@@ -96,7 +101,7 @@ export async function PATCH(
       ipAddress: getClientIp(request),
     });
 
-    return NextResponse.json(serializeApiKey(updated, true));
+    return NextResponse.json(serializeApiKey(updated, { includeSecrets: true }));
   } catch (err) {
     console.error("[api/super-admin/api-keys/:id] PATCH:", err);
     return NextResponse.json({ error: "Update failed" }, { status: 500 });

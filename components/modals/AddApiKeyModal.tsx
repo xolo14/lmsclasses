@@ -32,16 +32,17 @@ type GeneratedKey = {
   key: string;
   id: string;
   name: string;
+  courseId: string;
+  courseTitle: string;
 };
 
 export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [generated, setGenerated] = useState<GeneratedKey | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [allCourses, setAllCourses] = useState(true);
+  const [copiedField, setCopiedField] = useState<"key" | "courseId" | null>(null);
 
-  const { data: courses = [] } = useQuery<{ name: string }[]>({
+  const { data: courses = [] } = useQuery<{ id: string; name: string; price?: number }[]>({
     queryKey: ["partner-courses"],
     queryFn: () => fetch("/api/super-admin/partner-courses").then((r) => r.json()),
     enabled: open,
@@ -52,8 +53,14 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
       resolver: zodResolver(createApiKeySchema),
       defaultValues: {
         name: "",
-        permissions: ["submit_lead", "get_lead_status", "create_payment_order", "confirm_payment", "get_course_list"],
-        allowedCourses: [],
+        courseId: "",
+        permissions: [
+          "submit_lead",
+          "get_lead_status",
+          "create_payment_order",
+          "confirm_payment",
+          "get_course_list",
+        ],
         allowedPaymentGateway: "any",
         environment: "live",
         autoCreateStudent: true,
@@ -68,14 +75,14 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
   const selectedPermissions = watch("permissions") ?? [];
   const environment = watch("environment");
   const notifyWebhook = watch("notifyWebhook");
+  const selectedCourseId = watch("courseId");
 
   useEffect(() => {
     if (open) {
       reset();
-      setAllCourses(true);
       setError("");
       setGenerated(null);
-      setCopied(false);
+      setCopiedField(null);
     }
   }, [open, reset]);
 
@@ -84,17 +91,20 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
       const res = await fetch("/api/super-admin/api-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data,
-          allowedCourses: allCourses ? [] : data.allowedCourses,
-        }),
+        body: JSON.stringify(data),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to generate key");
       return json;
     },
     onSuccess: (data) => {
-      setGenerated({ key: data.key, id: data.id, name: data.name });
+      setGenerated({
+        key: data.key,
+        id: data.id,
+        name: data.name,
+        courseId: data.courseId,
+        courseTitle: data.courseTitle ?? "Course",
+      });
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
     },
     onError: (err: Error) => setError(err.message),
@@ -107,11 +117,10 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
     setValue("permissions", next, { shouldValidate: true });
   };
 
-  const copyKey = async () => {
-    if (!generated?.key) return;
-    await navigator.clipboard.writeText(generated.key);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyValue = async (value: string, field: "key" | "courseId") => {
+    await navigator.clipboard.writeText(value);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
   };
 
   if (generated) {
@@ -121,19 +130,56 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
           <DialogHeader>
             <DialogTitle>API Key Generated — {generated.name}</DialogTitle>
             <DialogDescription className="text-destructive font-medium">
-              Save this key now. It will never be shown again.
+              Save the API key and Course ID now. They will not be shown again.
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
-            <code className="block break-all text-sm font-mono">{generated.key}</code>
+
+          <div className="rounded-lg border border-swiss-black/10 bg-swiss-cream/50 p-3 text-sm">
+            <p className="font-medium">{generated.courseTitle}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Give your partner both values below for their LMS integration.
+            </p>
           </div>
-          <Button type="button" variant="outline" className="w-full" onClick={copyKey}>
-            {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-            {copied ? "Copied" : "Copy Key"}
-          </Button>
+
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">API Key</Label>
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 mt-1">
+                <code className="block break-all text-sm font-mono">{generated.key}</code>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full mt-2"
+                onClick={() => copyValue(generated.key, "key")}
+              >
+                {copiedField === "key" ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                {copiedField === "key" ? "Copied" : "Copy API Key"}
+              </Button>
+            </div>
+
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">Course ID</Label>
+              <div className="rounded-lg border border-swiss-black/15 bg-background p-3 mt-1">
+                <code className="block break-all text-sm font-mono">{generated.courseId}</code>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full mt-2"
+                onClick={() => copyValue(generated.courseId, "courseId")}
+              >
+                {copiedField === "courseId" ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                {copiedField === "courseId" ? "Copied" : "Copy Course ID"}
+              </Button>
+            </div>
+          </div>
+
           <DialogFooter>
             <Button onClick={() => { setGenerated(null); onOpenChange(false); }}>
-              I&apos;ve saved my key
+              I&apos;ve saved both values
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -147,7 +193,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
         <DialogHeader>
           <DialogTitle>Generate Partner API Key</DialogTitle>
           <DialogDescription>
-            Configure permissions and scopes for a digital marketing partner.
+            Each key is tied to one course. Partners need the API key + Course ID for their integration.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-5">
@@ -157,6 +203,32 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
               <Input placeholder="Facebook-Agency-Mumbai" {...register("name")} />
               {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
             </div>
+
+            <div className="sm:col-span-2">
+              <Label>Course *</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm mt-1"
+                value={selectedCourseId}
+                onChange={(e) => setValue("courseId", e.target.value, { shouldValidate: true })}
+              >
+                <option value="">Select a course…</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.price !== undefined ? ` — ₹${c.price.toLocaleString("en-IN")}` : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedCourseId && (
+                <p className="text-[11px] font-mono text-muted-foreground mt-1 break-all">
+                  Course ID: {selectedCourseId}
+                </p>
+              )}
+              {errors.courseId && (
+                <p className="text-sm text-destructive mt-1">{errors.courseId.message}</p>
+              )}
+            </div>
+
             <div>
               <Label>Environment</Label>
               <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" {...register("environment")}>
@@ -193,34 +265,6 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
                 </div>
               </div>
             ))}
-          </div>
-
-          <div>
-            <label className="flex items-center gap-2 text-sm mb-2">
-              <input type="checkbox" checked={allCourses} onChange={(e) => setAllCourses(e.target.checked)} />
-              All courses allowed
-            </label>
-            {!allCourses && (
-              <div className="max-h-32 overflow-y-auto border rounded-md p-2 space-y-1">
-                {courses.map((c) => (
-                  <label key={c.name} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      onChange={(e) => {
-                        const current = watch("allowedCourses") ?? [];
-                        setValue(
-                          "allowedCourses",
-                          e.target.checked
-                            ? [...current, c.name]
-                            : current.filter((x) => x !== c.name)
-                        );
-                      }}
-                    />
-                    {c.name}
-                  </label>
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
@@ -293,7 +337,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button type="submit" disabled={mutation.isPending || !selectedCourseId}>
               {mutation.isPending ? "Generating…" : "Generate Key"}
             </Button>
           </DialogFooter>

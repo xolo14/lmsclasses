@@ -6,6 +6,7 @@ export function serializeLeadStatus(lead: PartnerLead) {
     name: lead.name,
     email: lead.email,
     course: lead.course,
+    courseId: lead.recordCourseId,
     status: lead.status,
     paymentStatus: lead.paymentStatus,
     studentCreated: lead.studentCreated,

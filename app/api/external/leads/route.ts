@@ -5,7 +5,7 @@ import { partnerLeads } from "@/lib/db/schema";
 import { requireApiKey, finishApiKeyRequest, courseAllowed } from "@/lib/api-key-auth";
 import { ApiKeyErrors } from "@/lib/api-key-errors";
 import { normalizeLeadBody, validateLeadFields } from "@/lib/partner-lead-validation";
-import { resolveCourseByName } from "@/lib/partner-course-service";
+import { resolvePartnerCourse } from "@/lib/partner-course-service";
 import { buildLeadInsertValues, serializeLeadStatus } from "@/lib/partner-lead-serialize";
 import { logAction } from "@/lib/audit";
 
@@ -82,6 +82,12 @@ export async function POST(request: Request) {
   try {
     const raw = await request.json();
     const body = normalizeLeadBody(raw as Record<string, unknown>);
+    const keyCourseId =
+      ctx.apiKey.courseId ??
+      (ctx.apiKey.allowedCourses?.length === 1 ? ctx.apiKey.allowedCourses[0] : null);
+    if (keyCourseId && !body.course && !body.courseId) {
+      body.courseId = keyCourseId;
+    }
     const validation = validateLeadFields(ctx.apiKey, body);
     if (!validation.ok) {
       return finishApiKeyRequest(
@@ -92,13 +98,33 @@ export async function POST(request: Request) {
       );
     }
 
-    const course = String(body.course);
-    if (!courseAllowed(ctx.apiKey, course)) {
+    const courseIdInput =
+      body.courseId !== undefined && body.courseId !== null
+        ? String(body.courseId).trim()
+        : "";
+    const courseNameInput = body.course ? String(body.course).trim() : "";
+
+    const resolved = await resolvePartnerCourse({
+      courseId: courseIdInput || undefined,
+      courseName: courseNameInput || undefined,
+    });
+    if (!resolved) {
+      return finishApiKeyRequest(
+        ctx,
+        ENDPOINT,
+        ApiKeyErrors.validationFailed({
+          course: courseIdInput ? "Invalid courseId" : "Course not found on lmsclasses.com",
+        }),
+        { requestBody: body }
+      );
+    }
+
+    if (!courseAllowed(ctx.apiKey, resolved.title, resolved.id)) {
       const allowed = (ctx.apiKey.allowedCourses ?? []) as string[];
       return finishApiKeyRequest(
         ctx,
         ENDPOINT,
-        ApiKeyErrors.courseNotAllowed(course, allowed),
+        ApiKeyErrors.courseNotAllowed(resolved.title, allowed),
         { requestBody: body }
       );
     }
@@ -107,7 +133,9 @@ export async function POST(request: Request) {
     const [duplicate] = await db
       .select({ id: partnerLeads.id })
       .from(partnerLeads)
-      .where(and(eq(partnerLeads.email, normalizedEmail), eq(partnerLeads.course, course)))
+      .where(
+        and(eq(partnerLeads.email, normalizedEmail), eq(partnerLeads.recordCourseId, resolved.id))
+      )
       .limit(1);
 
     if (duplicate) {
@@ -115,16 +143,6 @@ export async function POST(request: Request) {
         ctx,
         ENDPOINT,
         ApiKeyErrors.duplicateLead(duplicate.id),
-        { requestBody: body }
-      );
-    }
-
-    const resolved = await resolveCourseByName(course);
-    if (!resolved) {
-      return finishApiKeyRequest(
-        ctx,
-        ENDPOINT,
-        ApiKeyErrors.validationFailed({ course: "Course not found on lmsclasses.com" }),
         { requestBody: body }
       );
     }
@@ -149,7 +167,7 @@ export async function POST(request: Request) {
       action: "EXTERNAL_LEAD_SUBMITTED",
       entity: "PartnerLead",
       entityId: lead.id,
-      metadata: { apiKeyId: ctx.apiKey.id, apiKeyName: ctx.apiKey.name },
+      metadata: { apiKeyId: ctx.apiKey.id, apiKeyName: ctx.apiKey.name, courseId: resolved.id },
       ipAddress: ctx.ipAddress,
     });
 
@@ -159,6 +177,7 @@ export async function POST(request: Request) {
         leadId: lead.id,
         message: "Lead received successfully",
         course: resolved.title,
+        courseId: resolved.id,
         courseFee: resolved.price,
         currency: "INR",
       },
