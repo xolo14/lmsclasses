@@ -1,114 +1,109 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { landingLayout } from "@/components/public/landing/landing-grid";
 
 const navLinks = [
   { href: "/courses", label: "Courses" },
-  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#how-it-works", label: "Process" },
   { href: "/#about", label: "About" },
 ];
 
 export function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-50 border-b transition-all duration-300",
-        scrolled
-          ? "border-bg-border/80 bg-bg-base/95 backdrop-blur-md"
-          : "border-transparent bg-bg-base/40 backdrop-blur-sm"
-      )}
-    >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="font-display text-xl text-text-primary">
-          LMS Classes
-        </Link>
-
-        <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-10 md:flex">
-          {navLinks.map((link) => (
+    <header className="sticky top-0 z-50 border-b border-neutral-950/10 bg-[#F4F4F0]/95 backdrop-blur-[2px]">
+      <div className={landingLayout.frame}>
+        <div
+          className={cn(
+            landingLayout.grid,
+            "border-x",
+            landingLayout.rule,
+            "items-center"
+          )}
+        >
+          <div className="col-span-2 flex h-14 items-center border-b border-neutral-950/10 px-4 md:col-span-3 lg:col-span-3 lg:h-16 lg:border-b-0 lg:px-8">
             <Link
-              key={link.href}
-              href={link.href}
-              className="text-sm text-text-muted transition-colors hover:text-text-primary"
+              href="/"
+              className="text-sm font-bold uppercase tracking-[0.22em] text-neutral-950"
             >
-              {link.label}
+              LMS Classes
             </Link>
-          ))}
-        </nav>
+          </div>
 
-        <div className="hidden items-center gap-3 md:flex">
-          <Button
-            asChild
-            variant="ghost"
-            className="text-sm font-medium text-text-secondary hover:bg-bg-card hover:text-text-primary"
-          >
-            <Link href="/login">Login</Link>
-          </Button>
-          <Button
-            asChild
-            variant="outline"
-            className="border-bg-border bg-transparent text-sm font-medium text-text-primary hover:bg-bg-card"
-          >
-            <Link href="/hr/login">HR Login</Link>
-          </Button>
-        </div>
-
-        <button
-          type="button"
-          className="text-text-primary md:hidden"
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle menu"
-        >
-          {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
-      </div>
-
-      {mobileOpen && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="border-t border-bg-border bg-bg-card px-4 py-4 md:hidden"
-        >
-          <nav className="flex flex-col gap-4">
+          <nav className="col-span-2 hidden h-14 items-center justify-center gap-10 border-b border-neutral-950/10 md:col-span-3 md:flex lg:col-span-6 lg:h-16 lg:border-b-0">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                onClick={() => setMobileOpen(false)}
-                className="text-text-secondary hover:text-text-primary"
+                className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-neutral-500 transition-colors hover:text-neutral-950"
               >
                 {link.label}
               </Link>
             ))}
+          </nav>
+
+          <div className="col-span-2 hidden h-14 items-center justify-end gap-6 border-b border-neutral-950/10 px-4 md:col-span-2 md:flex lg:col-span-3 lg:h-16 lg:border-b-0 lg:px-8">
             <Link
               href="/login"
-              onClick={() => setMobileOpen(false)}
-              className="text-text-secondary hover:text-text-primary"
+              className="text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-neutral-500 hover:text-neutral-950"
             >
               Login
             </Link>
             <Link
               href="/hr/login"
-              onClick={() => setMobileOpen(false)}
-              className="font-medium text-text-primary"
+              className="border border-neutral-950 px-3 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-neutral-950 transition-colors hover:bg-neutral-950 hover:text-white"
             >
-              HR Login
+              HR
             </Link>
-          </nav>
-        </motion.div>
+          </div>
+
+          <button
+            type="button"
+            className="col-span-2 flex h-14 items-center justify-end border-b border-neutral-950/10 px-4 text-neutral-950 md:col-span-8 md:hidden"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+      </div>
+
+      {mobileOpen && (
+        <div className="border-b border-neutral-950/10 bg-white md:hidden">
+          <div className={cn(landingLayout.frame, "border-x", landingLayout.rule)}>
+            <nav className="flex flex-col gap-1 px-4 py-4">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileOpen(false)}
+                  className="py-3 text-sm font-medium uppercase tracking-[0.16em] text-neutral-700"
+                >
+                  {link.label}
+                </Link>
+              ))}
+              <Link
+                href="/login"
+                onClick={() => setMobileOpen(false)}
+                className="py-3 text-sm font-medium text-neutral-700"
+              >
+                Login
+              </Link>
+              <Link
+                href="/hr/login"
+                onClick={() => setMobileOpen(false)}
+                className="py-3 text-sm font-semibold text-neutral-950"
+              >
+                HR Login
+              </Link>
+            </nav>
+          </div>
+        </div>
       )}
     </header>
   );

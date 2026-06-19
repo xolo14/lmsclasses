@@ -4,7 +4,7 @@ import { Footer } from "@/components/public/Footer";
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-bg-base text-text-primary">
+    <div className="min-h-screen bg-[#F4F4F0] text-neutral-950 antialiased">
       <Navbar />
       <main>{children}</main>
       <Footer />

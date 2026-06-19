@@ -19,7 +19,7 @@ export interface CourseCardProps {
   certificate: boolean;
   demoVideoUrl?: string;
   isFeatured?: boolean;
-  variant?: "default" | "editorial";
+  variant?: "default" | "editorial" | "swiss";
   onDemoClick?: (videoUrl: string, title: string) => void;
 }
 
@@ -55,6 +55,62 @@ export function CourseCard({
   const showPopular = isFeatured || level === "Intermediate";
   const badgeLabel = showPopular ? "Popular" : (levelBadgeLabel[level] ?? level);
   const { open, setOpen, requestView } = useViewCourse(slug);
+
+  if (variant === "swiss") {
+    return (
+      <article className="group flex h-full flex-col bg-white">
+        <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-100">
+          {imageSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageSrc}
+              alt={title}
+              className="h-full w-full object-cover grayscale transition-[filter] duration-300 group-hover:grayscale-0"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-neutral-300">
+              <BookOpen className="h-8 w-8" />
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-1 flex-col border-t border-neutral-950/10 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[0.625rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              {badgeLabel}
+            </p>
+            <p className="text-lg font-bold tabular-nums text-neutral-950">
+              ₹{price.toLocaleString("en-IN")}
+            </p>
+          </div>
+
+          <h3 className="mt-4 text-lg font-bold leading-snug tracking-[-0.02em] text-neutral-950">
+            {title}
+          </h3>
+          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-neutral-600">{description}</p>
+
+          <div className="mt-auto flex items-center justify-between border-t border-neutral-950/10 pt-5">
+            <span className="text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              {language}
+            </span>
+            <button
+              type="button"
+              onClick={requestView}
+              className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-950 transition-colors hover:text-[#E30613]"
+            >
+              View →
+            </button>
+          </div>
+        </div>
+        <ViewCourseDialog
+          open={open}
+          onOpenChange={setOpen}
+          slug={slug}
+          courseTitle={title}
+        />
+      </article>
+    );
+  }
 
   if (variant === "editorial") {
     return (

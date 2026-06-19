@@ -1,43 +1,42 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { LandingCell, LandingSection, landingLayout } from "@/components/public/landing/landing-grid";
 
 export function LandingCta() {
   return (
-    <section className="bg-bg-base py-12 md:py-16">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid items-center gap-10 rounded-2xl border border-bg-border bg-bg-card px-8 py-12 md:grid-cols-2 md:gap-16 md:px-14 md:py-16">
-          <div>
-            <h2 className="font-display text-3xl leading-snug text-text-primary md:text-4xl">
-              Your next career move starts here
-            </h2>
-            <p className="mt-4 max-w-md text-base leading-relaxed text-text-muted">
-              Join {500}+ students building in-demand skills with live mentors, lifetime
-              recordings, and dedicated placement support.
-            </p>
-          </div>
+    <LandingSection className="bg-neutral-950 text-white">
+      <LandingCell
+        span="col-span-4 md:col-span-5 lg:col-span-7"
+        className="!border-neutral-800/80"
+      >
+        <p className={`${landingLayout.label} !text-neutral-400`}>Ready to begin</p>
+        <h2 className="mt-4 text-3xl font-bold leading-tight tracking-[-0.03em] md:text-4xl lg:text-5xl">
+          Your next career move starts here.
+        </h2>
+      </LandingCell>
 
-          <div className="md:text-right">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">
-              Ready to begin?
-            </p>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <Link
-                href="/courses"
-                className="inline-flex items-center justify-center gap-2 text-sm font-medium text-text-secondary transition-colors hover:text-brand-cyan sm:justify-end"
-              >
-                Browse our courses
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                href="/courses"
-                className="inline-flex items-center justify-center rounded-lg bg-brand-cyan px-6 py-3 text-sm font-semibold text-bg-base transition-colors hover:bg-brand-cyan-light"
-              >
-                Enroll now
-              </Link>
-            </div>
-          </div>
+      <LandingCell
+        span="col-span-4 md:col-span-3 lg:col-span-5"
+        className="flex flex-col justify-end !border-neutral-800/80"
+      >
+        <p className="max-w-sm text-sm leading-relaxed text-neutral-400">
+          Join 500+ students building in-demand skills with live mentors, lifetime recordings, and
+          placement support.
+        </p>
+        <div className="mt-8 flex flex-wrap gap-6">
+          <Link
+            href="/courses"
+            className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-white"
+          >
+            Enroll now <span className="text-[#E30613]">→</span>
+          </Link>
+          <Link
+            href="/courses"
+            className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 hover:text-white"
+          >
+            Browse courses
+          </Link>
         </div>
-      </div>
-    </section>
+      </LandingCell>
+    </LandingSection>
   );
 }

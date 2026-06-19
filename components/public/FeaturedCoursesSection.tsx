@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CourseCard, type CourseCardProps } from "@/components/public/CourseCard";
-import { ArrowRight } from "lucide-react";
+import { LandingCell, LandingSection, landingLayout } from "@/components/public/landing/landing-grid";
 
 type Course = CourseCardProps & { isFeatured?: boolean };
 
@@ -12,36 +12,39 @@ export function FeaturedCoursesSection({ courses }: { courses: Course[] }) {
   const base = featured.length > 0 ? featured.slice(0, 20) : courseList.slice(0, 20);
 
   return (
-    <section id="courses-section" className="bg-bg-base pb-12 pt-6 md:pb-16 md:pt-8">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <LandingSection id="courses-section">
+      <LandingCell span="col-span-4 md:col-span-8 lg:col-span-12" className="!py-10 md:!py-12">
+        <div className="flex flex-col gap-6 border-b border-neutral-950/10 pb-8 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-cyan">
-              Our courses
-            </p>
-            <h2 className="mt-3 font-display text-3xl text-text-primary md:text-4xl">
-              Learn with purpose
+            <p className={landingLayout.label}>Catalogue</p>
+            <h2 className="mt-3 max-w-lg text-3xl font-bold tracking-[-0.03em] text-neutral-950 md:text-4xl">
+              Learn with purpose.
             </h2>
           </div>
           <Link
             href="/courses"
-            className="inline-flex items-center gap-2 text-sm font-medium text-text-muted transition-colors hover:text-brand-cyan"
+            className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 hover:text-neutral-950"
           >
-            View all courses
-            <ArrowRight className="h-4 w-4" />
+            View all courses <span className="text-[#E30613]">→</span>
           </Link>
         </div>
+      </LandingCell>
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {base.map((course) => (
-            <CourseCard key={course.id} {...course} variant="editorial" />
-          ))}
-        </div>
-
-        {base.length === 0 && (
-          <p className="py-12 text-center text-text-muted">Courses coming soon.</p>
-        )}
-      </div>
-    </section>
+      {base.length === 0 ? (
+        <LandingCell span="col-span-4 md:col-span-8 lg:col-span-12">
+          <p className="text-sm text-neutral-500">Courses coming soon.</p>
+        </LandingCell>
+      ) : (
+        base.map((course) => (
+          <LandingCell
+            key={course.id}
+            span="col-span-4 md:col-span-4 lg:col-span-3"
+            className="!border-r !border-neutral-950/10 !py-0 md:!px-0 lg:[&:nth-child(4n)]:border-r-0"
+          >
+            <CourseCard {...course} variant="swiss" />
+          </LandingCell>
+        ))
+      )}
+    </LandingSection>
   );
 }
