@@ -20,7 +20,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-type Course = { id: string; title: string; price: string };
+type Course = {
+  id: string;
+  title: string;
+  price: string;
+  totalSlots?: number;
+  usedSlots?: number;
+  remaining?: number;
+};
 type Student = {
   id: string;
   name: string;
@@ -49,8 +56,8 @@ export default function OrgAdminStudentsPage() {
   const [editStudent, setEditStudent] = useState<Student | undefined>();
 
   const { data: courses = [] } = useQuery<Course[]>({
-    queryKey: ["live-courses"],
-    queryFn: () => fetch("/api/live-courses").then((r) => r.json()),
+    queryKey: ["purchased-live-courses"],
+    queryFn: () => fetch("/api/org-admin/purchased-live-courses").then((r) => r.json()),
   });
 
   const { data: students = [] } = useQuery<Student[]>({
@@ -131,18 +138,35 @@ export default function OrgAdminStudentsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Students</h1>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {courses.map((course) => (
-          <CourseSlotCard
-            key={course.id}
-            course={course}
-            selected={selectedCourse?.id === course.id}
-            onClick={() => setSelectedCourse(course)}
-          />
-        ))}
+      <div>
+        <h1 className="text-2xl font-bold">Live Students</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Manage students for live courses you have purchased slots for.
+        </p>
       </div>
+
+      {courses.length === 0 ? (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            No live course slots purchased yet. Buy slots from{" "}
+            <a href="/org-admin/courses" className="text-primary underline">
+              Live Courses
+            </a>
+            .
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {courses.map((course) => (
+            <CourseSlotCard
+              key={course.id}
+              course={course}
+              selected={selectedCourse?.id === course.id}
+              onClick={() => setSelectedCourse(course)}
+            />
+          ))}
+        </div>
+      )}
 
       <Dialog open={!!selectedCourse} onOpenChange={(open) => !open && setSelectedCourse(null)}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -260,10 +284,14 @@ function CourseSlotCard({
   selected: boolean;
   onClick: () => void;
 }) {
-  const { data: slots } = useQuery<SlotInfo>({
-    queryKey: ["slots", course.id],
-    queryFn: () => fetch(`/api/slots/${course.id}`).then((r) => r.json()),
-  });
+  const slots: SlotInfo | undefined =
+    course.totalSlots !== undefined
+      ? {
+          totalSlots: course.totalSlots,
+          usedSlots: course.usedSlots ?? 0,
+          remaining: course.remaining ?? 0,
+        }
+      : undefined;
 
   return (
     <Card

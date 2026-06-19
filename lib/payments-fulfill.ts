@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { payments, slots, coupons, organisations, liveCourses, users } from "@/lib/db/schema";
+import { payments, slots, coupons, organisations, liveCourses, recordCourses, users } from "@/lib/db/schema";
 import { logAction } from "@/lib/audit";
 import type { Role } from "@/lib/db/schema";
 import { trySendWelcomeEmail, sendSlotPurchaseEmail } from "@/lib/email";
@@ -56,7 +56,8 @@ export async function fulfillSlotPurchase(
 
   await db.insert(slots).values({
     organisationId,
-    courseId: payment.liveCourseId!,
+    courseId: payment.liveCourseId ?? null,
+    recordCourseId: payment.recordCourseId ?? null,
     totalSlots: payment.slotsCount,
     usedSlots: 0,
     paymentId: payment.id,
@@ -69,7 +70,11 @@ export async function fulfillSlotPurchase(
       action: "PURCHASED_SLOTS",
       entity: "Payment",
       entityId: paymentId,
-      metadata: { slotsCount: payment.slotsCount, courseId: payment.liveCourseId },
+      metadata: {
+        slotsCount: payment.slotsCount,
+        courseId: payment.liveCourseId ?? payment.recordCourseId,
+        courseType: payment.liveCourseId ? "live" : "record",
+      },
       ipAddress: opts.ipAddress ?? undefined,
     });
   }
@@ -81,11 +86,13 @@ export async function fulfillSlotPurchase(
       .where(eq(organisations.id, organisationId))
       .limit(1);
 
-    const [course] = await db
-      .select()
-      .from(liveCourses)
-      .where(eq(liveCourses.id, payment.liveCourseId!))
-      .limit(1);
+    const [liveCourse] = payment.liveCourseId
+      ? await db.select().from(liveCourses).where(eq(liveCourses.id, payment.liveCourseId)).limit(1)
+      : [undefined];
+    const [recordCourse] = payment.recordCourseId
+      ? await db.select().from(recordCourses).where(eq(recordCourses.id, payment.recordCourseId)).limit(1)
+      : [undefined];
+    const course = liveCourse ?? recordCourse;
 
     if (org && course) {
       let adminEmail = org.email;

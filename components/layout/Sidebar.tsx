@@ -140,9 +140,11 @@ export function ManagerSidebar(props: Omit<SidebarProps, "items" | "title">) {
 export function OrgAdminSidebar(props: Omit<SidebarProps, "items" | "title">) {
   const items: NavItem[] = [
     { label: "Dashboard", href: "/org-admin/dashboard", icon: LayoutDashboard },
-    { label: "Courses", href: "/org-admin/courses", icon: BookOpen },
+    { label: "Live Courses", href: "/org-admin/courses", icon: BookOpen },
+    { label: "Record Courses", href: "/org-admin/record-courses", icon: Film },
     { label: "Course Demos", href: "/org-admin/demos", icon: Play },
-    { label: "Students", href: "/org-admin/students", icon: GraduationCap },
+    { label: "Live Students", href: "/org-admin/students", icon: GraduationCap },
+    { label: "Record Students", href: "/org-admin/record-students", icon: GraduationCap },
     { label: "History", href: "/org-admin/history", icon: History },
     { label: "Coupons", href: "/org-admin/coupons", icon: Tag },
     { label: "Settings", href: "/org-admin/settings", icon: Settings },

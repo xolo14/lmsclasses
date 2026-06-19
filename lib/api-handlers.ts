@@ -325,6 +325,63 @@ export async function GETLiveCourses() {
   return NextResponse.json(enriched);
 }
 
+/** Live courses this org has purchased at least one slot for (org-admin students page). */
+export async function GETOrgAdminPurchasedLiveCourses(organisationId: string) {
+  const { error, session } = await requireAuth(["org_admin"]);
+  if (error) return error;
+
+  if (session!.user.organisationId !== organisationId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const slotRows = await db
+    .select({
+      courseId: slots.courseId,
+      totalSlots: slots.totalSlots,
+      usedSlots: slots.usedSlots,
+    })
+    .from(slots)
+    .where(and(eq(slots.organisationId, organisationId), isNotNull(slots.courseId)));
+
+  const byCourse = new Map<string, { totalSlots: number; usedSlots: number }>();
+  for (const row of slotRows) {
+    if (!row.courseId) continue;
+    const existing = byCourse.get(row.courseId) ?? { totalSlots: 0, usedSlots: 0 };
+    existing.totalSlots += row.totalSlots;
+    existing.usedSlots += row.usedSlots ?? 0;
+    byCourse.set(row.courseId, existing);
+  }
+
+  const courseIds = [...byCourse.entries()]
+    .filter(([, totals]) => totals.totalSlots > 0)
+    .map(([id]) => id);
+
+  if (courseIds.length === 0) {
+    return NextResponse.json([]);
+  }
+
+  const courses = await db
+    .select({
+      id: liveCourses.id,
+      title: liveCourses.title,
+      price: liveCourses.price,
+    })
+    .from(liveCourses)
+    .where(and(inArray(liveCourses.id, courseIds), isNull(liveCourses.deletedAt)));
+
+  const enriched = courses.map((course) => {
+    const totals = byCourse.get(course.id)!;
+    return {
+      ...course,
+      totalSlots: totals.totalSlots,
+      usedSlots: totals.usedSlots,
+      remaining: totals.totalSlots - totals.usedSlots,
+    };
+  });
+
+  return NextResponse.json(enriched);
+}
+
 export async function GETRecordCourses() {
   const { error } = await requireAuth();
   if (error) return error;
@@ -353,6 +410,63 @@ export async function GETRecordCourses() {
     ...course,
     enrolledCount: countByCourse.get(course.id) ?? 0,
   }));
+
+  return NextResponse.json(enriched);
+}
+
+/** Record courses this org has purchased at least one seat for. */
+export async function GETOrgAdminPurchasedRecordCourses(organisationId: string) {
+  const { error, session } = await requireAuth(["org_admin"]);
+  if (error) return error;
+
+  if (session!.user.organisationId !== organisationId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const slotRows = await db
+    .select({
+      recordCourseId: slots.recordCourseId,
+      totalSlots: slots.totalSlots,
+      usedSlots: slots.usedSlots,
+    })
+    .from(slots)
+    .where(and(eq(slots.organisationId, organisationId), isNotNull(slots.recordCourseId)));
+
+  const byCourse = new Map<string, { totalSlots: number; usedSlots: number }>();
+  for (const row of slotRows) {
+    if (!row.recordCourseId) continue;
+    const existing = byCourse.get(row.recordCourseId) ?? { totalSlots: 0, usedSlots: 0 };
+    existing.totalSlots += row.totalSlots;
+    existing.usedSlots += row.usedSlots ?? 0;
+    byCourse.set(row.recordCourseId, existing);
+  }
+
+  const courseIds = [...byCourse.entries()]
+    .filter(([, totals]) => totals.totalSlots > 0)
+    .map(([id]) => id);
+
+  if (courseIds.length === 0) {
+    return NextResponse.json([]);
+  }
+
+  const courses = await db
+    .select({
+      id: recordCourses.id,
+      title: recordCourses.title,
+      price: recordCourses.price,
+    })
+    .from(recordCourses)
+    .where(and(inArray(recordCourses.id, courseIds), isNull(recordCourses.deletedAt)));
+
+  const enriched = courses.map((course) => {
+    const totals = byCourse.get(course.id)!;
+    return {
+      ...course,
+      totalSlots: totals.totalSlots,
+      usedSlots: totals.usedSlots,
+      remaining: totals.totalSlots - totals.usedSlots,
+    };
+  });
 
   return NextResponse.json(enriched);
 }
@@ -669,7 +783,7 @@ export async function GETStudents(request: Request) {
   if (session!.user.role === "super_admin" && !courseId && !batchId) {
     const byStudent = new Map<
       string,
-      (typeof students)[number] & { courseCount: number; enrollmentSources: Set<string> }
+      (typeof students)[number] & { courseTitles: string[]; enrollmentSources: Set<string> }
     >();
 
     for (const row of students) {
@@ -677,11 +791,13 @@ export async function GETStudents(request: Request) {
       if (!existing) {
         byStudent.set(row.id, {
           ...row,
-          courseCount: row.courseId ? 1 : 0,
+          courseTitles: row.courseTitle ? [row.courseTitle] : [],
           enrollmentSources: new Set(row.enrollmentSource ? [row.enrollmentSource] : []),
         });
       } else {
-        if (row.courseId) existing.courseCount += 1;
+        if (row.courseTitle && !existing.courseTitles.includes(row.courseTitle)) {
+          existing.courseTitles.push(row.courseTitle);
+        }
         if (row.enrollmentSource) existing.enrollmentSources.add(row.enrollmentSource);
       }
     }
@@ -706,10 +822,7 @@ export async function GETStudents(request: Request) {
         orgName: r.orgName,
         enrollmentSource: source,
         source,
-        courseTitle:
-          r.courseCount > 0
-            ? `${r.courseCount} course${r.courseCount === 1 ? "" : "s"}`
-            : "—",
+        courseTitle: r.courseTitles.length > 0 ? r.courseTitles.join(", ") : "—",
         batchName: "—",
       };
     });
@@ -820,6 +933,27 @@ export async function POSTStudent(request: Request) {
           { status: 403 }
         );
       }
+    } else if (isOrgAdmin) {
+      slotRecords = await db
+        .select()
+        .from(slots)
+        .where(and(eq(slots.organisationId, organisationId), eq(slots.recordCourseId, courseId)));
+
+      const totalSlots = slotRecords.reduce((sum, s) => sum + s.totalSlots, 0);
+      const usedSlots = slotRecords.reduce((sum, s) => sum + (s.usedSlots ?? 0), 0);
+
+      if (usedSlots >= totalSlots) {
+        if (totalSlots === 0) {
+          return NextResponse.json(
+            { error: "No seats purchased for this record course. Buy seats from Record Courses first." },
+            { status: 403 }
+          );
+        }
+        return NextResponse.json(
+          { error: "SLOT_EXCEEDED", totalSlots, usedSlots },
+          { status: 403 }
+        );
+      }
     }
 
     const existing = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.email, email)).limit(1);
@@ -901,6 +1035,15 @@ export async function POSTStudent(request: Request) {
             totalSlots: 50,
             usedSlots: 1,
           });
+        }
+      } else if (isOrgAdmin && slotRecords.length > 0) {
+        const slotToUpdate = slotRecords.find((s) => (s.usedSlots ?? 0) < s.totalSlots);
+        if (!slotToUpdate) {
+          throw new Error("SLOT_EXCEEDED");
+        }
+        const consumed = await consumeSlot(slotToUpdate.id);
+        if (!consumed) {
+          throw new Error("SLOT_EXCEEDED");
         }
       }
     } catch (createErr) {
@@ -1060,6 +1203,24 @@ export async function DELETEStudent(request: Request, id: string) {
             and(
               eq(slots.organisationId, enrollment.organisationId),
               eq(slots.courseId, enrollment.liveCourseId)
+            )
+          );
+        const slotToDecrement = orgSlots.find((s) => (s.usedSlots ?? 0) > 0);
+        if (slotToDecrement) {
+          await db
+            .update(slots)
+            .set({ usedSlots: (slotToDecrement.usedSlots ?? 0) - 1 })
+            .where(eq(slots.id, slotToDecrement.id));
+        }
+      }
+      if (enrollment.organisationId && enrollment.recordCourseId) {
+        const orgSlots = await db
+          .select()
+          .from(slots)
+          .where(
+            and(
+              eq(slots.organisationId, enrollment.organisationId),
+              eq(slots.recordCourseId, enrollment.recordCourseId)
             )
           );
         const slotToDecrement = orgSlots.find((s) => (s.usedSlots ?? 0) > 0);
@@ -1855,14 +2016,25 @@ export async function GETDashboardStats(scope?: "org" | "global", organisationId
 }
 
 // ============ SLOTS ============
-export async function GETSlots(courseId: string, organisationId: string) {
+export async function GETSlots(
+  courseId: string,
+  organisationId: string,
+  courseType: "live" | "record" = "live"
+) {
   const { error } = await requireAuth(["org_admin"]);
   if (error) return error;
 
   const slotRecords = await db
     .select()
     .from(slots)
-    .where(and(eq(slots.organisationId, organisationId), eq(slots.courseId, courseId)));
+    .where(
+      and(
+        eq(slots.organisationId, organisationId),
+        courseType === "record"
+          ? eq(slots.recordCourseId, courseId)
+          : eq(slots.courseId, courseId)
+      )
+    );
 
   const totalSlots = slotRecords.reduce((sum, s) => sum + s.totalSlots, 0);
   const usedSlots = slotRecords.reduce((sum, s) => sum + (s.usedSlots ?? 0), 0);
@@ -1886,12 +2058,17 @@ export async function GETHistory(organisationId: string) {
       slotsCount: payments.slotsCount,
       status: payments.status,
       createdAt: payments.createdAt,
-      courseTitle: liveCourses.title,
+      courseTitle: sql<string | null>`coalesce(${liveCourses.title}, ${recordCourses.title})`,
+      courseType: sql<string>`case when ${payments.liveCourseId} is not null then 'live' else 'record' end`,
     })
     .from(payments)
-    .innerJoin(liveCourses, eq(payments.liveCourseId, liveCourses.id))
+    .leftJoin(liveCourses, eq(payments.liveCourseId, liveCourses.id))
+    .leftJoin(recordCourses, eq(payments.recordCourseId, recordCourses.id))
     .where(
-      and(eq(payments.organisationId, organisationId), isNotNull(payments.liveCourseId))
+      and(
+        eq(payments.organisationId, organisationId),
+        or(isNotNull(payments.liveCourseId), isNotNull(payments.recordCourseId))!
+      )
     )
     .orderBy(desc(payments.createdAt));
 

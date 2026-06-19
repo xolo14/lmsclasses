@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BuySlotModal } from "@/components/modals/BuySlotModal";
 import { DemoVideoModal } from "@/components/modals/DemoVideoModal";
 import { formatCurrency } from "@/lib/utils";
-import { Play } from "lucide-react";
+import { Film, Play } from "lucide-react";
 
 type Course = {
   id: string;
@@ -18,17 +18,15 @@ type Course = {
   demoUrl?: string | null;
 };
 
-export default function OrgAdminCoursesPage() {
+export default function OrgAdminRecordCoursesPage() {
   const [buyCourse, setBuyCourse] = useState<Course | null>(null);
-
-  // Demo Video Modal states
   const [demoVideoUrl, setDemoVideoUrl] = useState("");
   const [demoCourseTitle, setDemoCourseTitle] = useState("");
   const [demoModalOpen, setDemoModalOpen] = useState(false);
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
-    queryKey: ["live-courses"],
-    queryFn: () => fetch("/api/live-courses").then((r) => r.json()),
+    queryKey: ["record-courses"],
+    queryFn: () => fetch("/api/record-courses").then((r) => r.json()),
   });
 
   const handleWatchDemo = (url: string, title: string) => {
@@ -42,10 +40,12 @@ export default function OrgAdminCoursesPage() {
   return (
     <>
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Live Courses</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Purchase slots for live courses, then assign students from Live Students.
-        </p>
+        <div>
+          <h1 className="text-2xl font-bold">Record Courses</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Purchase seats for record courses, then assign students from Record Students.
+          </p>
+        </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {courses.filter((c) => c).map((course) => (
             <CourseCard
@@ -62,6 +62,8 @@ export default function OrgAdminCoursesPage() {
           open={!!buyCourse}
           onOpenChange={(open) => !open && setBuyCourse(null)}
           course={buyCourse}
+          courseType="record"
+          assignStudentsHref="/org-admin/record-students"
         />
       )}
       {demoVideoUrl && (
@@ -86,24 +88,24 @@ function CourseCard({
   onWatchDemo: (url: string, title: string) => void;
 }) {
   const { data: slotInfo } = useQuery({
-    queryKey: ["slots", course.id],
-    queryFn: () => fetch(`/api/slots/${course.id}`).then((r) => r.json()),
+    queryKey: ["slots", course.id, "record"],
+    queryFn: () => fetch(`/api/slots/${course.id}?type=record`).then((r) => r.json()),
   });
 
   return (
     <Card>
       <div className="h-28 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center justify-between px-6 rounded-t-xl border-b border-border/40">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-cyan-950 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-            <Play className="h-5 w-5 fill-cyan-400/20" />
+          <div className="h-10 w-10 rounded-lg bg-violet-950 border border-violet-500/30 flex items-center justify-center text-violet-400">
+            <Film className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Course Module</p>
-            <p className="text-sm font-semibold text-foreground font-sans">Interactive Learning</p>
+            <p className="text-xs text-muted-foreground">Record Course</p>
+            <p className="text-sm font-semibold text-foreground font-sans">Self-paced</p>
           </div>
         </div>
         {course.demoUrl && (
-          <Badge variant="secondary" className="bg-cyan-950/40 text-cyan-400 border border-cyan-500/20 text-[10px]">
+          <Badge variant="secondary" className="bg-violet-950/40 text-violet-400 border border-violet-500/20 text-[10px]">
             Demo Available
           </Badge>
         )}
@@ -113,26 +115,24 @@ function CourseCard({
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{course.description}</p>
-        <p className="font-mono text-primary mb-3">{formatCurrency(course.price)} / slot</p>
+        <p className="font-mono text-primary mb-3">{formatCurrency(course.price)} / seat</p>
         {slotInfo && slotInfo.totalSlots > 0 && (
           <div className="mb-4">
-            <Badge variant="success">
-              {slotInfo.remaining} slots remaining
-            </Badge>
+            <Badge variant="success">{slotInfo.remaining} seats remaining</Badge>
           </div>
         )}
         <div className="flex gap-2">
           {course.demoUrl && (
             <Button
               variant="outline"
-              className="flex-1 border-cyan-500/30 text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/20"
+              className="flex-1 border-violet-500/30 text-violet-400 hover:text-violet-300 hover:bg-violet-950/20"
               onClick={() => onWatchDemo(course.demoUrl!, course.title)}
             >
-              <Play className="h-3 w-3 mr-1 fill-cyan-400/20" /> Demo
+              <Play className="h-3 w-3 mr-1 fill-violet-400/20" /> Demo
             </Button>
           )}
           <Button className={course.demoUrl ? "flex-1" : "w-full"} onClick={onBuy}>
-            Buy Now
+            Buy Seats
           </Button>
         </div>
       </CardContent>

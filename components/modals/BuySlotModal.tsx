@@ -19,6 +19,8 @@ interface BuySlotModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   course: { id: string; title: string; price: string };
+  courseType?: "live" | "record";
+  assignStudentsHref?: string;
 }
 
 declare global {
@@ -30,7 +32,13 @@ declare global {
   }
 }
 
-export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) {
+export function BuySlotModal({
+  open,
+  onOpenChange,
+  course,
+  courseType = "live",
+  assignStudentsHref = "/org-admin/students",
+}: BuySlotModalProps) {
   const router = useRouter();
   const [slotsCount, setSlotsCount] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -63,6 +71,7 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
           courseId: course.id,
           slotsCount,
           couponCode: couponCode.trim(),
+          courseType,
         }),
       });
       const data = await res.json();
@@ -104,6 +113,7 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
           courseId: course.id,
           slotsCount,
           couponCode: appliedCoupon || undefined,
+          courseType,
         }),
       });
       const data = await res.json();
@@ -267,7 +277,7 @@ export function BuySlotModal({ open, onOpenChange, course }: BuySlotModalProps) 
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAssignPrompt(false)}>Maybe Later</Button>
-            <Button onClick={() => router.push("/org-admin/students")}>Assign Students</Button>
+            <Button onClick={() => router.push(assignStudentsHref)}>Assign Students</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

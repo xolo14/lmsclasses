@@ -218,9 +218,8 @@ export const slots = pgTable("slots", {
   organisationId: uuid("organisation_id")
     .references(() => organisations.id)
     .notNull(),
-  courseId: uuid("course_id")
-    .references(() => liveCourses.id)
-    .notNull(),
+  courseId: uuid("course_id").references(() => liveCourses.id),
+  recordCourseId: uuid("record_course_id").references(() => recordCourses.id),
   totalSlots: integer("total_slots").notNull(),
   usedSlots: integer("used_slots").default(0),
   paymentId: uuid("payment_id").references(() => payments.id),
@@ -228,6 +227,7 @@ export const slots = pgTable("slots", {
 }, (table) => [
   // PERF: Slot check on every student add — must be instant
   index("slots_org_course_idx").on(table.organisationId, table.courseId),
+  index("slots_org_record_course_idx").on(table.organisationId, table.recordCourseId),
 ]);
 
 export const studentCourses = pgTable("student_courses", {

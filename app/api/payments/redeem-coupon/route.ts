@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { coupons, liveCourses } from "@/lib/db/schema";
+import { coupons, liveCourses, recordCourses } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
@@ -12,17 +12,29 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { courseId, slotsCount, couponCode } = body as {
+    const { courseId, slotsCount, couponCode, courseType } = body as {
       courseId: string;
       slotsCount: number;
       couponCode: string;
+      courseType?: "live" | "record";
     };
 
     if (!courseId || !slotsCount || !couponCode?.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const [course] = await db.select().from(liveCourses).where(eq(liveCourses.id, courseId)).limit(1);
+    const isRecord = courseType === "record";
+    const [liveCourse] = isRecord
+      ? [undefined]
+      : await db.select().from(liveCourses).where(eq(liveCourses.id, courseId)).limit(1);
+    const [recordCourse] = isRecord
+      ? await db
+          .select()
+          .from(recordCourses)
+          .where(and(eq(recordCourses.id, courseId), isNull(recordCourses.deletedAt)))
+          .limit(1)
+      : [undefined];
+    const course = liveCourse ?? recordCourse;
     if (!course) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }

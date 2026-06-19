@@ -61,9 +61,22 @@ export async function POST(request: Request) {
 
     const { courseId, slotsCount } = parsed.data;
     const couponCode = (body.couponCode as string | undefined)?.trim();
+    const courseType = (body.courseType as string | undefined) === "record" ? "record" : "live";
     const organisationId = session!.user.organisationId!;
 
-    const [course] = await db.select().from(liveCourses).where(eq(liveCourses.id, courseId)).limit(1);
+    const [liveCourse] =
+      courseType === "live"
+        ? await db.select().from(liveCourses).where(eq(liveCourses.id, courseId)).limit(1)
+        : [undefined];
+    const [recordCourse] =
+      courseType === "record"
+        ? await db
+            .select()
+            .from(recordCourses)
+            .where(and(eq(recordCourses.id, courseId), isNull(recordCourses.deletedAt)))
+            .limit(1)
+        : [undefined];
+    const course = liveCourse ?? recordCourse;
     if (!course) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
@@ -140,7 +153,9 @@ export async function POST(request: Request) {
       .where(
         and(
           eq(payments.organisationId, organisationId),
-          eq(payments.liveCourseId, courseId),
+          courseType === "record"
+            ? eq(payments.recordCourseId, courseId)
+            : eq(payments.liveCourseId, courseId),
           eq(payments.status, "pending"),
           eq(payments.amount, finalAmount.toString()),
           gte(payments.createdAt, sixtySecondsAgo),
@@ -155,8 +170,8 @@ export async function POST(request: Request) {
         .insert(payments)
         .values({
           organisationId,
-          liveCourseId: courseId,
-          recordCourseId: null,
+          liveCourseId: courseType === "live" ? courseId : null,
+          recordCourseId: courseType === "record" ? courseId : null,
           adminId: session!.user.id,
           amount: finalAmount.toString(),
           slotsCount,
