@@ -7,8 +7,14 @@ export const createApiKeySchema = z.object({
   permissions: z.array(z.enum(API_PERMISSIONS)).min(1),
   allowedCourses: z.array(z.string()).optional().default([]),
   allowedPaymentGateway: z.enum(["razorpay", "manual", "any"]).optional().default("any"),
-  webhookUrl: z.string().url().optional().nullable(),
-  webhookSecret: z.string().max(120).optional().nullable(),
+  webhookUrl: z.preprocess(
+    (v) => (v === "" || v === undefined ? null : v),
+    z.string().url().optional().nullable()
+  ),
+  webhookSecret: z.preprocess(
+    (v) => (v === "" || v === undefined ? null : v),
+    z.string().max(120).optional().nullable()
+  ),
   leadFields: z
     .object({
       required: z.array(z.string()).optional(),
@@ -26,7 +32,10 @@ export const createApiKeySchema = z.object({
     .optional(),
   ipWhitelist: z.array(z.string()).optional().default([]),
   environment: z.enum(["live", "test"]).optional().default("live"),
-  notes: z.string().max(2000).optional().nullable(),
+  notes: z.preprocess(
+    (v) => (v === "" || v === undefined ? null : v),
+    z.string().max(2000).optional().nullable()
+  ),
 });
 
 export const updateApiKeySchema = createApiKeySchema.partial().omit({ name: true }).extend({

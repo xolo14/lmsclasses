@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, ChevronDown } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ type Student = {
   enrollmentSource?: string;
   organisationId?: string | null;
   courseTitle: string;
+  courseTitles?: string[];
   courseId: string;
   batchName: string;
   isActive: boolean;
@@ -46,6 +47,51 @@ type Student = {
 };
 
 type OrganisationOption = { id: string; name: string };
+
+function StudentCoursesCell({
+  courseTitles,
+  courseTitle,
+}: {
+  courseTitles?: string[];
+  courseTitle: string;
+}) {
+  const titles =
+    courseTitles && courseTitles.length > 0
+      ? courseTitles
+      : courseTitle && courseTitle !== "—"
+        ? [courseTitle]
+        : [];
+
+  if (titles.length === 0) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  if (titles.length === 1) {
+    return <span className="text-sm">{titles[0]}</span>;
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-sm font-medium text-swiss-red hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {titles.length} courses
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-w-[240px]">
+        {titles.map((title) => (
+          <DropdownMenuItem key={title} onSelect={(e) => e.preventDefault()} className="text-sm">
+            {title}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export default function StudentsPage() {
   const [addOpen, setAddOpen] = useState(false);
@@ -134,7 +180,12 @@ export default function StudentsPage() {
     {
       accessorKey: "courseTitle",
       header: "Course",
-      cell: ({ row }) => row.original.courseTitle || "—",
+      cell: ({ row }) => (
+        <StudentCoursesCell
+          courseTitles={row.original.courseTitles}
+          courseTitle={row.original.courseTitle}
+        />
+      ),
     },
     {
       accessorKey: "batchName",
@@ -160,9 +211,11 @@ export default function StudentsPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <Link href={`/super-admin/students/${row.original.id}/courses`}>Assign courses</Link>
-            </DropdownMenuItem>
+            {!row.original.organisationId && (
+              <DropdownMenuItem asChild>
+                <Link href={`/super-admin/students/${row.original.id}/courses`}>Assign courses</Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => setEditStudent(row.original)}>Edit</DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
@@ -213,6 +266,9 @@ export default function StudentsPage() {
         open={assignOpen}
         onOpenChange={setAssignOpen}
         assignBasePath="/super-admin/students"
+        directStudentsOnly
+        title="Assign courses to direct student"
+        description="Only direct students (not linked to an organisation) can receive courses from super admin. Organisation students are managed by their org admin."
       />
 
       <AddDirectStudentModal

@@ -13,6 +13,7 @@ function AssignContent() {
       studentId={studentId}
       backHref="/super-admin/students"
       backLabel="← Students"
+      directStudentsOnly
     />
   );
 }

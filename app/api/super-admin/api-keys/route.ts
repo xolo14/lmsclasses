@@ -144,7 +144,19 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error("[api/super-admin/api-keys] POST:", err);
-    return NextResponse.json({ error: "Failed to generate API key" }, { status: 500 });
+    const schemaOutdated =
+      /course_id/i.test(message) &&
+      (/does not exist|unknown column/i.test(message) || /column/i.test(message));
+    return NextResponse.json(
+      {
+        error: schemaOutdated
+          ? "Database schema is outdated. Run npm run db:push on the server, then try again."
+          : "Failed to generate API key",
+        ...(process.env.NODE_ENV !== "production" ? { details: message } : {}),
+      },
+      { status: 500 }
+    );
   }
 }

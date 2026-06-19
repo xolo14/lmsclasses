@@ -86,6 +86,13 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
     }
   }, [open, reset]);
 
+  useEffect(() => {
+    if (!open || courses.length === 0) return;
+    if (!selectedCourseId) {
+      setValue("courseId", courses[0].id, { shouldValidate: true });
+    }
+  }, [open, courses, selectedCourseId, setValue]);
+
   const mutation = useMutation({
     mutationFn: async (data: CreateApiKeyInput) => {
       const res = await fetch("/api/super-admin/api-keys", {
@@ -94,7 +101,17 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
         body: JSON.stringify(data),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to generate key");
+      if (!res.ok) {
+        const detail =
+          json.details && typeof json.details === "object"
+            ? Object.entries(json.details)
+                .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+                .join("; ")
+            : typeof json.details === "string"
+              ? json.details
+              : "";
+        throw new Error([json.error, detail].filter(Boolean).join(" — "));
+      }
       return json;
     },
     onSuccess: (data) => {
@@ -206,19 +223,24 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
 
             <div className="sm:col-span-2">
               <Label>Course *</Label>
-              <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm mt-1"
-                value={selectedCourseId}
-                onChange={(e) => setValue("courseId", e.target.value, { shouldValidate: true })}
-              >
-                <option value="">Select a course…</option>
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.price !== undefined ? ` — ₹${c.price.toLocaleString("en-IN")}` : ""}
-                  </option>
-                ))}
-              </select>
+              {courses.length === 0 ? (
+                <p className="text-sm text-destructive mt-1">
+                  No active record courses found. Create a record course first.
+                </p>
+              ) : (
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm mt-1"
+                  {...register("courseId")}
+                >
+                  <option value="">Select a course…</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                      {c.price !== undefined ? ` — ₹${c.price.toLocaleString("en-IN")}` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
               {selectedCourseId && (
                 <p className="text-[11px] font-mono text-muted-foreground mt-1 break-all">
                   Course ID: {selectedCourseId}
@@ -337,7 +359,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={mutation.isPending || !selectedCourseId}>
+            <Button type="submit" disabled={mutation.isPending || !selectedCourseId || courses.length === 0}>
               {mutation.isPending ? "Generating…" : "Generate Key"}
             </Button>
           </DialogFooter>

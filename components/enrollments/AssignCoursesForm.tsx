@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,12 @@ type CourseOption = {
   price: string;
   enrolled?: boolean;
 };
+
+function courseMatchesAccessType(c: CourseOption, accessType: EnrollmentAccessType): boolean {
+  if (accessType === "live") return c.hasLive;
+  if (accessType === "recorded") return c.hasRecorded;
+  return c.hasLive && c.hasRecorded;
+}
 
 type Props = {
   studentId: string;
@@ -45,15 +51,26 @@ export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }
 
   const mutation = useAssignCoursesMutation(studentId);
 
+  const visibleCourses = useMemo(
+    () => courses.filter((c) => courseMatchesAccessType(c, accessType)),
+    [courses, accessType]
+  );
+
   useEffect(() => {
-    if (!preselectedCourseIds?.length || !courses.length) return;
+    setSelected((prev) =>
+      prev.filter((id) => visibleCourses.some((c) => c.id === id && !c.enrolled))
+    );
+  }, [accessType, visibleCourses]);
+
+  useEffect(() => {
+    if (!preselectedCourseIds?.length || !visibleCourses.length) return;
     const valid = preselectedCourseIds.filter((id) =>
-      courses.some((c) => c.id === id && !c.enrolled)
+      visibleCourses.some((c) => c.id === id && !c.enrolled)
     );
     if (valid.length) {
       setSelected((prev) => [...new Set([...prev, ...valid])]);
     }
-  }, [preselectedCourseIds, courses]);
+  }, [preselectedCourseIds, visibleCourses]);
 
   const toggle = (id: string) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -89,13 +106,51 @@ export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }
 
   return (
     <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <Label className="swiss-label">Step 1 — Access type</Label>
+          <select
+            className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 bg-swiss-white px-3 text-sm"
+            value={accessType}
+            onChange={(e) => setAccessType(e.target.value as EnrollmentAccessType)}
+          >
+            <option value="live">Live only</option>
+            <option value="recorded">Recorded only</option>
+            <option value="both">Both (live + recorded)</option>
+          </select>
+          <p className="text-xs text-swiss-muted mt-1">
+            {accessType === "live" && "Shows live courses only"}
+            {accessType === "recorded" && "Shows recorded courses only"}
+            {accessType === "both" && "Shows courses with both live and recorded content"}
+          </p>
+        </div>
+        {(accessType === "live" || accessType === "both") && (
+          <div>
+            <Label>Batch ID (live courses)</Label>
+            <input
+              className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 px-3 text-sm"
+              placeholder="Optional — required for org admin live"
+              value={batchId}
+              onChange={(e) => setBatchId(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+
       <div>
-        <Label className="swiss-label">Step 1 — Select courses</Label>
+        <Label className="swiss-label">Step 2 — Select courses</Label>
         {isLoading ? (
           <p className="text-sm text-swiss-muted mt-2">Loading courses…</p>
+        ) : visibleCourses.length === 0 ? (
+          <p className="text-sm text-swiss-muted mt-2 border border-swiss-black/10 p-3">
+            No courses match this access type.
+            {accessType === "both"
+              ? " Try Live only or Recorded only, or add hybrid courses in course settings."
+              : " Try a different access type."}
+          </p>
         ) : (
           <div className="mt-3 space-y-2 max-h-64 overflow-y-auto border border-swiss-black/10 p-3">
-            {courses.map((c) => (
+            {visibleCourses.map((c) => (
               <label
                 key={c.id}
                 className={`flex items-start gap-3 p-2 cursor-pointer hover:bg-swiss-cream ${
@@ -123,32 +178,6 @@ export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }
                 </div>
               </label>
             ))}
-          </div>
-        )}
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <Label>Access type</Label>
-          <select
-            className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 bg-swiss-white px-3 text-sm"
-            value={accessType}
-            onChange={(e) => setAccessType(e.target.value as EnrollmentAccessType)}
-          >
-            <option value="live">Live only</option>
-            <option value="recorded">Recorded only</option>
-            <option value="both">Both</option>
-          </select>
-        </div>
-        {(accessType === "live" || accessType === "both") && (
-          <div>
-            <Label>Batch ID (live courses)</Label>
-            <input
-              className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 px-3 text-sm"
-              placeholder="Optional — required for org admin live"
-              value={batchId}
-              onChange={(e) => setBatchId(e.target.value)}
-            />
           </div>
         )}
       </div>

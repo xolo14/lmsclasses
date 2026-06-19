@@ -19,6 +19,14 @@ import {
 import type { AssignCoursesInput, UpdateEnrollmentInput } from "@/lib/validations/enrollment";
 import { logAction } from "@/lib/audit";
 
+/** Super admin may assign extra courses only to direct/platform students (no organisation). */
+export function isDirectPlatformStudent(student: { organisationId: string | null }): boolean {
+  return !student.organisationId;
+}
+
+export const SUPER_ADMIN_DIRECT_STUDENT_ONLY_MSG =
+  "Super admin can only assign courses to direct students. Organisation students must be managed by their org admin.";
+
 export type ResolvedCourse = {
   id: string;
   type: "live" | "record";
@@ -212,6 +220,10 @@ export async function assignCoursesToStudent(
     .limit(1);
   if (!student) {
     return { enrolled: [], skipped: [], errors: ["Student not found"] };
+  }
+
+  if (actor.role === "super_admin" && !isDirectPlatformStudent(student)) {
+    return { enrolled: [], skipped: [], errors: [SUPER_ADMIN_DIRECT_STUDENT_ONLY_MSG] };
   }
 
   const orgId = student.organisationId;

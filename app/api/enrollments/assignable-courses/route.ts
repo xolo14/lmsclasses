@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { liveCourses, recordCourses, studentCourses, slots } from "@/lib/db/schema";
+import { liveCourses, recordCourses, studentCourses, slots, users } from "@/lib/db/schema";
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
-
+import {
+  isDirectPlatformStudent,
+  SUPER_ADMIN_DIRECT_STUDENT_ONLY_MSG,
+} from "@/lib/enrollment-service";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -13,6 +16,20 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const studentId = searchParams.get("studentId");
+
+  if (studentId && session!.user.role === "super_admin") {
+    const [student] = await db
+      .select({ id: users.id, organisationId: users.organisationId })
+      .from(users)
+      .where(eq(users.id, studentId))
+      .limit(1);
+    if (!student) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+    if (!isDirectPlatformStudent(student)) {
+      return NextResponse.json({ error: SUPER_ADMIN_DIRECT_STUDENT_ONLY_MSG }, { status: 403 });
+    }
+  }
 
   let orgId = session!.user.organisationId;
   if (session!.user.role === "org_admin") {

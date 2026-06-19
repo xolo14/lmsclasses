@@ -28,6 +28,8 @@ type Props = {
   assignBasePath: string;
   /** When set, the assign page opens with this course pre-selected. */
   courseId?: string;
+  /** Super admin: list only direct students (no organisation). */
+  directStudentsOnly?: boolean;
   title?: string;
   description?: string;
 };
@@ -37,6 +39,7 @@ export function SelectStudentForAssignModal({
   onOpenChange,
   assignBasePath,
   courseId,
+  directStudentsOnly = false,
   title = "Assign courses to student",
   description = "Select an existing student to assign one or more courses.",
 }: Props) {
@@ -44,9 +47,11 @@ export function SelectStudentForAssignModal({
   const [search, setSearch] = useState("");
 
   const { data: students = [], isLoading } = useQuery<StudentOption[]>({
-    queryKey: ["students-for-assign"],
+    queryKey: ["students-for-assign", directStudentsOnly],
     queryFn: async () => {
-      const res = await fetch("/api/students?limit=100");
+      const params = new URLSearchParams({ limit: "100" });
+      if (directStudentsOnly) params.set("organisationId", "direct");
+      const res = await fetch(`/api/students?${params}`);
       const json = await res.json();
       if (!res.ok) throw new Error("Failed to load students");
       const rows: StudentOption[] = Array.isArray(json) ? json : json.data ?? [];

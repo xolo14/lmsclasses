@@ -822,6 +822,7 @@ export async function GETStudents(request: Request) {
         orgName: r.orgName,
         enrollmentSource: source,
         source,
+        courseTitles: r.courseTitles,
         courseTitle: r.courseTitles.length > 0 ? r.courseTitles.join(", ") : "—",
         batchName: "—",
       };
