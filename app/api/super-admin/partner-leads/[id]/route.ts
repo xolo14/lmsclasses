@@ -35,7 +35,7 @@ export async function GET(
         status: partnerLeads.status,
         paymentStatus: partnerLeads.paymentStatus,
         paymentId: partnerLeads.paymentId,
-        paymentAmount: partnerLeads.paymentAmount,
+        amountPaidPaise: partnerLeads.amountPaidPaise,
         paymentCurrency: partnerLeads.paymentCurrency,
         paymentGateway: partnerLeads.paymentGateway,
         studentCreated: partnerLeads.studentCreated,
@@ -99,6 +99,8 @@ export async function POST(
           paymentStatus: "completed",
           paymentId: body.paymentId ?? `MANUAL_${Date.now()}`,
           paymentGateway: body.paymentGateway ?? "manual",
+          amountPaidPaise: body.amount ? Math.round(Number(body.amount) * 100) : null,
+          paymentConfirmedAt: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(partnerLeads.id, id));

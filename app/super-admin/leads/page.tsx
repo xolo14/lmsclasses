@@ -40,10 +40,12 @@ type PartnerLead = {
   name: string;
   email: string;
   phone: string;
+  city?: string | null;
   course: string;
   courseSlug: string | null;
   source: string | null;
-  utmParams: { utm_campaign?: string } | null;
+  utmSource?: string | null;
+  utmCampaign?: string | null;
   status: string;
   paymentStatus: string;
   studentCreated: boolean;
@@ -106,6 +108,17 @@ export default function LeadsPage() {
     },
   });
 
+  const partnerLeads = partnerQuery.data ?? [];
+  const today = new Date().toDateString();
+  const stats = {
+    total: partnerLeads.length,
+    today: partnerLeads.filter((l) => new Date(l.createdAt).toDateString() === today).length,
+    enrolled: partnerLeads.filter((l) => l.status === "enrolled" || l.studentCreated).length,
+    paid: partnerLeads.filter((l) => l.paymentStatus === "completed").length,
+  };
+  const conversion =
+    stats.total > 0 ? Math.round((stats.enrolled / stats.total) * 100) : 0;
+
   const landingLeads = landingQuery.data
     ? landingQuery.data.pages.flatMap((page) => page.data ?? [])
     : [];
@@ -130,11 +143,12 @@ export default function LeadsPage() {
           row.original.course
         ),
     },
-    { accessorKey: "source", header: "Source", cell: ({ row }) => row.original.source ?? "—" },
+    { accessorKey: "apiKeyName", header: "API Key", cell: ({ row }) => row.original.apiKeyName ?? "—" },
+    { accessorKey: "source", header: "Source", cell: ({ row }) => row.original.utmSource ?? row.original.source ?? "—" },
     {
-      accessorKey: "utmParams",
+      accessorKey: "utmCampaign",
       header: "UTM Campaign",
-      cell: ({ row }) => row.original.utmParams?.utm_campaign ?? "—",
+      cell: ({ row }) => row.original.utmCampaign ?? "—",
     },
     {
       accessorKey: "status",
@@ -232,13 +246,15 @@ export default function LeadsPage() {
   ];
 
   const exportPartnerCsv = () => {
-    const leads = partnerQuery.data ?? [];
+    const leads = partnerLeads;
     const headers = [
       "Name",
       "Email",
       "Phone",
+      "City",
       "Course",
-      "Source",
+      "API Key",
+      "UTM Source",
       "UTM Campaign",
       "Status",
       "Payment",
@@ -249,9 +265,11 @@ export default function LeadsPage() {
       l.name,
       l.email,
       l.phone,
+      l.city ?? "",
       l.course,
-      l.source ?? "",
-      l.utmParams?.utm_campaign ?? "",
+      l.apiKeyName ?? "",
+      l.utmSource ?? l.source ?? "",
+      l.utmCampaign ?? "",
       l.status,
       l.paymentStatus,
       l.studentCreated ? "Yes" : "No",
@@ -302,6 +320,28 @@ export default function LeadsPage() {
         </TabsList>
 
         <TabsContent value="partner" className="space-y-4 mt-4">
+          <div className="grid gap-3 sm:grid-cols-5">
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Total Leads</p>
+              <p className="text-2xl font-semibold">{stats.total}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Today</p>
+              <p className="text-2xl font-semibold">{stats.today}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Enrolled</p>
+              <p className="text-2xl font-semibold">{stats.enrolled}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Paid</p>
+              <p className="text-2xl font-semibold">{stats.paid}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">Conversion</p>
+              <p className="text-2xl font-semibold">{conversion}%</p>
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-4">
             <div className="sm:col-span-2">
               <Label htmlFor="lead-search">Search</Label>
@@ -322,6 +362,8 @@ export default function LeadsPage() {
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="new">New</SelectItem>
                   <SelectItem value="contacted">Contacted</SelectItem>
+                  <SelectItem value="interested">Interested</SelectItem>
+                  <SelectItem value="not_interested">Not Interested</SelectItem>
                   <SelectItem value="enrolled">Enrolled</SelectItem>
                   <SelectItem value="lost">Lost</SelectItem>
                 </SelectContent>
@@ -348,7 +390,7 @@ export default function LeadsPage() {
           ) : (
             <DataTable
               columns={partnerColumns}
-              data={partnerQuery.data ?? []}
+              data={partnerLeads}
               searchPlaceholder="Filter table…"
             />
           )}

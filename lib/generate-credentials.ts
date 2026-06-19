@@ -6,9 +6,9 @@ const nanoid6 = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
 export function generateUsername(firstName: string): string {
   const base = firstName
     .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .slice(0, 12) || "student";
+    .split(/\s+/)[0]
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]/g, "") || "student";
   const suffix = randomInt(1000, 9999);
   return `${base}${suffix}`;
 }

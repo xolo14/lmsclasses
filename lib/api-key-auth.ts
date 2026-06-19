@@ -3,64 +3,90 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { apiKeys, apiKeyUsageLogs } from "@/lib/db/schema";
 import type { ApiKey } from "@/lib/db/schema";
+import { ApiKeyErrors } from "@/lib/api-key-errors";
 import {
-  API_KEY_PREFIX,
   extractBearerToken,
   hashApiKey,
-  type ApiPermission,
+  isValidApiKeyFormat,
+  sanitizeLogBody,
+  courseAllowed,
 } from "@/lib/api-key-service";
+import type { ApiPermission } from "@/lib/api-key-types";
+import { DEFAULT_RATE_LIMIT } from "@/lib/api-key-types";
 import { getClientIp } from "@/lib/audit";
-
-const RATE_LIMIT_PER_MINUTE = 100;
 
 export type ApiKeyContext = {
   apiKey: ApiKey;
   ipAddress?: string;
+  startTime: number;
 };
 
-async function countRecentUsage(apiKeyId: string): Promise<number> {
-  const oneMinuteAgo = new Date(Date.now() - 60_000);
+function formatExpiryIST(date: Date): string {
+  return date.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
+}
+
+async function countRecentUsage(
+  apiKeyId: string,
+  windowMinutes: number
+): Promise<number> {
+  const since = new Date(Date.now() - windowMinutes * 60_000);
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(apiKeyUsageLogs)
-    .where(and(eq(apiKeyUsageLogs.apiKeyId, apiKeyId), gte(apiKeyUsageLogs.createdAt, oneMinuteAgo)));
+    .where(and(eq(apiKeyUsageLogs.apiKeyId, apiKeyId), gte(apiKeyUsageLogs.createdAt, since)));
   return row?.count ?? 0;
 }
 
 export async function logApiKeyUsage({
   apiKey,
   endpoint,
+  method,
   ipAddress,
   statusCode,
+  requestBody,
+  responseTimeMs,
+  leadId,
+  error,
 }: {
   apiKey: ApiKey;
   endpoint: string;
+  method?: string;
   ipAddress?: string;
   statusCode: number;
+  requestBody?: unknown;
+  responseTimeMs?: number;
+  leadId?: string;
+  error?: string;
 }): Promise<void> {
   db.insert(apiKeyUsageLogs)
     .values({
       apiKeyId: apiKey.id,
       apiKeyName: apiKey.name,
       endpoint,
+      method,
       ipAddress,
+      requestBody: sanitizeLogBody(requestBody),
       statusCode,
+      responseTimeMs,
+      leadId,
+      error,
     })
     .catch((err) => console.error("[api-key-usage-log]", err));
 }
+
+export { courseAllowed, isTestKey } from "@/lib/api-key-service";
 
 export async function requireApiKey(
   request: Request,
   permission: ApiPermission,
   endpoint: string
 ): Promise<{ error?: NextResponse; context?: ApiKeyContext }> {
+  const startTime = Date.now();
   const ipAddress = getClientIp(request);
   const token = extractBearerToken(request);
 
-  if (!token || !token.startsWith(API_KEY_PREFIX)) {
-    return {
-      error: NextResponse.json({ error: "Missing or invalid API key" }, { status: 401 }),
-    };
+  if (!token || !isValidApiKeyFormat(token)) {
+    return { error: ApiKeyErrors.invalidKey() };
   }
 
   const keyHash = hashApiKey(token);
@@ -71,66 +97,67 @@ export async function requireApiKey(
     .limit(1);
 
   if (!apiKey) {
-    return {
-      error: NextResponse.json({ error: "Invalid API key" }, { status: 401 }),
-    };
+    return { error: ApiKeyErrors.invalidKey() };
   }
 
   if (!apiKey.isActive) {
-    await logApiKeyUsage({ apiKey, endpoint, ipAddress, statusCode: 403 });
-    return {
-      error: NextResponse.json({ error: "API key is disabled" }, { status: 403 }),
-    };
+    await logApiKeyUsage({ apiKey, endpoint, method: request.method, ipAddress, statusCode: 403 });
+    return { error: ApiKeyErrors.disabled() };
   }
 
   if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
-    await logApiKeyUsage({ apiKey, endpoint, ipAddress, statusCode: 403 });
-    return {
-      error: NextResponse.json({ error: "API key has expired" }, { status: 403 }),
-    };
+    await logApiKeyUsage({ apiKey, endpoint, method: request.method, ipAddress, statusCode: 401 });
+    return { error: ApiKeyErrors.expired(formatExpiryIST(apiKey.expiresAt)) };
+  }
+
+  const whitelist = (apiKey.ipWhitelist ?? []) as string[];
+  if (whitelist.length > 0 && ipAddress && !whitelist.includes(ipAddress)) {
+    await logApiKeyUsage({ apiKey, endpoint, method: request.method, ipAddress, statusCode: 403 });
+    return { error: ApiKeyErrors.ipNotWhitelisted(ipAddress) };
   }
 
   const permissions = (apiKey.permissions ?? []) as string[];
   if (!permissions.includes(permission)) {
-    await logApiKeyUsage({ apiKey, endpoint, ipAddress, statusCode: 403 });
-    return {
-      error: NextResponse.json(
-        { error: `API key lacks required permission: ${permission}` },
-        { status: 403 }
-      ),
-    };
+    await logApiKeyUsage({ apiKey, endpoint, method: request.method, ipAddress, statusCode: 403 });
+    return { error: ApiKeyErrors.permissionDenied(permission) };
   }
 
-  const recentCount = await countRecentUsage(apiKey.id);
-  if (recentCount >= RATE_LIMIT_PER_MINUTE) {
-    await logApiKeyUsage({ apiKey, endpoint, ipAddress, statusCode: 429 });
-    return {
-      error: NextResponse.json(
-        { error: "Rate limit exceeded. Maximum 100 requests per minute." },
-        { status: 429 }
-      ),
-    };
+  const rateLimit = (apiKey.rateLimit as { requests?: number; windowMinutes?: number }) ?? DEFAULT_RATE_LIMIT;
+  const maxRequests = rateLimit.requests ?? DEFAULT_RATE_LIMIT.requests;
+  const windowMinutes = rateLimit.windowMinutes ?? DEFAULT_RATE_LIMIT.windowMinutes;
+  const recentCount = await countRecentUsage(apiKey.id, windowMinutes);
+  if (recentCount >= maxRequests) {
+    await logApiKeyUsage({ apiKey, endpoint, method: request.method, ipAddress, statusCode: 429 });
+    return { error: ApiKeyErrors.rateLimitExceeded(maxRequests, windowMinutes) };
   }
 
   db.update(apiKeys)
-    .set({ lastUsedAt: new Date(), updatedAt: new Date() })
+    .set({
+      lastUsedAt: new Date(),
+      usageCount: sql`${apiKeys.usageCount} + 1`,
+      updatedAt: new Date(),
+    })
     .where(eq(apiKeys.id, apiKey.id))
     .catch((err) => console.error("[api-key-last-used]", err));
 
-  return { context: { apiKey, ipAddress } };
+  return { context: { apiKey, ipAddress, startTime } };
 }
 
 export async function finishApiKeyRequest(
-  apiKey: ApiKey,
+  ctx: ApiKeyContext,
   endpoint: string,
-  ipAddress: string | undefined,
-  response: NextResponse
+  response: NextResponse,
+  options?: { requestBody?: unknown; leadId?: string; error?: string }
 ): Promise<NextResponse> {
   await logApiKeyUsage({
-    apiKey,
+    apiKey: ctx.apiKey,
     endpoint,
-    ipAddress,
+    ipAddress: ctx.ipAddress,
     statusCode: response.status,
+    responseTimeMs: Date.now() - ctx.startTime,
+    requestBody: options?.requestBody,
+    leadId: options?.leadId,
+    error: options?.error,
   });
   return response;
 }

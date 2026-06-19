@@ -479,19 +479,21 @@ export async function sendPartnerStudentCredentialsEmail({
   courseTitle,
   lmsId,
   password,
+  username,
 }: {
   to: string;
   name: string;
   courseTitle: string;
   lmsId: string;
   password: string;
+  username?: string;
 }) {
   const loginUrl = `${appUrl}/login`;
   const safeEmail = to.trim().toLowerCase();
 
   return sendEmail({
     to: safeEmail,
-    subject: "Your Login Credentials for lmsclasses.com",
+    subject: "Welcome to LMS Classes — Your Login Details Inside 🎓",
     html: `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1a202c;">
         <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px;">
@@ -509,6 +511,7 @@ export async function sendPartnerStudentCredentialsEmail({
         <div style="background-color: #F4F4F0; border-left: 4px solid #E30613; padding: 16px; margin: 20px 0; border-radius: 6px;">
           <h3 style="margin: 0 0 12px 0; color: #0f172a; font-size: 16px;">Your Login Credentials</h3>
           <ul style="margin: 0; padding-left: 20px; color: #475569; line-height: 1.8; font-family: monospace; font-size: 15px;">
+            ${username ? `<li><strong>Username:</strong> ${escapeHtml(username)}</li>` : ""}
             <li><strong>LMS ID:</strong> ${escapeHtml(lmsId)}</li>
             <li><strong>Email:</strong> ${safeEmail}</li>
             <li><strong>Password:</strong> ${escapeHtml(password)}</li>

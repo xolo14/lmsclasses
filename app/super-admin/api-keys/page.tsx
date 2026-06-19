@@ -16,6 +16,8 @@ type ApiKeyRow = {
   name: string;
   maskedKey: string;
   permissions: string[];
+  environment?: string;
+  usageCount?: number;
   isActive: boolean;
   lastUsedAt: string | null;
   expiresAt: string | null;
@@ -37,7 +39,11 @@ export default function SuperAdminApiKeysPage() {
 
   const toggleKey = useMutation({
     mutationFn: (id: string) =>
-      fetch(`/api/super-admin/api-keys/${id}`, { method: "PATCH" }),
+      fetch(`/api/super-admin/api-keys/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle" }),
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["api-keys"] }),
   });
 
@@ -66,15 +72,33 @@ export default function SuperAdminApiKeysPage() {
       ),
     },
     {
+      accessorKey: "environment",
+      header: "Env",
+      cell: ({ row }) => (
+        <Badge variant={row.original.environment === "test" ? "secondary" : "outline"}>
+          {row.original.environment ?? "live"}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "usageCount",
+      header: "Usage",
+    },
+    {
       accessorKey: "permissions",
       header: "Permissions",
       cell: ({ row }) => (
-        <div className="flex flex-wrap gap-1">
-          {row.original.permissions.map((p) => (
+        <div className="flex flex-wrap gap-1 max-w-[200px]">
+          {row.original.permissions.slice(0, 3).map((p) => (
             <Badge key={p} variant="outline" className="font-mono text-[10px]">
               {p}
             </Badge>
           ))}
+          {row.original.permissions.length > 3 && (
+            <Badge variant="outline" className="text-[10px]">
+              +{row.original.permissions.length - 3}
+            </Badge>
+          )}
         </div>
       ),
     },

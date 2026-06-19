@@ -5,6 +5,21 @@ import { ROLE_ROUTES } from "@/lib/utils";
 
 const { auth } = NextAuth(authConfig);
 
+const AUTH_PAGES = ["/login", "/hr/login", "/hr/register"] as const;
+
+function withAuthNoCache(response: NextResponse, pathname: string) {
+  if (AUTH_PAGES.includes(pathname as (typeof AUTH_PAGES)[number])) {
+    response.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+    );
+    response.headers.set("Pragma", "no-cache");
+    response.headers.set("Expires", "0");
+    response.headers.set("Surrogate-Control", "no-store");
+  }
+  return response;
+}
+
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const role = req.auth?.user?.role;
@@ -40,7 +55,7 @@ export default auth((req) => {
     if (role === "hr" && (pathname === "/hr/login" || pathname === "/hr/register")) {
       return NextResponse.redirect(new URL("/hr/dashboard", req.url));
     }
-    return NextResponse.next();
+    return withAuthNoCache(NextResponse.next(), pathname);
   }
 
   if (!role) {
@@ -56,7 +71,7 @@ export default auth((req) => {
     }
   }
 
-  return NextResponse.next();
+  return withAuthNoCache(NextResponse.next(), pathname);
 });
 
 export const config = {

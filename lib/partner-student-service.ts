@@ -1,49 +1,16 @@
 import bcrypt from "bcryptjs";
-import { and, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { partnerLeads, recordCourses, studentCourses, users } from "@/lib/db/schema";
-import type { PartnerLead } from "@/lib/db/schema";
-import { generatePartnerLmsId, generateStudentPassword } from "@/lib/generate-credentials";
+import { apiKeys, partnerLeads, recordCourses, studentCourses, users } from "@/lib/db/schema";
+import type { ApiKey, PartnerLead } from "@/lib/db/schema";
+import { generatePartnerLmsId, generateStudentPassword, generateUsername } from "@/lib/generate-credentials";
 import { sendPartnerStudentCredentialsEmail } from "@/lib/email";
 import { logAction } from "@/lib/audit";
+import { resolveCourseByName } from "@/lib/partner-course-service";
+import { notifyPartnerWebhook } from "@/lib/partner-webhook";
+import { isTestKey } from "@/lib/api-key-service";
 
-type ResolvedCourse = {
-  id: string;
-  title: string;
-  slug: string;
-};
-
-export async function resolveCourseByName(courseName: string): Promise<ResolvedCourse | null> {
-  const trimmed = courseName.trim();
-  const [byTitle] = await db
-    .select({ id: recordCourses.id, title: recordCourses.title, slug: recordCourses.slug })
-    .from(recordCourses)
-    .where(
-      and(
-        eq(recordCourses.isActive, true),
-        isNull(recordCourses.deletedAt),
-        ilike(recordCourses.title, trimmed)
-      )
-    )
-    .limit(1);
-  if (byTitle?.slug) return { id: byTitle.id, title: byTitle.title, slug: byTitle.slug };
-
-  const slugCandidate = trimmed.toLowerCase().replace(/\s+/g, "-");
-  const [bySlug] = await db
-    .select({ id: recordCourses.id, title: recordCourses.title, slug: recordCourses.slug })
-    .from(recordCourses)
-    .where(
-      and(
-        eq(recordCourses.isActive, true),
-        isNull(recordCourses.deletedAt),
-        or(eq(recordCourses.slug, slugCandidate), ilike(recordCourses.slug, slugCandidate))
-      )
-    )
-    .limit(1);
-  if (bySlug?.slug) return { id: bySlug.id, title: bySlug.title, slug: bySlug.slug };
-
-  return null;
-}
+export { resolveCourseByName } from "@/lib/partner-course-service";
 
 async function createUniqueLmsId(): Promise<string> {
   for (let i = 0; i < 5; i++) {
@@ -62,34 +29,57 @@ export type CreateStudentFromLeadResult = {
   studentId: string;
   created: boolean;
   emailSent: boolean;
+  username: string;
 };
 
 export async function createStudentFromLead(
   lead: PartnerLead,
-  options?: { ipAddress?: string; actorUserId?: string; resendOnly?: boolean }
+  options?: {
+    ipAddress?: string;
+    actorUserId?: string;
+    apiKey?: ApiKey;
+    skipEmail?: boolean;
+  }
 ): Promise<CreateStudentFromLeadResult> {
+  const apiKey =
+    options?.apiKey ??
+    (lead.apiKeyId
+      ? (await db.select().from(apiKeys).where(eq(apiKeys.id, lead.apiKeyId)).limit(1))[0]
+      : undefined);
+
+  if (apiKey && isTestKey(apiKey)) {
+    const username = generateUsername(lead.name);
+    await db
+      .update(partnerLeads)
+      .set({
+        studentCreated: true,
+        studentUsername: username,
+        status: "enrolled",
+        updatedAt: new Date(),
+      })
+      .where(eq(partnerLeads.id, lead.id));
+    return { studentId: "test-mode", created: true, emailSent: false, username };
+  }
+
   if (!lead.recordCourseId) {
     const resolved = await resolveCourseByName(lead.course);
-    if (!resolved) {
-      throw new Error(`Course not found: ${lead.course}`);
-    }
+    if (!resolved) throw new Error(`Course not found: ${lead.course}`);
     await db
       .update(partnerLeads)
       .set({
         recordCourseId: resolved.id,
         courseSlug: resolved.slug,
+        courseFee: resolved.price.toFixed(2),
         updatedAt: new Date(),
       })
       .where(eq(partnerLeads.id, lead.id));
     lead = { ...lead, recordCourseId: resolved.id, courseSlug: resolved.slug };
   }
 
-  const recordCourseId = lead.recordCourseId;
-  if (!recordCourseId) {
-    throw new Error(`Course not found: ${lead.course}`);
-  }
-
+  const recordCourseId = lead.recordCourseId!;
   const email = lead.email.trim().toLowerCase();
+  const username = generateUsername(lead.name);
+
   const [existingUser] = await db
     .select()
     .from(users)
@@ -100,6 +90,7 @@ export async function createStudentFromLead(
   let plainPassword: string;
   let lmsId: string;
   let created = false;
+  let shouldSendEmail = apiKey?.sendWelcomeEmail !== false && !options?.skipEmail;
 
   if (existingUser) {
     studentId = existingUser.id;
@@ -126,17 +117,17 @@ export async function createStudentFromLead(
         organisationId: null,
         enrollmentSource: "partner_api",
       });
+      plainPassword = generateStudentPassword();
+      const hashedPassword = await bcrypt.hash(plainPassword, 12);
+      await db
+        .update(users)
+        .set({ password: hashedPassword, updatedAt: new Date() })
+        .where(eq(users.id, studentId));
+      shouldSendEmail = shouldSendEmail && apiKey?.sendWelcomeEmail !== false;
+    } else {
+      shouldSendEmail = false;
+      plainPassword = generateStudentPassword();
     }
-
-    if (options?.resendOnly) {
-      throw new Error("Cannot resend credentials — student already exists. Use password reset flow.");
-    }
-    plainPassword = generateStudentPassword();
-    const hashedPassword = await bcrypt.hash(plainPassword, 12);
-    await db
-      .update(users)
-      .set({ password: hashedPassword, updatedAt: new Date() })
-      .where(eq(users.id, studentId));
   } else {
     plainPassword = generateStudentPassword();
     lmsId = await createUniqueLmsId();
@@ -152,6 +143,7 @@ export async function createStudentFromLead(
         role: "student",
         lmsId,
         organisationId: null,
+        collegeName: lead.city ?? null,
       })
       .returning();
 
@@ -175,28 +167,38 @@ export async function createStudentFromLead(
     .limit(1);
 
   let emailSent = false;
-  try {
-    await sendPartnerStudentCredentialsEmail({
-      to: email,
-      name: lead.name,
-      courseTitle: course?.title ?? lead.course,
-      lmsId,
-      password: plainPassword,
-    });
-    emailSent = true;
-  } catch (err) {
-    console.error("[partner-student] email failed:", err);
+  if (shouldSendEmail) {
+    try {
+      await sendPartnerStudentCredentialsEmail({
+        to: email,
+        name: lead.name,
+        courseTitle: course?.title ?? lead.course,
+        lmsId,
+        password: plainPassword!,
+        username,
+      });
+      emailSent = true;
+    } catch (err) {
+      console.error("[partner-student] email failed:", err);
+    }
   }
 
+  const now = new Date();
   await db
     .update(partnerLeads)
     .set({
       studentCreated: true,
       studentId,
+      studentUsername: username,
+      credentialsSentAt: emailSent ? now : null,
       status: "enrolled",
-      updatedAt: new Date(),
+      updatedAt: now,
     })
     .where(eq(partnerLeads.id, lead.id));
+
+  if (apiKey) {
+    notifyPartnerWebhook(apiKey, "student.created", lead).catch(console.error);
+  }
 
   await logAction({
     userId: options?.actorUserId,
@@ -204,26 +206,29 @@ export async function createStudentFromLead(
     action: created ? "PARTNER_STUDENT_CREATED" : "PARTNER_STUDENT_ENROLLED",
     entity: "PartnerLead",
     entityId: lead.id,
-    metadata: {
-      studentId,
-      course: lead.course,
-      emailSent,
-      apiKeyId: lead.apiKeyId,
-    },
+    metadata: { studentId, course: lead.course, emailSent, username },
     ipAddress: options?.ipAddress,
   });
 
-  return { studentId, created, emailSent };
+  return { studentId, created, emailSent, username };
 }
 
 export async function resendPartnerStudentCredentials(
   leadId: string,
-  options?: { ipAddress?: string; actorUserId?: string }
+  options?: { ipAddress?: string; actorUserId?: string; apiKey?: ApiKey }
 ): Promise<{ emailSent: boolean }> {
   const [lead] = await db.select().from(partnerLeads).where(eq(partnerLeads.id, leadId)).limit(1);
   if (!lead) throw new Error("Lead not found");
   if (!lead.studentCreated || !lead.studentId) {
     throw new Error("Student has not been created for this lead");
+  }
+  if (lead.paymentStatus !== "completed") {
+    throw new Error("Payment not completed for this lead");
+  }
+
+  const apiKey = options?.apiKey;
+  if (apiKey && isTestKey(apiKey)) {
+    return { emailSent: false };
   }
 
   const [student] = await db
@@ -254,7 +259,13 @@ export async function resendPartnerStudentCredentials(
     courseTitle: course?.title ?? lead.course,
     lmsId: student.lmsId ?? "—",
     password: plainPassword,
+    username: lead.studentUsername ?? generateUsername(student.name),
   });
+
+  await db
+    .update(partnerLeads)
+    .set({ credentialsSentAt: new Date(), updatedAt: new Date() })
+    .where(eq(partnerLeads.id, lead.id));
 
   await logAction({
     userId: options?.actorUserId,

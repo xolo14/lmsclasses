@@ -63,12 +63,6 @@ export function LandingHero() {
                   →
                 </span>
               </Link>
-              <Link
-                href="/courses"
-                className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-500 transition-colors hover:text-neutral-950"
-              >
-                Watch a free class
-              </Link>
             </div>
             <p className="max-w-xs text-left text-xs leading-relaxed text-neutral-500 lg:text-right">
               New: <span className="font-medium text-neutral-800">{bootcampTitle}</span>

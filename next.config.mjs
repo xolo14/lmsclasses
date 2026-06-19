@@ -51,22 +51,28 @@ const nextConfig = {
       {
         source: "/login",
         headers: [
-          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" },
           { key: "CDN-Cache-Control", value: "no-store" },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Expires", value: "0" },
         ],
       },
       {
         source: "/hr/login",
         headers: [
-          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" },
           { key: "CDN-Cache-Control", value: "no-store" },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Expires", value: "0" },
         ],
       },
       {
         source: "/hr/register",
         headers: [
-          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" },
           { key: "CDN-Cache-Control", value: "no-store" },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Expires", value: "0" },
         ],
       },
     ];

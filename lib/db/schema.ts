@@ -65,14 +65,18 @@ export const courseTypeEnum = pgEnum("course_type", ["live", "record"]);
 export const partnerLeadStatusEnum = pgEnum("partner_lead_status", [
   "new",
   "contacted",
+  "interested",
+  "not_interested",
   "enrolled",
   "lost",
 ]);
 
 export const partnerLeadPaymentStatusEnum = pgEnum("partner_lead_payment_status", [
   "pending",
+  "initiated",
   "completed",
   "failed",
+  "refunded",
 ]);
 
 export const organisations = pgTable("organisations", {
@@ -460,40 +464,78 @@ export const apiKeys = pgTable("api_keys", {
   keyPrefix: text("key_prefix").notNull(),
   keyHash: text("key_hash").notNull(),
   permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+  allowedCourses: jsonb("allowed_courses").$type<string[]>().notNull().default([]),
+  allowedPaymentGateway: text("allowed_payment_gateway").notNull().default("any"),
+  webhookUrl: text("webhook_url"),
+  webhookSecret: text("webhook_secret"),
+  leadFields: jsonb("lead_fields").$type<{
+    required?: string[];
+    optional?: string[];
+  }>().default({ required: ["name", "email", "phone", "course"], optional: [] }),
+  autoCreateStudent: boolean("auto_create_student").default(true).notNull(),
+  sendWelcomeEmail: boolean("send_welcome_email").default(true).notNull(),
+  notifyWebhook: boolean("notify_webhook").default(false).notNull(),
+  rateLimit: jsonb("rate_limit").$type<{ requests: number; windowMinutes: number }>().default({
+    requests: 200,
+    windowMinutes: 60,
+  }),
+  ipWhitelist: jsonb("ip_whitelist").$type<string[]>().notNull().default([]),
+  environment: text("environment").notNull().default("live"),
   isActive: boolean("is_active").default(true).notNull(),
   createdBy: uuid("created_by").references(() => users.id),
   lastUsedAt: timestamp("last_used_at"),
+  usageCount: integer("usage_count").default(0).notNull(),
   expiresAt: timestamp("expires_at"),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("api_keys_key_hash_idx").on(table.keyHash),
   index("api_keys_is_active_idx").on(table.isActive),
+  index("api_keys_environment_idx").on(table.environment),
 ]);
 
 export const partnerLeads = pgTable("partner_leads", {
   id: uuid("id").primaryKey().defaultRandom(),
+  apiKeyId: uuid("api_key_id").references(() => apiKeys.id),
+  apiKeyName: text("api_key_name"),
   name: text("name").notNull(),
   email: text("email").notNull(),
   phone: text("phone").notNull(),
+  city: text("city"),
+  qualification: text("qualification"),
+  workingStatus: text("working_status"),
+  preferredBatchTime: text("preferred_batch_time"),
   course: text("course").notNull(),
   courseSlug: text("course_slug"),
   recordCourseId: uuid("record_course_id").references(() => recordCourses.id),
+  courseFee: decimal("course_fee", { precision: 10, scale: 2 }),
   source: text("source"),
-  utmParams: jsonb("utm_params").$type<{
-    utm_source?: string;
-    utm_medium?: string;
-    utm_campaign?: string;
-  }>(),
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  utmContent: text("utm_content"),
+  utmTerm: text("utm_term"),
+  referralCode: text("referral_code"),
+  landingPageUrl: text("landing_page_url"),
+  utmParams: jsonb("utm_params").$type<Record<string, string | undefined>>(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
   status: partnerLeadStatusEnum("status").default("new").notNull(),
-  apiKeyId: uuid("api_key_id").references(() => apiKeys.id),
   paymentStatus: partnerLeadPaymentStatusEnum("payment_status").default("pending").notNull(),
   paymentId: text("payment_id"),
+  paymentOrderId: text("payment_order_id"),
   paymentAmount: decimal("payment_amount", { precision: 10, scale: 2 }),
+  amountPaidPaise: integer("amount_paid_paise"),
   paymentCurrency: text("payment_currency"),
   paymentGateway: text("payment_gateway"),
+  paymentConfirmedAt: timestamp("payment_confirmed_at"),
   studentCreated: boolean("student_created").default(false).notNull(),
   studentId: uuid("student_id").references(() => users.id),
+  studentUsername: text("student_username"),
+  credentialsSentAt: timestamp("credentials_sent_at"),
+  duplicateOf: uuid("duplicate_of"),
+  adminNotes: text("admin_notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -502,6 +544,7 @@ export const partnerLeads = pgTable("partner_leads", {
   index("partner_leads_payment_status_idx").on(table.paymentStatus),
   index("partner_leads_created_at_idx").on(table.createdAt),
   index("partner_leads_api_key_id_idx").on(table.apiKeyId),
+  index("partner_leads_email_course_idx").on(table.email, table.course),
 ]);
 
 export const apiKeyUsageLogs = pgTable("api_key_usage_logs", {
@@ -509,8 +552,13 @@ export const apiKeyUsageLogs = pgTable("api_key_usage_logs", {
   apiKeyId: uuid("api_key_id").references(() => apiKeys.id).notNull(),
   apiKeyName: text("api_key_name"),
   endpoint: text("endpoint").notNull(),
+  method: text("method"),
   ipAddress: text("ip_address"),
+  requestBody: jsonb("request_body"),
   statusCode: integer("status_code"),
+  responseTimeMs: integer("response_time_ms"),
+  leadId: uuid("lead_id"),
+  error: text("error"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("api_key_usage_logs_key_created_idx").on(table.apiKeyId, table.createdAt),

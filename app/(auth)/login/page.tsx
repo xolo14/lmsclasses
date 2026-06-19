@@ -12,8 +12,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Eye, EyeOff } from "lucide-react";
 import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
+import { useRecoverStaleChunks } from "@/lib/use-recover-stale-chunks";
 
 export default function LoginPage() {
+  useRecoverStaleChunks();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
