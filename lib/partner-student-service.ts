@@ -90,9 +90,9 @@ export async function createStudentFromLead(
   const email = lead.email.trim().toLowerCase();
   const username = generateUsername(lead.name);
 
-  let studentId: string;
-  let plainPassword: string;
-  let lmsId: string;
+  let studentId = "";
+  let plainPassword = "";
+  let lmsId = "";
   let created = false;
   let shouldSendEmail = apiKey?.sendWelcomeEmail !== false && !options?.skipEmail;
 
