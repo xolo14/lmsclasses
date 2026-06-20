@@ -9,10 +9,10 @@ import { logAction } from "@/lib/audit";
 import { getAppUrl } from "@/lib/app-url";
 import { isTestKey } from "@/lib/api-key-service";
 
-async function createUniqueLmsId(): Promise<string> {
+async function createUniqueLmsId(tx: any = db): Promise<string> {
   for (let i = 0; i < 5; i++) {
     const lmsId = generatePartnerLmsId();
-    const [existing] = await db
+    const [existing] = await tx
       .select({ id: users.id })
       .from(users)
       .where(eq(users.lmsId, lmsId))
@@ -37,7 +37,10 @@ export async function createStudentFromWidgetLead(
 ): Promise<CreateStudentFromWidgetLeadResult> {
   const apiKey = options?.apiKey;
   const redirectPath = apiKey?.redirectOnSuccess ?? "/login";
-  const loginUrl = `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`;
+  const loginUrl =
+    redirectPath.startsWith("http://") || redirectPath.startsWith("https://")
+      ? redirectPath
+      : `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`;
 
   if (apiKey && isTestKey(apiKey)) {
     const username = generateUsername(lead.fullName);
@@ -89,24 +92,34 @@ export async function createStudentFromWidgetLead(
     const [existingUser] = await tx
       .select()
       .from(users)
-      .where(and(eq(users.email, email), isNull(users.deletedAt)))
+      .where(eq(users.email, email))
       .limit(1);
 
     if (existingUser) {
       studentId = existingUser.id;
-      lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
+      lmsId = existingUser.lmsId ?? (await createUniqueLmsId(tx));
 
       const [enrollment] = await tx
-        .select({ id: studentCourses.id })
+        .select({ id: studentCourses.id, isActive: studentCourses.isActive })
         .from(studentCourses)
         .where(
           and(
             eq(studentCourses.studentId, studentId),
-            eq(studentCourses.recordCourseId, recordCourseId),
-            eq(studentCourses.isActive, true)
+            eq(studentCourses.recordCourseId, recordCourseId)
           )
         )
         .limit(1);
+
+      if (existingUser.deletedAt !== null || !existingUser.isActive) {
+        await tx
+          .update(users)
+          .set({
+            deletedAt: null,
+            isActive: true,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, studentId));
+      }
 
       if (!enrollment) {
         plainPassword = generateStudentPassword();
@@ -124,12 +137,18 @@ export async function createStudentFromWidgetLead(
           .set({ password: hashedPassword, updatedAt: new Date() })
           .where(eq(users.id, studentId));
       } else {
+        if (!enrollment.isActive) {
+          await tx
+            .update(studentCourses)
+            .set({ isActive: true, updatedAt: new Date() })
+            .where(eq(studentCourses.id, enrollment.id));
+        }
         shouldEmail = false;
         plainPassword = "";
       }
     } else {
       plainPassword = generateStudentPassword();
-      lmsId = await createUniqueLmsId();
+      lmsId = await createUniqueLmsId(tx);
       const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
       const [student] = await tx

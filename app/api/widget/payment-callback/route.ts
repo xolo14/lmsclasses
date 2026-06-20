@@ -100,9 +100,13 @@ export async function POST(request: Request) {
 
   if (lead.paymentStatus === "completed" && lead.convertedToStudent) {
     const redirectPath = ctx.apiKey.redirectOnSuccess ?? "/login";
+    const redirectUrl =
+      redirectPath.startsWith("http://") || redirectPath.startsWith("https://")
+        ? redirectPath
+        : `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`;
     return widgetJson(ctx, request, {
       success: true,
-      redirectUrl: `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`,
+      redirectUrl,
       message: "Enrollment already confirmed.",
     });
   }
@@ -162,7 +166,10 @@ export async function POST(request: Request) {
   });
 
   const redirectPath = ctx.apiKey.redirectOnSuccess ?? "/login";
-  const redirectUrl = `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`;
+  const redirectUrl =
+    redirectPath.startsWith("http://") || redirectPath.startsWith("https://")
+      ? redirectPath
+      : `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`;
 
   return widgetJson(ctx, request, {
     success: true,

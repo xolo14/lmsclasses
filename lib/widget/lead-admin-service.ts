@@ -337,9 +337,14 @@ export async function confirmRepayPayment(
   }
 
   const redirectPath = apiKey?.redirectOnSuccess ?? "/login";
+  const fallbackUrl =
+    redirectPath.startsWith("http://") || redirectPath.startsWith("https://")
+      ? redirectPath
+      : `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`;
+
   return {
     success: true,
     message: "Enrollment confirmed! Check your email for login details.",
-    loginUrl: result.loginUrl ?? `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`,
+    loginUrl: result.loginUrl ?? fallbackUrl,
   };
 }
