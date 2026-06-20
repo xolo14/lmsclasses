@@ -121,6 +121,32 @@ export const partnerLeadPaymentStatusEnum = pgEnum("partner_lead_payment_status"
   "refunded",
 ]);
 
+export const widgetLeadPaymentStatusEnum = pgEnum("widget_lead_payment_status", [
+  "initiated",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+export const widgetLeadStatusEnum = pgEnum("widget_lead_status", [
+  "new",
+  "contacted",
+  "follow_up",
+  "converted",
+  "lost",
+]);
+
+export const widgetEventTypeEnum = pgEnum("widget_event_type", [
+  "widget_loaded",
+  "form_viewed",
+  "form_submitted",
+  "payment_initiated",
+  "payment_success",
+  "payment_failed",
+  "payment_cancelled",
+  "payment_link_resent",
+]);
+
 export const organisations = pgTable("organisations", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -623,12 +649,18 @@ export const apiKeys = pgTable("api_keys", {
   lastUsedAt: timestamp("last_used_at"),
   usageCount: integer("usage_count").default(0).notNull(),
   notes: text("notes"),
+  widgetDomainsAllowed: jsonb("widget_domains_allowed").$type<string[]>().default([]),
+  redirectOnSuccess: text("redirect_on_success").default("/login"),
+  redirectOnFailure: text("redirect_on_failure"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("api_keys_key_hash_idx").on(table.keyHash),
+  uniqueIndex("api_keys_key_hash_unique_idx").on(table.keyHash),
   index("api_keys_is_active_idx").on(table.isActive),
   index("api_keys_environment_idx").on(table.environment),
+  index("idx_apikey_course").on(table.courseId),
 ]);
 
 export const partnerLeads = pgTable("partner_leads", {
@@ -700,6 +732,61 @@ export const apiKeyUsageLogs = pgTable("api_key_usage_logs", {
   index("api_key_usage_logs_key_created_idx").on(table.apiKeyId, table.createdAt),
 ]);
 
+export const widgetLeads = pgTable("widget_leads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  apiKeyId: uuid("api_key_id")
+    .notNull()
+    .references(() => apiKeys.id),
+  apiKeyName: text("api_key_name").notNull(),
+  courseId: uuid("course_id")
+    .notNull()
+    .references(() => recordCourses.id),
+  courseName: text("course_name").notNull(),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  college: text("college"),
+  yearOfStudy: text("year_of_study"),
+  degree: text("degree"),
+  paymentStatus: widgetLeadPaymentStatusEnum("payment_status").default("initiated").notNull(),
+  razorpayOrderId: text("razorpay_order_id"),
+  razorpayPaymentId: text("razorpay_payment_id"),
+  failureReason: text("failure_reason"),
+  amountAttempted: integer("amount_attempted"),
+  convertedToStudent: boolean("converted_to_student").default(false).notNull(),
+  studentId: uuid("student_id").references(() => users.id),
+  landingPageUrl: text("landing_page_url"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  status: widgetLeadStatusEnum("status").default("new").notNull(),
+  adminNotes: text("admin_notes"),
+  followUpEmailSentAt: timestamp("follow_up_email_sent_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("idx_widget_lead_apikey").on(table.apiKeyId),
+  index("idx_widget_lead_status").on(table.status),
+  index("idx_widget_lead_email").on(table.email),
+  index("idx_widget_lead_payment").on(table.paymentStatus),
+]);
+
+export const widgetEvents = pgTable("widget_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  apiKeyId: uuid("api_key_id")
+    .notNull()
+    .references(() => apiKeys.id),
+  eventType: widgetEventTypeEnum("event_type").notNull(),
+  leadId: uuid("lead_id").references(() => widgetLeads.id),
+  domain: text("domain"),
+  ipAddress: text("ip_address"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("idx_widget_event_apikey").on(table.apiKeyId),
+  index("idx_widget_event_type").on(table.eventType),
+  index("idx_widget_event_created").on(table.createdAt),
+]);
+
 export type User = typeof users.$inferSelect;
 export type Organisation = typeof organisations.$inferSelect;
 export type LiveCourse = typeof liveCourses.$inferSelect;
@@ -725,6 +812,8 @@ export type Coupon = typeof coupons.$inferSelect;
 export type CourseLead = typeof courseLeads.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type PartnerLead = typeof partnerLeads.$inferSelect;
+export type WidgetLead = typeof widgetLeads.$inferSelect;
+export type WidgetEvent = typeof widgetEvents.$inferSelect;
 export type ApiKeyUsageLog = typeof apiKeyUsageLogs.$inferSelect;
 export type SystemSetting = typeof systemSettings.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];

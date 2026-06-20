@@ -24,7 +24,7 @@ export function LandingHero() {
           aria-hidden
           style={{
             backgroundImage:
-              "linear-gradient(to right, rgba(10,10,10,0.07) 1px, transparent 1px), linear-gradient(to bottom, rgba(10,10,10,0.07) 1px, transparent 1px)",
+              "linear-gradient(to right, rgba(255,10,24,0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,10,24,0.08) 1px, transparent 1px)",
             backgroundSize: "calc(100% / 12) 100%, 100% 4rem",
           }}
         />
@@ -39,12 +39,14 @@ export function LandingHero() {
 
           <div className="col-span-4 mt-8 md:col-span-6 md:col-start-1 lg:col-span-8 lg:col-start-1 lg:mt-12">
             <h1 className="max-w-[14ch] text-[clamp(2.75rem,8vw,5.5rem)] font-bold leading-[0.92] tracking-[-0.04em] text-neutral-950">
-              Master skills the market demands.
+              Master skills the{" "}
+              <span className="text-swiss-red">market demands.</span>
             </h1>
           </div>
 
           <div className="col-span-4 mt-6 flex items-end md:col-span-2 md:col-start-7 lg:col-span-4 lg:col-start-9 lg:mt-0 lg:row-span-2 lg:self-end">
-            <div className="border-l-4 border-swiss-red pl-5">
+            <div className="flex gap-5">
+              <div className="w-1 shrink-0 self-stretch bg-swiss-red" aria-hidden />
               <p className="text-sm font-medium leading-relaxed text-neutral-600 md:text-base">
                 Live instruction, structured programs, and job-ready outcomes — one platform for
                 serious learners.

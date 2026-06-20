@@ -12,6 +12,8 @@ import {
 } from "@/lib/api-key-service";
 import { DEFAULT_LEAD_FIELDS, DEFAULT_RATE_LIMIT } from "@/lib/api-key-types";
 import { serializeApiKey } from "@/lib/api-key-admin";
+import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
+import { getApiKeyListSummaries } from "@/lib/widget/widget-stats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,18 +54,28 @@ export async function GET(request: Request) {
     const courseRows =
       courseIds.length > 0
         ? await db
-            .select({ id: recordCourses.id, title: recordCourses.title })
+            .select({ id: recordCourses.id, title: recordCourses.title, price: recordCourses.price })
             .from(recordCourses)
             .where(inArray(recordCourses.id, courseIds))
         : [];
     const courseTitleById = new Map(courseRows.map((c) => [c.id, c.title]));
+    const coursePriceById = new Map(courseRows.map((c) => [c.id, parseFloat(c.price)]));
+    const statsByKey = await getApiKeyListSummaries(list.map((k) => k.id));
 
     return NextResponse.json(
       list.map((k) => {
         const courseId = k.courseId ?? (k.allowedCourses?.length === 1 ? k.allowedCourses[0] : null);
-        return serializeApiKey(k, {
-          courseTitle: courseId ? (courseTitleById.get(courseId) ?? null) : null,
-        });
+        const stats = statsByKey.get(k.id);
+        return {
+          ...serializeApiKey(k, {
+            courseTitle: courseId ? (courseTitleById.get(courseId) ?? null) : null,
+            coursePrice: courseId ? (coursePriceById.get(courseId) ?? null) : null,
+          }),
+          totalLeads: stats?.totalLeads ?? 0,
+          totalConversions: stats?.totalConversions ?? 0,
+          conversionRate: stats?.conversionRate ?? 0,
+          totalRevenue: stats?.totalRevenue ?? 0,
+        };
       })
     );
   } catch (err) {
@@ -101,7 +113,7 @@ export async function POST(request: Request) {
     const data = parsed.data;
 
     const [course] = await db
-      .select({ id: recordCourses.id, title: recordCourses.title })
+      .select({ id: recordCourses.id, title: recordCourses.title, price: recordCourses.price })
       .from(recordCourses)
       .where(eq(recordCourses.id, data.courseId))
       .limit(1);
@@ -113,13 +125,21 @@ export async function POST(request: Request) {
     const keyHash = hashApiKey(plainKey);
     const keyPrefix = extractDisplayPrefix(plainKey);
 
+    const defaultPermissions = data.permissions ?? [
+      "submit_lead",
+      "get_lead_status",
+      "create_payment_order",
+      "confirm_payment",
+      "get_course_list",
+    ];
+
     const [row] = await db
       .insert(apiKeys)
       .values({
         name: data.name,
         keyPrefix,
         keyHash,
-        permissions: data.permissions,
+        permissions: defaultPermissions,
         courseId: data.courseId,
         allowedCourses: [data.courseId],
         allowedPaymentGateway: data.allowedPaymentGateway ?? "any",
@@ -131,6 +151,10 @@ export async function POST(request: Request) {
         notifyWebhook: data.notifyWebhook ?? false,
         rateLimit: data.rateLimit ?? DEFAULT_RATE_LIMIT,
         ipWhitelist: data.ipWhitelist ?? [],
+        widgetDomainsAllowed: data.widgetDomainsAllowed ?? [],
+        redirectOnSuccess: data.redirectOnSuccess ?? "/login",
+        redirectOnFailure: data.redirectOnFailure ?? null,
+        expiresAt: data.expiresAt ?? null,
         environment: data.environment ?? "live",
         isActive: true,
         createdBy: session!.user.id,
@@ -148,10 +172,13 @@ export async function POST(request: Request) {
       ipAddress: getClientIp(request),
     });
 
+    const embedSnippet = buildEmbedSnippet(plainKey);
+
     return NextResponse.json(
       {
         key: plainKey,
-        ...serializeApiKey(row, { courseTitle: course.title }),
+        embedSnippet,
+        ...serializeApiKey(row, { courseTitle: course.title, coursePrice: parseFloat(course.price) }),
       },
       { status: 201 }
     );

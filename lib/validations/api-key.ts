@@ -4,9 +4,23 @@ import { API_PERMISSIONS } from "@/lib/api-key-types";
 export const createApiKeySchema = z.object({
   name: z.string().min(2).max(120),
   courseId: z.string().uuid({ message: "Select a course" }),
-  permissions: z.array(z.enum(API_PERMISSIONS)).min(1),
+  permissions: z.array(z.enum(API_PERMISSIONS)).min(1).optional(),
   allowedCourses: z.array(z.string()).optional().default([]),
   allowedPaymentGateway: z.enum(["razorpay", "manual", "any"]).optional().default("any"),
+  widgetDomainsAllowed: z.array(z.string()).optional().default([]),
+  redirectOnSuccess: z
+    .string()
+    .max(500)
+    .optional()
+    .default("/login"),
+  redirectOnFailure: z.preprocess(
+    (v) => (v === "" || v === undefined ? null : v),
+    z.string().max(500).optional().nullable()
+  ),
+  expiresAt: z.preprocess(
+    (v) => (v === "" || v === undefined || v === null ? null : v),
+    z.coerce.date().optional().nullable()
+  ),
   webhookUrl: z.preprocess(
     (v) => (v === "" || v === undefined ? null : v),
     z.string().url().optional().nullable()

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Key } from "lucide-react";
+import { Plus, Trash2, Key, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -17,12 +18,17 @@ type ApiKeyRow = {
   maskedKey: string;
   courseId: string | null;
   courseTitle: string | null;
+  coursePrice?: number | null;
   permissions: string[];
   environment?: string;
   usageCount?: number;
   isActive: boolean;
   lastUsedAt: string | null;
   createdAt: string;
+  totalLeads?: number;
+  totalConversions?: number;
+  conversionRate?: number;
+  totalRevenue?: number;
 };
 
 export default function SuperAdminApiKeysPage() {
@@ -83,13 +89,31 @@ export default function SuperAdminApiKeysPage() {
       cell: ({ row }) => (
         <div className="max-w-[180px]">
           <p className="text-sm font-medium truncate">{row.original.courseTitle ?? "—"}</p>
-          {row.original.courseId && (
-            <code className="text-[10px] font-mono text-muted-foreground truncate block">
-              {row.original.courseId.slice(0, 8)}…
-            </code>
+          {row.original.coursePrice != null && (
+            <p className="text-xs text-muted-foreground">₹{row.original.coursePrice.toLocaleString("en-IN")}</p>
           )}
         </div>
       ),
+    },
+    {
+      accessorKey: "totalLeads",
+      header: "Leads",
+      cell: ({ row }) => row.original.totalLeads ?? 0,
+    },
+    {
+      accessorKey: "totalConversions",
+      header: "Conversions",
+      cell: ({ row }) => row.original.totalConversions ?? 0,
+    },
+    {
+      accessorKey: "conversionRate",
+      header: "Conv. %",
+      cell: ({ row }) => `${row.original.conversionRate ?? 0}%`,
+    },
+    {
+      accessorKey: "totalRevenue",
+      header: "Revenue",
+      cell: ({ row }) => `₹${(row.original.totalRevenue ?? 0).toLocaleString("en-IN")}`,
     },
     {
       accessorKey: "environment",
@@ -103,24 +127,6 @@ export default function SuperAdminApiKeysPage() {
     {
       accessorKey: "usageCount",
       header: "Usage",
-    },
-    {
-      accessorKey: "permissions",
-      header: "Permissions",
-      cell: ({ row }) => (
-        <div className="flex flex-wrap gap-1 max-w-[200px]">
-          {row.original.permissions.slice(0, 3).map((p) => (
-            <Badge key={p} variant="outline" className="font-mono text-[10px]">
-              {p}
-            </Badge>
-          ))}
-          {row.original.permissions.length > 3 && (
-            <Badge variant="outline" className="text-[10px]">
-              +{row.original.permissions.length - 3}
-            </Badge>
-          )}
-        </div>
-      ),
     },
     {
       accessorKey: "isActive",
@@ -149,17 +155,24 @@ export default function SuperAdminApiKeysPage() {
     {
       id: "actions",
       cell: ({ row }) => (
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => {
-            if (confirm(`Delete API key "${row.original.name}"? This cannot be undone.`)) {
-              deleteKey.mutate(row.original.id);
-            }
-          }}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/super-admin/api-keys/${row.original.id}`}>
+              <Eye className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => {
+              if (confirm(`Delete API key "${row.original.name}"? This cannot be undone.`)) {
+                deleteKey.mutate(row.original.id);
+              }
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -171,7 +184,7 @@ export default function SuperAdminApiKeysPage() {
       <div className="space-y-6">
         <PageHeader
           title="API Keys"
-          description="Manage keys for digital marketing partners to submit leads and confirm payments."
+          description="Manage embeddable enrollment widgets for marketing partners — one key per course."
         />
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 space-y-3">
           <p className="text-destructive font-medium">
@@ -189,7 +202,7 @@ export default function SuperAdminApiKeysPage() {
     <div className="space-y-6">
       <PageHeader
         title="API Keys"
-        description="Manage keys for digital marketing partners to submit leads and confirm payments."
+        description="Manage embeddable enrollment widgets for marketing partners — one key per course."
       >
         <Button onClick={() => setModalOpen(true)}>
           <Plus className="h-4 w-4 mr-2" /> Generate New API Key
@@ -200,8 +213,7 @@ export default function SuperAdminApiKeysPage() {
           <Key className="h-10 w-10 mx-auto text-muted-foreground" />
           <p className="font-medium">No API keys yet</p>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Generate a key for each digital marketing partner. Each key is tied to one course and
-            includes the permissions needed for leads and payments.
+            Generate a widget key for each partner. They embed the script on their landing page — visitors pay via Razorpay and become students automatically.
           </p>
           <Button onClick={() => setModalOpen(true)}>
             <Plus className="h-4 w-4 mr-2" /> Generate New API Key

@@ -65,7 +65,7 @@ export function CourseCard({
             <img
               src={imageSrc}
               alt={title}
-              className="h-full w-full object-cover grayscale transition-[filter] duration-300 group-hover:grayscale-0"
+              className="h-full w-full object-cover transition-[filter] duration-300 group-hover:grayscale"
             />
           ) : (
             <div className="flex h-full items-center justify-center text-neutral-300">

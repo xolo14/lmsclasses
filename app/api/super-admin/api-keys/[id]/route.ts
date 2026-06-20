@@ -11,6 +11,7 @@ import {
   extractDisplayPrefix,
 } from "@/lib/api-key-service";
 import { serializeApiKey } from "@/lib/api-key-admin";
+import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -178,7 +179,11 @@ export async function POST(
       ipAddress: getClientIp(request),
     });
 
-    return NextResponse.json({ key: plainKey, ...serializeApiKey(updated) });
+    return NextResponse.json({
+      key: plainKey,
+      embedSnippet: buildEmbedSnippet(plainKey),
+      ...serializeApiKey(updated),
+    });
   } catch (err) {
     console.error("[api/super-admin/api-keys/:id] POST rotate:", err);
     return NextResponse.json({ error: "Rotate failed" }, { status: 500 });

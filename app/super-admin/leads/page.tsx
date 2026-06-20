@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDateTime } from "@/lib/utils";
+import { LeadDetailSheet, type WidgetLeadDetail } from "@/components/leads/LeadDetailSheet";
 
 type CourseLead = {
   id: string;
@@ -53,6 +54,12 @@ type PartnerLead = {
   createdAt: string;
 };
 
+type WidgetLead = WidgetLeadDetail & {
+  courseName: string;
+  apiKeyName: string;
+  amountAttempted: number | null;
+};
+
 export default function LeadsPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("partner");
@@ -60,6 +67,30 @@ export default function LeadsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [selectedLead, setSelectedLead] = useState<PartnerLead | null>(null);
+  const [selectedWidgetLead, setSelectedWidgetLead] = useState<WidgetLead | null>(null);
+
+  const widgetQuery = useQuery({
+    queryKey: ["widget-leads", search, paymentFilter, statusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (paymentFilter !== "all") params.set("paymentStatus", paymentFilter);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      const res = await fetch(`/api/super-admin/widget-leads?${params}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to load widget leads");
+      return json as {
+        data: WidgetLead[];
+        stats: {
+          totalLeads: number;
+          conversionRate: number;
+          failedPayments: number;
+          totalRevenue: number;
+        };
+      };
+    },
+    enabled: tab === "widget",
+  });
 
   const partnerQuery = useQuery({
     queryKey: ["partner-leads", search, statusFilter, paymentFilter],
@@ -109,6 +140,8 @@ export default function LeadsPage() {
   });
 
   const partnerLeads = partnerQuery.data ?? [];
+  const widgetLeads = widgetQuery.data?.data ?? [];
+  const widgetStats = widgetQuery.data?.stats;
   const today = new Date().toDateString();
   const stats = {
     total: partnerLeads.length,
@@ -222,6 +255,50 @@ export default function LeadsPage() {
     },
   ];
 
+  const widgetColumns: ColumnDef<WidgetLead>[] = [
+    { accessorKey: "fullName", header: "Name" },
+    { accessorKey: "email", header: "Email" },
+    { accessorKey: "phone", header: "Phone" },
+    { accessorKey: "college", header: "College", cell: ({ row }) => row.original.college ?? "—" },
+    { accessorKey: "courseName", header: "Course" },
+    {
+      accessorKey: "paymentStatus",
+      header: "Payment",
+      cell: ({ row }) => (
+        <Badge variant={row.original.paymentStatus === "completed" ? "success" : "secondary"}>
+          {row.original.paymentStatus}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "status",
+      header: "Lead Status",
+      cell: ({ row }) => <Badge variant="outline">{row.original.status}</Badge>,
+    },
+    {
+      accessorKey: "amountAttempted",
+      header: "Amount",
+      cell: ({ row }) =>
+        row.original.amountAttempted != null
+          ? `₹${(row.original.amountAttempted / 100).toLocaleString("en-IN")}`
+          : "—",
+    },
+    {
+      accessorKey: "createdAt",
+      header: "Created",
+      cell: ({ row }) => formatDateTime(row.original.createdAt),
+    },
+    {
+      id: "actions",
+      header: "",
+      cell: ({ row }) => (
+        <Button variant="outline" size="sm" onClick={() => setSelectedWidgetLead(row.original)}>
+          <Eye className="h-4 w-4" />
+        </Button>
+      ),
+    },
+  ];
+
   const landingColumns: ColumnDef<CourseLead>[] = [
     { accessorKey: "name", header: "Name" },
     { accessorKey: "phone", header: "Phone" },
@@ -302,7 +379,7 @@ export default function LeadsPage() {
         <div>
           <h1 className="text-2xl font-bold">Leads</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Partner API leads and landing page enquiries.
+            Partner API leads, widget enrollments, and landing page enquiries.
           </p>
         </div>
         <Button
@@ -315,8 +392,9 @@ export default function LeadsPage() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="partner">Partner Leads</TabsTrigger>
-          <TabsTrigger value="landing">Landing Page Leads</TabsTrigger>
+          <TabsTrigger value="partner">Partner API</TabsTrigger>
+          <TabsTrigger value="widget">Widget Leads</TabsTrigger>
+          <TabsTrigger value="landing">Landing Page</TabsTrigger>
         </TabsList>
 
         <TabsContent value="partner" className="space-y-4 mt-4">
@@ -396,6 +474,49 @@ export default function LeadsPage() {
           )}
         </TabsContent>
 
+        <TabsContent value="widget" className="space-y-4 mt-4">
+          {widgetStats && (
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Total Leads</p>
+                <p className="text-2xl font-semibold">{widgetStats.totalLeads}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Conversion Rate</p>
+                <p className="text-2xl font-semibold">{widgetStats.conversionRate}%</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Failed Payments</p>
+                <p className="text-2xl font-semibold">{widgetStats.failedPayments}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Revenue</p>
+                <p className="text-2xl font-semibold">
+                  ₹{widgetStats.totalRevenue.toLocaleString("en-IN")}
+                </p>
+              </div>
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label htmlFor="widget-lead-search">Search</Label>
+              <Input
+                id="widget-lead-search"
+                placeholder="Name, email, or phone…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          {widgetQuery.isLoading ? (
+            <div className="text-muted-foreground">Loading…</div>
+          ) : widgetQuery.isError ? (
+            <div className="text-destructive">Could not load widget leads.</div>
+          ) : (
+            <DataTable columns={widgetColumns} data={widgetLeads} searchPlaceholder="Filter…" />
+          )}
+        </TabsContent>
+
         <TabsContent value="landing" className="mt-4">
           {landingQuery.isLoading ? (
             <div className="text-muted-foreground">Loading…</div>
@@ -463,6 +584,12 @@ export default function LeadsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <LeadDetailSheet
+        lead={selectedWidgetLead}
+        open={!!selectedWidgetLead}
+        onOpenChange={(open) => !open && setSelectedWidgetLead(null)}
+      />
     </div>
   );
 }

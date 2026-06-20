@@ -119,5 +119,3 @@ When Razorpay is not configured, the system runs in **mock mode** — payments a
 - Resend + Razorpay
 - Tailwind CSS + shadcn/ui
 =======
-# lmsclasses
->>>>>>> 42222c322efe267c1b2973b42793143089688d6d

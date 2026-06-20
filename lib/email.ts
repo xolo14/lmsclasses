@@ -535,6 +535,40 @@ export async function sendPartnerStudentCredentialsEmail({
   });
 }
 
+export async function sendPaymentFailedFollowUpEmail({
+  to,
+  name,
+  courseName,
+  paymentUrl,
+}: {
+  to: string;
+  name: string;
+  courseName: string;
+  paymentUrl: string;
+}) {
+  const safeEmail = to.trim().toLowerCase();
+  return sendEmail({
+    to: safeEmail,
+    subject: `Complete your enrollment in ${courseName}`,
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h2 style="color: #E30613; margin-top: 0;">Complete your enrollment</h2>
+        <p style="color: #334155; line-height: 1.6;">
+          Hi ${escapeHtml(name)}, your payment for <strong>${escapeHtml(courseName)}</strong> didn't go through.
+        </p>
+        <p style="color: #334155; line-height: 1.6;">
+          You can complete enrollment securely using the link below:
+        </p>
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${paymentUrl}" style="background-color: #E30613; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 4px; font-weight: bold;">Complete Payment →</a>
+        </div>
+        <p style="color: #64748b; font-size: 13px;">If you need help, reply to this email or contact info@lmsclasses.com.</p>
+      </div>
+    `,
+    text: `Hi ${name},\n\nYour payment for ${courseName} didn't go through.\n\nComplete payment: ${paymentUrl}\n`,
+  });
+}
+
 export async function sendSlotPurchaseEmail({
   email,
   adminName,

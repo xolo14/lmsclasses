@@ -7,7 +7,7 @@ export function resolveApiKeyCourseId(k: ApiKey): string | null {
 
 export function serializeApiKey(
   k: ApiKey,
-  options?: { includeSecrets?: boolean; courseTitle?: string | null }
+  options?: { includeSecrets?: boolean; courseTitle?: string | null; coursePrice?: number | null }
 ) {
   const includeSecrets = options?.includeSecrets ?? false;
   const courseId = resolveApiKeyCourseId(k);
@@ -18,6 +18,7 @@ export function serializeApiKey(
     keyPrefix: k.keyPrefix,
     courseId,
     courseTitle: options?.courseTitle ?? null,
+    coursePrice: options?.coursePrice ?? null,
     permissions: k.permissions ?? [],
     allowedCourses: courseId ? [courseId] : (k.allowedCourses ?? []),
     allowedPaymentGateway: k.allowedPaymentGateway,
@@ -31,6 +32,10 @@ export function serializeApiKey(
     ipWhitelist: k.ipWhitelist ?? [],
     environment: k.environment,
     isActive: k.isActive,
+    widgetDomainsAllowed: k.widgetDomainsAllowed ?? [],
+    redirectOnSuccess: k.redirectOnSuccess ?? "/login",
+    redirectOnFailure: k.redirectOnFailure ?? null,
+    expiresAt: k.expiresAt,
     lastUsedAt: k.lastUsedAt,
     usageCount: k.usageCount,
     notes: k.notes,

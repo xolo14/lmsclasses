@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { partnerLeads } from "@/lib/db/schema";
+import { widgetLeads } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
@@ -21,9 +21,9 @@ export async function GET(
 
   const leads = await db
     .select()
-    .from(partnerLeads)
-    .where(eq(partnerLeads.apiKeyId, id))
-    .orderBy(desc(partnerLeads.createdAt))
+    .from(widgetLeads)
+    .where(eq(widgetLeads.apiKeyId, id))
+    .orderBy(desc(widgetLeads.createdAt))
     .limit(limit);
 
   return NextResponse.json({ data: leads });

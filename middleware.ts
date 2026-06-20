@@ -30,11 +30,15 @@ export default auth((req) => {
     pathname.startsWith("/courses") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/public") ||
+    pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/pay/") ||
     pathname.startsWith("/api/hr/register") ||
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/bootstrap") ||
     pathname.startsWith("/api/payments/webhook") ||
     pathname.startsWith("/api/external") ||
+    pathname.startsWith("/api/widget") ||
+    pathname.startsWith("/widget/") ||
     pathname === "/api/payments/create-order";
 
   if (isPublic) {
