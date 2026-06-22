@@ -37,6 +37,7 @@ export function SettingsPage() {
 
   const [logoDraft, setLogoDraft] = useState<string | null | undefined>(undefined);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   // Super Admin Hero Card settings state
   const [heroCardTitle, setHeroCardTitle] = useState("");
@@ -101,7 +102,29 @@ export function SettingsPage() {
       setLogoDraft(undefined);
       setLogoError(null);
     },
+    onError: (err: Error) => setLogoError(err.message),
   });
+
+  const uploadOrganisationLogo = async (file: File) => {
+    setLogoError(null);
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError("Logo image is too large. Please use a file under 2MB.");
+      return;
+    }
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/uploads/org-logo", { method: "POST", body: fd });
+      if (!res.ok) await parseApiError(res);
+      const { url } = (await res.json()) as { url: string };
+      setLogoDraft(url);
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "Failed to upload logo.");
+    } finally {
+      setLogoUploading(false);
+    }
+  };
 
   const profileForm = useForm<ProfileInput>({
     resolver: zodResolver(profileSchema),
@@ -197,24 +220,18 @@ export function SettingsPage() {
                 </p>
                 <Input
                   type="file"
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  disabled={logoUploading || updateOrganisationLogo.isPending}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (!file) return;
-                    setLogoError(null);
-                    // Avoid huge payloads stored as data URLs
-                    if (file.size > 450 * 1024) {
-                      setLogoError("Logo image is too large. Please use a file under 450KB.");
-                      return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      setLogoDraft(String(reader.result));
-                    };
-                    reader.onerror = () => setLogoError("Failed to read the selected file.");
-                    reader.readAsDataURL(file);
+                    if (file) void uploadOrganisationLogo(file);
+                    e.target.value = "";
                   }}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Allowed: PNG, JPG, WEBP, GIF (max 2MB). Upload a file, then click Save Logo.
+                </p>
+                {logoUploading && <p className="text-sm text-muted-foreground">Uploading...</p>}
                 {logoError && <p className="text-sm text-destructive">{logoError}</p>}
               </div>
             </div>
@@ -223,7 +240,11 @@ export function SettingsPage() {
               <Button
                 type="button"
                 variant="secondary"
-                disabled={updateOrganisationLogo.isPending || logoPreview === (organisationLogoUrl ?? null)}
+                disabled={
+                  logoUploading ||
+                  updateOrganisationLogo.isPending ||
+                  logoPreview === (organisationLogoUrl ?? null)
+                }
                 onClick={() => updateOrganisationLogo.mutate(logoDraft ?? null)}
               >
                 {updateOrganisationLogo.isPending ? "Saving..." : "Save Logo"}
@@ -231,12 +252,15 @@ export function SettingsPage() {
               <Button
                 type="button"
                 variant="outline"
-                disabled={updateOrganisationLogo.isPending || !logoPreview}
+                disabled={logoUploading || updateOrganisationLogo.isPending || !logoPreview}
                 onClick={() => setLogoDraft(null)}
               >
                 Remove
               </Button>
             </div>
+            {updateOrganisationLogo.isSuccess && !logoDraft && logoPreview === organisationLogoUrl && (
+              <p className="text-sm text-emerald-400">Logo saved successfully!</p>
+            )}
           </CardContent>
         </Card>
       )}

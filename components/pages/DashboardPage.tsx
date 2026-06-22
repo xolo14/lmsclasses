@@ -22,6 +22,30 @@ const RevenueChart = dynamic(
   }
 );
 
+const EnrollmentTrendChart = dynamic(
+  () => import("@/components/charts/EnrollmentTrendChart").then((m) => m.EnrollmentTrendChart),
+  {
+    ssr: false,
+    loading: () => <div className="h-[260px] animate-pulse rounded-lg bg-muted" />,
+  }
+);
+
+const SlotsUsageChart = dynamic(
+  () => import("@/components/charts/SlotsUsageChart").then((m) => m.SlotsUsageChart),
+  {
+    ssr: false,
+    loading: () => <div className="h-[260px] animate-pulse rounded-lg bg-muted" />,
+  }
+);
+
+const CourseTypePieChart = dynamic(
+  () => import("@/components/charts/CourseTypePieChart").then((m) => m.CourseTypePieChart),
+  {
+    ssr: false,
+    loading: () => <div className="h-[260px] animate-pulse rounded-lg bg-muted" />,
+  }
+);
+
 interface DashboardPageProps {
   scope?: "org" | "global";
   userRole?: string;
@@ -51,6 +75,31 @@ type AuditRow = {
   action: string;
   userName: string;
   createdAt: string;
+};
+
+type OrgAnalytics = {
+  summary: {
+    totalStudents: number;
+    activeLiveCourses: number;
+    slotsRemaining: number;
+    slotsUsed: number;
+    paymentsMade: number;
+    totalSpent: number;
+    liveEnrollments: number;
+    recordEnrollments: number;
+  };
+  spendingByMonth: { month: string; amount: number }[];
+  enrollmentsByMonth: { month: string; count: number }[];
+  slotsByCourse: { courseTitle: string; used: number; total: number }[];
+  courseTypeSplit: { name: string; value: number }[];
+  recentPayments: {
+    id: string;
+    courseTitle: string | null;
+    amount: string;
+    status: string;
+    createdAt: string;
+  }[];
+  recentActivity: { id: string; action: string; createdAt: string }[];
 };
 
 type PaginatedResponse<T> = {
@@ -84,6 +133,13 @@ export function DashboardPage({ scope = "global", userRole }: DashboardPageProps
     staleTime: 2 * 60 * 1000,
   });
 
+  const { data: orgAnalytics, isLoading: orgAnalyticsLoading } = useQuery<OrgAnalytics>({
+    queryKey: ["org-admin-analytics"],
+    queryFn: () => fetchJson<OrgAnalytics>("/api/org-admin/analytics"),
+    enabled: scope === "org",
+    staleTime: 2 * 60 * 1000,
+  });
+
   const payments = asArray(paymentsRaw);
   const auditLogs = asArray(auditLogsRaw);
 
@@ -104,15 +160,150 @@ export function DashboardPage({ scope = "global", userRole }: DashboardPageProps
   }));
 
   if (scope === "org") {
+    const summary = orgAnalytics?.summary;
+    const spendingChartData = (orgAnalytics?.spendingByMonth ?? []).map((row) => ({
+      month: row.month,
+      revenue: row.amount,
+    }));
+
     return (
       <div className="space-y-6">
         <h1 className="text-xl sm:text-2xl font-bold">Dashboard</h1>
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCard title="My Students" value={stats?.totalStudents ?? 0} icon={GraduationCap} />
-          <KpiCard title="Active Live Courses" value={stats?.activeCourses ?? 0} icon={BookOpen} />
-          <KpiCard title="Slots Remaining" value={stats?.slotsRemaining ?? 0} icon={Building2} />
-          <KpiCard title="Payments Made" value={stats?.paymentsMade ?? 0} icon={IndianRupee} />
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+          <KpiCard
+            title="My Students"
+            value={summary?.totalStudents ?? stats?.totalStudents ?? 0}
+            icon={GraduationCap}
+          />
+          <KpiCard
+            title="Active Live Courses"
+            value={summary?.activeLiveCourses ?? stats?.activeCourses ?? 0}
+            icon={BookOpen}
+          />
+          <KpiCard
+            title="Slots Remaining"
+            value={summary?.slotsRemaining ?? stats?.slotsRemaining ?? 0}
+            icon={Building2}
+          />
+          <KpiCard
+            title="Payments Made"
+            value={summary?.paymentsMade ?? stats?.paymentsMade ?? 0}
+            icon={IndianRupee}
+          />
+          <KpiCard
+            title="Total Spent"
+            value={formatCurrency(summary?.totalSpent ?? 0)}
+            icon={IndianRupee}
+          />
         </div>
+
+        {orgAnalyticsLoading ? (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="h-[320px] animate-pulse rounded-lg bg-muted" />
+            <div className="h-[320px] animate-pulse rounded-lg bg-muted" />
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Spending by Month</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {spendingChartData.some((d) => d.revenue > 0) ? (
+                    <RevenueChart data={spendingChartData} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground py-8 text-center">No payments yet</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Enrollments by Month</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <EnrollmentTrendChart data={orgAnalytics?.enrollmentsByMonth ?? []} />
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Slots by Course</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <SlotsUsageChart data={orgAnalytics?.slotsByCourse ?? []} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Live vs Record Enrollments</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CourseTypePieChart data={orgAnalytics?.courseTypeSplit ?? []} />
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Recent Payments</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {(orgAnalytics?.recentPayments ?? []).map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between py-2 border-b border-border text-sm"
+                      >
+                        <div>
+                          <p className="font-medium">{p.courseTitle ?? "Course"}</p>
+                          <p className="text-xs text-muted-foreground capitalize">{p.status}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono text-primary">{formatCurrency(p.amount)}</p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(p.createdAt)}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {!orgAnalytics?.recentPayments?.length && (
+                      <p className="text-sm text-muted-foreground">No payments yet</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Recent Student Activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                    {(orgAnalytics?.recentActivity ?? []).map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex items-start gap-3 text-sm border-b border-border pb-3"
+                      >
+                        <div className="h-2 w-2 rounded-full bg-primary mt-1.5 shrink-0" />
+                        <div>
+                          <p className="font-medium">{log.action}</p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {!orgAnalytics?.recentActivity?.length && (
+                      <p className="text-sm text-muted-foreground">No student activity yet</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        )}
       </div>
     );
   }

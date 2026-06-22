@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { organisations } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 
 const organisationLogoSchema = z.object({
@@ -20,6 +20,7 @@ function isValidLogoValue(v: string | null | undefined) {
   if (!v) return true; // allow null/undefined for clearing
   if (v.startsWith("data:image/")) return true;
   if (v.startsWith("http://") || v.startsWith("https://")) return true;
+  if (v.startsWith("/uploads/org-logos/")) return true;
   return false;
 }
 
@@ -36,7 +37,7 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const organisationId = session!.user.organisationId;
+  const organisationId = await resolveOrganisationId(session!);
   if (!organisationId) {
     return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
   }

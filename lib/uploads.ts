@@ -4,6 +4,7 @@ import path from "path";
 export type UploadCategory =
   | "course-thumbnails"
   | "hr-logos"
+  | "org-logos"
   | "resumes"
   | "live-classes"
   | "record-classes";
@@ -14,6 +15,7 @@ export const UPLOADS_URL_PREFIX = "/uploads";
 const ALLOWED_CATEGORIES = new Set<UploadCategory>([
   "course-thumbnails",
   "hr-logos",
+  "org-logos",
   "resumes",
   "live-classes",
   "record-classes",
