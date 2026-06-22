@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { formatDateTime } from "@/lib/utils";
 import { LeadDetailSheet, type WidgetLeadDetail } from "@/components/leads/LeadDetailSheet";
 
@@ -208,20 +209,17 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Leads</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            API generated leads and landing page enquiries.
-          </p>
-        </div>
+      <PageHeader
+        title="Leads"
+        description="API generated leads and landing page enquiries."
+      >
         <Button
           variant="outline"
           onClick={tab === "widget" ? exportWidgetCsv : exportLandingCsv}
         >
           <Download className="h-4 w-4 mr-2" /> Export CSV
         </Button>
-      </div>
+      </PageHeader>
 
       <Tabs
         value={tab}
@@ -231,91 +229,96 @@ export default function LeadsPage() {
           setStatusFilter("all");
           setPaymentFilter("all");
         }}
+        className="space-y-4"
       >
-        <TabsList className="grid grid-cols-2 max-w-[400px]">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="widget">API Generated Leads</TabsTrigger>
           <TabsTrigger value="landing">Landing Page</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="widget" className="space-y-4 mt-4">
+        <TabsContent value="widget" className="space-y-4 mt-0">
           {widgetStats && (
-            <div className="grid gap-3 sm:grid-cols-4">
-              <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">Total Leads</p>
-                <p className="text-2xl font-semibold">{widgetStats.totalLeads}</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border border-border/60 bg-background p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total Leads</p>
+                <p className="text-2xl font-semibold mt-1">{widgetStats.totalLeads}</p>
               </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">Conversion Rate</p>
-                <p className="text-2xl font-semibold">{widgetStats.conversionRate}%</p>
+              <div className="rounded-lg border border-border/60 bg-background p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conversion Rate</p>
+                <p className="text-2xl font-semibold mt-1">{widgetStats.conversionRate}%</p>
               </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">Failed Payments</p>
-                <p className="text-2xl font-semibold">{widgetStats.failedPayments}</p>
+              <div className="rounded-lg border border-border/60 bg-background p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Failed Payments</p>
+                <p className="text-2xl font-semibold mt-1">{widgetStats.failedPayments}</p>
               </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">Revenue</p>
-                <p className="text-2xl font-semibold">
+              <div className="rounded-lg border border-border/60 bg-background p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Revenue</p>
+                <p className="text-2xl font-semibold mt-1">
                   ₹{widgetStats.totalRevenue.toLocaleString("en-IN")}
                 </p>
               </div>
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div className="sm:col-span-2">
-              <Label htmlFor="widget-lead-search">Search</Label>
-              <Input
-                id="widget-lead-search"
-                placeholder="Name, email, or phone…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="new">New</SelectItem>
-                  <SelectItem value="contacted">Contacted</SelectItem>
-                  <SelectItem value="follow_up">Follow-up</SelectItem>
-                  <SelectItem value="converted">Converted</SelectItem>
-                  <SelectItem value="lost">Lost</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Payment</Label>
-              <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Payments" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Payments</SelectItem>
-                  <SelectItem value="initiated">Initiated</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="rounded-lg border border-border/60 bg-background p-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="widget-lead-search">Search</Label>
+                <Input
+                  id="widget-lead-search"
+                  placeholder="Name, email, or phone…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Status</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="new">New</SelectItem>
+                    <SelectItem value="contacted">Contacted</SelectItem>
+                    <SelectItem value="follow_up">Follow-up</SelectItem>
+                    <SelectItem value="converted">Converted</SelectItem>
+                    <SelectItem value="lost">Lost</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Payment</Label>
+                <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="All Payments" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Payments</SelectItem>
+                    <SelectItem value="initiated">Initiated</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
           {widgetQuery.isLoading ? (
-            <div className="text-muted-foreground">Loading…</div>
+            <div className="text-muted-foreground py-8 text-center">Loading…</div>
           ) : widgetQuery.isError ? (
-            <div className="text-destructive">Could not load widget leads.</div>
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-destructive">
+              Could not load widget leads.
+            </div>
           ) : (
             <DataTable columns={widgetColumns} data={widgetLeads} searchPlaceholder="Filter…" />
           )}
         </TabsContent>
 
-        <TabsContent value="landing" className="mt-4">
+        <TabsContent value="landing" className="mt-0">
           {landingQuery.isLoading ? (
-            <div className="text-muted-foreground">Loading…</div>
+            <div className="text-muted-foreground py-8 text-center">Loading…</div>
           ) : (
             <DataTable
               columns={landingColumns}
