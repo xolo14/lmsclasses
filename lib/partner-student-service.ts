@@ -104,7 +104,15 @@ export async function createStudentFromLead(
 
   if (existingUser) {
     studentId = existingUser.id;
-    lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
+    if (existingUser.lmsId) {
+      lmsId = existingUser.lmsId;
+    } else {
+      lmsId = await createUniqueLmsId();
+      await db
+        .update(users)
+        .set({ lmsId, updatedAt: new Date() })
+        .where(eq(users.id, studentId));
+    }
 
     const [enrollment] = await db
       .select({ id: studentCourses.id })

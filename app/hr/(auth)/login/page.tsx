@@ -11,10 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
 import { SwissAuthShell } from "@/components/layout/SwissAuthShell";
-import { useRecoverStaleChunks } from "@/lib/use-recover-stale-chunks";
 
 export default function HrLoginPage() {
-  useRecoverStaleChunks();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { register, handleSubmit, formState: { errors } } = useForm<LoginInput>({

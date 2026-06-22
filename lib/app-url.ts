@@ -7,3 +7,15 @@ export function getAppUrl(): string {
     "http://localhost:3000";
   return url.replace(/\/$/, "");
 }
+
+/** Resolve API-key redirect paths (relative or absolute) to a full URL. */
+export function resolveRedirectUrl(
+  pathOrUrl: string | null | undefined,
+  fallback = "/login"
+): string {
+  const raw = (pathOrUrl ?? fallback).trim();
+  if (!raw) return `${getAppUrl()}${fallback.startsWith("/") ? fallback : `/${fallback}`}`;
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  const path = raw.startsWith("/") ? raw : `/${raw}`;
+  return `${getAppUrl()}${path}`;
+}

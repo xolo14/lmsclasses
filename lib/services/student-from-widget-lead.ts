@@ -6,7 +6,7 @@ import type { ApiKey, WidgetLead } from "@/lib/db/schema";
 import { generatePartnerLmsId, generateStudentPassword, generateUsername } from "@/lib/generate-credentials";
 import { sendPartnerStudentCredentialsEmail } from "@/lib/email";
 import { logAction } from "@/lib/audit";
-import { getAppUrl } from "@/lib/app-url";
+import { resolveRedirectUrl } from "@/lib/app-url";
 import { isTestKey } from "@/lib/api-key-service";
 
 async function createUniqueLmsId(): Promise<string> {
@@ -36,8 +36,7 @@ export async function createStudentFromWidgetLead(
   options?: { ipAddress?: string; apiKey?: ApiKey }
 ): Promise<CreateStudentFromWidgetLeadResult> {
   const apiKey = options?.apiKey;
-  const redirectPath = apiKey?.redirectOnSuccess ?? "/login";
-  const loginUrl = `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`;
+  const loginUrl = resolveRedirectUrl(apiKey?.redirectOnSuccess);
 
   if (apiKey && isTestKey(apiKey)) {
     const username = generateUsername(lead.fullName);
@@ -94,7 +93,15 @@ export async function createStudentFromWidgetLead(
 
     if (existingUser) {
       studentId = existingUser.id;
-      lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
+      if (existingUser.lmsId) {
+        lmsId = existingUser.lmsId;
+      } else {
+        lmsId = await createUniqueLmsId();
+        await tx
+          .update(users)
+          .set({ lmsId, updatedAt: new Date() })
+          .where(eq(users.id, studentId));
+      }
 
       const [enrollment] = await tx
         .select({ id: studentCourses.id })

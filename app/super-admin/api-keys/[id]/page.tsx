@@ -10,20 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ApiKeyStatsPanel, type ApiKeyStatsData } from "@/components/api-keys/ApiKeyStatsPanel";
 import { formatDateTime } from "@/lib/utils";
-
-function embedTemplate(keyPlaceholder: string, targetId = "lms-enroll-widget") {
-  const base =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_APP_URL ?? "https://lmsclasses.com";
-  return `<div id="${targetId}"></div>
-<script
-  src="${base}/widget/enroll.js"
-  data-key="${keyPlaceholder}"
-  data-target="${targetId}"
-  async
-></script>`;
-}
+import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
 
 type ApiKeyDetail = {
   id: string;
@@ -104,7 +91,8 @@ export default function ApiKeyDetailPage() {
   if (!key) return <div className="text-destructive p-6">API key not found</div>;
 
   const embedTemplateStr =
-    rotated?.embedSnippet ?? embedTemplate(`lms_${key.environment}_${key.keyPrefix}…REPLACE_WITH_FULL_KEY`);
+    rotated?.embedSnippet ??
+    buildEmbedSnippet(`lms_${key.environment}_${key.keyPrefix}…REPLACE_WITH_FULL_KEY`);
 
   return (
     <div className="space-y-6">

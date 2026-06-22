@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Analytics } from "@/components/analytics/Analytics";
+import { ChunkRecoveryScript } from "@/components/ChunkRecoveryScript";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { fontSans, fontDisplay, fontMono } from "@/lib/fonts";
@@ -32,6 +33,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${fontSans.variable} ${fontDisplay.variable} ${fontMono.variable}`}>
       <body className="font-sans antialiased">
+        <ChunkRecoveryScript />
         <Analytics />
         <AuthProvider>
           <QueryProvider>{children}</QueryProvider>

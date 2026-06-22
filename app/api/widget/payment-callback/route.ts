@@ -8,7 +8,7 @@ import { widgetOptionsResponse } from "@/lib/widget/widget-cors";
 import { widgetPaymentCallbackSchema } from "@/lib/validations/widget";
 import { verifyRazorpaySignature } from "@/lib/razorpay";
 import { createStudentFromWidgetLead } from "@/lib/services/student-from-widget-lead";
-import { getAppUrl } from "@/lib/app-url";
+import { resolveRedirectUrl } from "@/lib/app-url";
 import { isTestKey } from "@/lib/api-key-service";
 
 export const runtime = "nodejs";
@@ -71,11 +71,7 @@ export async function POST(request: Request) {
     });
 
     const redirectOnFailure = ctx.apiKey.redirectOnFailure;
-    const redirectUrl = redirectOnFailure
-      ? redirectOnFailure.startsWith("http")
-        ? redirectOnFailure
-        : `${getAppUrl()}${redirectOnFailure}`
-      : null;
+    const redirectUrl = redirectOnFailure ? resolveRedirectUrl(redirectOnFailure, "/") : null;
 
     return widgetJson(ctx, request, {
       success: false,
@@ -102,7 +98,7 @@ export async function POST(request: Request) {
     const redirectPath = ctx.apiKey.redirectOnSuccess ?? "/login";
     return widgetJson(ctx, request, {
       success: true,
-      redirectUrl: `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`,
+      redirectUrl: resolveRedirectUrl(redirectPath),
       message: "Enrollment already confirmed.",
     });
   }
@@ -162,7 +158,7 @@ export async function POST(request: Request) {
   });
 
   const redirectPath = ctx.apiKey.redirectOnSuccess ?? "/login";
-  const redirectUrl = `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`;
+  const redirectUrl = resolveRedirectUrl(redirectPath);
 
   return widgetJson(ctx, request, {
     success: true,

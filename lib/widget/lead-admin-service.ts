@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { apiKeys, recordCourses, widgetLeads } from "@/lib/db/schema";
 import type { WidgetLead } from "@/lib/db/schema";
 import { logAction } from "@/lib/audit";
-import { getAppUrl } from "@/lib/app-url";
+import { getAppUrl, resolveRedirectUrl } from "@/lib/app-url";
 import { createWidgetLeadOrder, isRazorpayConfigured } from "@/lib/razorpay";
 import { sendPaymentFailedFollowUpEmail } from "@/lib/email";
 import { verifyRazorpaySignature } from "@/lib/razorpay";
@@ -302,11 +302,12 @@ export async function confirmRepayPayment(
 
   const [lead] = await db.select().from(widgetLeads).where(eq(widgetLeads.id, leadId)).limit(1);
   if (!lead) throw new Error("Lead not found");
-  if (lead.convertedToStudent) {
-    return { success: true, message: "Already enrolled", loginUrl: `${getAppUrl()}/login` };
-  }
 
   const [apiKey] = await db.select().from(apiKeys).where(eq(apiKeys.id, lead.apiKeyId)).limit(1);
+
+  if (lead.convertedToStudent) {
+    return { success: true, message: "Already enrolled", loginUrl: resolveRedirectUrl(apiKey?.redirectOnSuccess) };
+  }
 
   if (!isTestKey(apiKey ?? { environment: "live" })) {
     if (!verifyRazorpaySignature(input.razorpay_order_id, input.razorpay_payment_id, input.razorpay_signature)) {
@@ -336,10 +337,9 @@ export async function confirmRepayPayment(
     });
   }
 
-  const redirectPath = apiKey?.redirectOnSuccess ?? "/login";
   return {
     success: true,
     message: "Enrollment confirmed! Check your email for login details.",
-    loginUrl: result.loginUrl ?? `${getAppUrl()}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`,
+    loginUrl: result.loginUrl ?? resolveRedirectUrl(apiKey?.redirectOnSuccess),
   };
 }

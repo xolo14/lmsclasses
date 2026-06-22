@@ -12,10 +12,22 @@ export const createApiKeySchema = z.object({
     .string()
     .max(500)
     .optional()
-    .default("/login"),
+    .default("/login")
+    .refine(
+      (v) => v.startsWith("/") || v.startsWith("http://") || v.startsWith("https://"),
+      { message: "Use a path (/login) or full URL (https://…)" }
+    ),
   redirectOnFailure: z.preprocess(
     (v) => (v === "" || v === undefined ? null : v),
-    z.string().max(500).optional().nullable()
+    z
+      .string()
+      .max(500)
+      .optional()
+      .nullable()
+      .refine(
+        (v) => v == null || v.startsWith("/") || v.startsWith("http://") || v.startsWith("https://"),
+        { message: "Use a path or full URL" }
+      )
   ),
   expiresAt: z.preprocess(
     (v) => (v === "" || v === undefined || v === null ? null : v),

@@ -13,10 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Eye, EyeOff } from "lucide-react";
 import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
 import { SwissAuthShell } from "@/components/layout/SwissAuthShell";
-import { useRecoverStaleChunks } from "@/lib/use-recover-stale-chunks";
 
 export default function LoginPage() {
-  useRecoverStaleChunks();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -82,7 +80,7 @@ export default function LoginPage() {
               clear your browser cache, then try again.
             </p>
           </noscript>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" method="post" action="/login">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
