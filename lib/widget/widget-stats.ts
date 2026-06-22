@@ -58,7 +58,12 @@ export async function getApiKeyListSummaries(
 }
 
 export async function getApiKeyStats(keyId: string): Promise<ApiKeyStats | null> {
-  const [key] = await db.select().from(apiKeys).where(eq(apiKeys.id, keyId)).limit(1);
+  // Select only id to avoid touching columns (e.g. form_slug) that may not be migrated yet.
+  const [key] = await db
+    .select({ id: apiKeys.id })
+    .from(apiKeys)
+    .where(eq(apiKeys.id, keyId))
+    .limit(1);
   if (!key) return null;
 
   const eventCounts = await db
