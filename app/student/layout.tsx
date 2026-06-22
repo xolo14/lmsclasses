@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { PortalLayout } from "@/components/layout/PortalLayout";
 import { StudentSidebar } from "@/components/layout/Sidebar";
 import { db } from "@/lib/db";
-import { organisations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { organisations, studentCourses } from "@/lib/db/schema";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 export default async function StudentLayout({
   children,
@@ -16,15 +16,31 @@ export default async function StudentLayout({
     redirect("/login");
   }
 
-  const orgSettings = session.user.organisationId
-    ? (
-        await db
-          .select({ logoUrl: organisations.logoUrl, jobPortalAccess: organisations.jobPortalAccess })
+  const [orgSettings, recordEnrollment] = await Promise.all([
+    session.user.organisationId
+      ? db
+          .select({
+            logoUrl: organisations.logoUrl,
+            jobPortalAccess: organisations.jobPortalAccess,
+          })
           .from(organisations)
           .where(eq(organisations.id, session.user.organisationId))
           .limit(1)
-      )[0] ?? null
-    : null;
+          .then((rows) => rows[0] ?? null)
+      : Promise.resolve(null),
+    db
+      .select({ id: studentCourses.id })
+      .from(studentCourses)
+      .where(
+        and(
+          eq(studentCourses.studentId, session.user.id),
+          eq(studentCourses.isActive, true),
+          isNotNull(studentCourses.recordCourseId)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  ]);
 
   return (
     <PortalLayout
@@ -32,6 +48,7 @@ export default async function StudentLayout({
         <StudentSidebar
           brandLogoUrl={orgSettings?.logoUrl}
           jobPortalAccess={orgSettings?.jobPortalAccess ?? true}
+          hasRecordCourseEnrollment={!!recordEnrollment}
         />
       }
       userName={session.user.name}

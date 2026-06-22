@@ -168,11 +168,17 @@ export function MentorSidebar(props: Omit<SidebarProps, "items" | "title">) {
 
 export function StudentSidebar({
   jobPortalAccess = true,
+  hasRecordCourseEnrollment = false,
   ...props
-}: Omit<SidebarProps, "items" | "title"> & { jobPortalAccess?: boolean }) {
+}: Omit<SidebarProps, "items" | "title"> & {
+  jobPortalAccess?: boolean;
+  hasRecordCourseEnrollment?: boolean;
+}) {
   const items: NavItem[] = [
-    { label: "Live Classes", href: "/student/courses", icon: Video },
-    { label: "Recording Classes", href: "/student/recording-classes", icon: Film },
+    { label: "My Classes", href: "/student/courses", icon: Video },
+    ...(hasRecordCourseEnrollment
+      ? [{ label: "Recording Classes", href: "/student/recording-classes", icon: Film }]
+      : []),
     ...(jobPortalAccess
       ? [
           { label: "Job Portal", href: "/student/job-portal", icon: Building2 },
