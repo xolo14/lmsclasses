@@ -10,7 +10,7 @@ import {
   hashApiKey,
   extractDisplayPrefix,
 } from "@/lib/api-key-service";
-import { serializeApiKey } from "@/lib/api-key-admin";
+import { serializeApiKey, serializeApiKeyWithCourse } from "@/lib/api-key-admin";
 import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
 import { ensureFormSlug } from "@/lib/widget/form-slug";
 
@@ -29,7 +29,7 @@ export async function GET(
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const formSlug = row.formSlug ?? (await ensureFormSlug(row));
   return NextResponse.json(
-    serializeApiKey({ ...row, formSlug }, { includeSecrets: true })
+    await serializeApiKeyWithCourse({ ...row, formSlug }, { includeSecrets: true })
   );
 }
 
@@ -106,7 +106,7 @@ export async function PATCH(
       ipAddress: getClientIp(request),
     });
 
-    return NextResponse.json(serializeApiKey(updated, { includeSecrets: true }));
+    return NextResponse.json(await serializeApiKeyWithCourse(updated, { includeSecrets: true }));
   } catch (err) {
     console.error("[api/super-admin/api-keys/:id] PATCH:", err);
     return NextResponse.json({ error: "Update failed" }, { status: 500 });

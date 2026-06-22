@@ -1,9 +1,37 @@
 import type { ApiKey } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { recordCourses } from "@/lib/db/schema";
 import { maskFromPrefix } from "@/lib/api-key-service";
 import { buildFormLink } from "@/lib/widget/form-slug";
 
 export function resolveApiKeyCourseId(k: ApiKey): string | null {
   return k.courseId ?? (k.allowedCourses?.length === 1 ? k.allowedCourses[0] : null) ?? null;
+}
+
+export async function fetchApiKeyCourseMeta(courseId: string | null): Promise<{
+  courseTitle: string | null;
+  coursePrice: number | null;
+}> {
+  if (!courseId) return { courseTitle: null, coursePrice: null };
+
+  const [course] = await db
+    .select({ title: recordCourses.title, price: recordCourses.price })
+    .from(recordCourses)
+    .where(eq(recordCourses.id, courseId))
+    .limit(1);
+
+  if (!course) return { courseTitle: null, coursePrice: null };
+  return { courseTitle: course.title, coursePrice: parseFloat(course.price) };
+}
+
+export async function serializeApiKeyWithCourse(
+  k: ApiKey,
+  options?: { includeSecrets?: boolean }
+) {
+  const courseId = resolveApiKeyCourseId(k);
+  const meta = await fetchApiKeyCourseMeta(courseId);
+  return serializeApiKey(k, { ...options, ...meta });
 }
 
 export function serializeApiKey(
