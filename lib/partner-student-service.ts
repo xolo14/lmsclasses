@@ -93,7 +93,7 @@ export async function createStudentFromLead(
   const [existingUser] = await db
     .select()
     .from(users)
-    .where(and(eq(users.email, email), isNull(users.deletedAt)))
+    .where(eq(users.email, email))
     .limit(1);
 
   let studentId: string;
@@ -104,24 +104,15 @@ export async function createStudentFromLead(
 
   if (existingUser) {
     studentId = existingUser.id;
-    if (existingUser.lmsId) {
-      lmsId = existingUser.lmsId;
-    } else {
-      lmsId = await createUniqueLmsId();
-      await db
-        .update(users)
-        .set({ lmsId, updatedAt: new Date() })
-        .where(eq(users.id, studentId));
-    }
+    const needsReactivation = existingUser.deletedAt !== null || !existingUser.isActive;
 
     const [enrollment] = await db
-      .select({ id: studentCourses.id })
+      .select({ id: studentCourses.id, isActive: studentCourses.isActive })
       .from(studentCourses)
       .where(
         and(
           eq(studentCourses.studentId, studentId),
-          eq(studentCourses.recordCourseId, recordCourseId),
-          eq(studentCourses.isActive, true)
+          eq(studentCourses.recordCourseId, recordCourseId)
         )
       )
       .limit(1);
@@ -139,12 +130,94 @@ export async function createStudentFromLead(
       const hashedPassword = await bcrypt.hash(plainPassword, 12);
       await db
         .update(users)
-        .set({ password: hashedPassword, updatedAt: new Date() })
+        .set({
+          ...(needsReactivation
+            ? {
+                deletedAt: null,
+                isActive: true,
+                name: lead.name,
+                phone: lead.phone,
+                collegeName: lead.city ?? existingUser.collegeName,
+                role: "student",
+              }
+            : {}),
+          password: hashedPassword,
+          updatedAt: new Date(),
+        })
         .where(eq(users.id, studentId));
+      lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
+      if (!existingUser.lmsId) {
+        await db
+          .update(users)
+          .set({ lmsId, updatedAt: new Date() })
+          .where(eq(users.id, studentId));
+      }
       shouldSendEmail = shouldSendEmail && apiKey?.sendWelcomeEmail !== false;
-    } else {
-      shouldSendEmail = false;
+    } else if (!enrollment.isActive) {
       plainPassword = generateStudentPassword();
+      const hashedPassword = await bcrypt.hash(plainPassword, 12);
+      await db
+        .update(studentCourses)
+        .set({
+          isActive: true,
+          status: "active",
+          revokedAt: null,
+          revokeReason: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(studentCourses.id, enrollment.id));
+      await db
+        .update(users)
+        .set({
+          ...(needsReactivation
+            ? {
+                deletedAt: null,
+                isActive: true,
+                name: lead.name,
+                phone: lead.phone,
+                collegeName: lead.city ?? existingUser.collegeName,
+                role: "student",
+              }
+            : {}),
+          password: hashedPassword,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, studentId));
+      lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
+      if (!existingUser.lmsId) {
+        await db
+          .update(users)
+          .set({ lmsId, updatedAt: new Date() })
+          .where(eq(users.id, studentId));
+      }
+    } else {
+      lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
+      if (!existingUser.lmsId) {
+        await db
+          .update(users)
+          .set({ lmsId, updatedAt: new Date() })
+          .where(eq(users.id, studentId));
+      }
+      if (needsReactivation) {
+        plainPassword = generateStudentPassword();
+        const hashedPassword = await bcrypt.hash(plainPassword, 12);
+        await db
+          .update(users)
+          .set({
+            deletedAt: null,
+            isActive: true,
+            name: lead.name,
+            phone: lead.phone,
+            collegeName: lead.city ?? existingUser.collegeName,
+            role: "student",
+            password: hashedPassword,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, studentId));
+      } else {
+        shouldSendEmail = false;
+        plainPassword = generateStudentPassword();
+      }
     }
   } else {
     plainPassword = generateStudentPassword();

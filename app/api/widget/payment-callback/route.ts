@@ -145,6 +145,7 @@ export async function POST(request: Request) {
     .limit(1);
 
   let studentCreated = false;
+  let conversionError: string | null = null;
   if (ctx.apiKey.autoCreateStudent) {
     try {
       await createStudentFromWidgetLead(updatedLead!, {
@@ -153,7 +154,15 @@ export async function POST(request: Request) {
       });
       studentCreated = true;
     } catch (err) {
+      conversionError = err instanceof Error ? err.message : "Student creation failed";
       console.error("[widget/payment-callback] student creation failed:", err);
+      await db
+        .update(widgetLeads)
+        .set({
+          adminNotes: `Auto-convert failed after payment: ${conversionError}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(widgetLeads.id, lead.id));
     }
   }
 
@@ -163,6 +172,7 @@ export async function POST(request: Request) {
     leadId: lead.id,
     ipAddress: ctx.ipAddress,
     domain: ctx.domain,
+    metadata: { studentCreated, conversionError },
   });
 
   const redirectPath = ctx.apiKey.redirectOnSuccess ?? "/login";
