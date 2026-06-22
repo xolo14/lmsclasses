@@ -13,10 +13,10 @@ import { isTestKey } from "@/lib/api-key-service";
 
 export { resolveCourseByName } from "@/lib/partner-course-service";
 
-async function createUniqueLmsId(tx: any = db): Promise<string> {
+async function createUniqueLmsId(): Promise<string> {
   for (let i = 0; i < 5; i++) {
     const lmsId = generatePartnerLmsId();
-    const [existing] = await tx
+    const [existing] = await db
       .select({ id: users.id })
       .from(users)
       .where(eq(users.lmsId, lmsId))
@@ -90,116 +90,85 @@ export async function createStudentFromLead(
   const email = lead.email.trim().toLowerCase();
   const username = generateUsername(lead.name);
 
-  let studentId = "";
-  let plainPassword = "";
-  let lmsId = "";
+  const [existingUser] = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.email, email), isNull(users.deletedAt)))
+    .limit(1);
+
+  let studentId: string;
+  let plainPassword: string;
+  let lmsId: string;
   let created = false;
   let shouldSendEmail = apiKey?.sendWelcomeEmail !== false && !options?.skipEmail;
 
-  await db.transaction(async (tx) => {
-    const [existingUser] = await tx
-      .select()
-      .from(users)
-      .where(eq(users.email, email))
+  if (existingUser) {
+    studentId = existingUser.id;
+    lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
+
+    const [enrollment] = await db
+      .select({ id: studentCourses.id })
+      .from(studentCourses)
+      .where(
+        and(
+          eq(studentCourses.studentId, studentId),
+          eq(studentCourses.recordCourseId, recordCourseId),
+          eq(studentCourses.isActive, true)
+        )
+      )
       .limit(1);
 
-    if (existingUser) {
-      studentId = existingUser.id;
-      lmsId = existingUser.lmsId ?? (await createUniqueLmsId(tx));
-
-      const [enrollment] = await tx
-        .select({ id: studentCourses.id, isActive: studentCourses.isActive })
-        .from(studentCourses)
-        .where(
-          and(
-            eq(studentCourses.studentId, studentId),
-            eq(studentCourses.recordCourseId, recordCourseId)
-          )
-        )
-        .limit(1);
-
-      if (existingUser.deletedAt !== null || !existingUser.isActive) {
-        await tx
-          .update(users)
-          .set({
-            deletedAt: null,
-            isActive: true,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.id, studentId));
-      }
-
-      if (!enrollment) {
-        await tx.insert(studentCourses).values({
-          studentId,
-          recordCourseId,
-          liveCourseId: null,
-          batchId: null,
-          organisationId: null,
-          enrollmentSource: "partner_api",
-        });
-        plainPassword = generateStudentPassword();
-        const hashedPassword = await bcrypt.hash(plainPassword, 12);
-        await tx
-          .update(users)
-          .set({ password: hashedPassword, updatedAt: new Date() })
-          .where(eq(users.id, studentId));
-        shouldSendEmail = shouldSendEmail && apiKey?.sendWelcomeEmail !== false;
-      } else {
-        if (!enrollment.isActive) {
-          await tx
-            .update(studentCourses)
-            .set({ isActive: true, updatedAt: new Date() })
-            .where(eq(studentCourses.id, enrollment.id));
-        }
-        shouldSendEmail = false;
-        plainPassword = generateStudentPassword();
-      }
-    } else {
-      plainPassword = generateStudentPassword();
-      lmsId = await createUniqueLmsId(tx);
-      const hashedPassword = await bcrypt.hash(plainPassword, 12);
-
-      const [student] = await tx
-        .insert(users)
-        .values({
-          name: lead.name,
-          email,
-          phone: lead.phone,
-          password: hashedPassword,
-          role: "student",
-          lmsId,
-          organisationId: null,
-          collegeName: lead.city ?? null,
-        })
-        .returning();
-
-      await tx.insert(studentCourses).values({
-        studentId: student.id,
+    if (!enrollment) {
+      await db.insert(studentCourses).values({
+        studentId,
         recordCourseId,
         liveCourseId: null,
         batchId: null,
         organisationId: null,
         enrollmentSource: "partner_api",
       });
-
-      studentId = student.id;
-      created = true;
+      plainPassword = generateStudentPassword();
+      const hashedPassword = await bcrypt.hash(plainPassword, 12);
+      await db
+        .update(users)
+        .set({ password: hashedPassword, updatedAt: new Date() })
+        .where(eq(users.id, studentId));
+      shouldSendEmail = shouldSendEmail && apiKey?.sendWelcomeEmail !== false;
+    } else {
+      shouldSendEmail = false;
+      plainPassword = generateStudentPassword();
     }
+  } else {
+    plainPassword = generateStudentPassword();
+    lmsId = await createUniqueLmsId();
+    const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
-    const now = new Date();
-    await tx
-      .update(partnerLeads)
-      .set({
-        studentCreated: true,
-        studentId,
-        studentUsername: username,
-        credentialsSentAt: shouldSendEmail ? now : null, // Set tentatively; will adjust below if sent
-        status: "enrolled",
-        updatedAt: now,
+    const [student] = await db
+      .insert(users)
+      .values({
+        name: lead.name,
+        email,
+        phone: lead.phone,
+        password: hashedPassword,
+        role: "student",
+        lmsId,
+        organisationId: null,
+        collegeName: lead.city ?? null,
       })
-      .where(eq(partnerLeads.id, lead.id));
-  });
+      .returning();
+
+    await db.insert(studentCourses).values({
+      studentId: student.id,
+      recordCourseId,
+      liveCourseId: null,
+      batchId: null,
+      organisationId: null,
+      enrollmentSource: "partner_api",
+    });
+
+    studentId = student.id;
+    created = true;
+  }
 
   const [course] = await db
     .select({ title: recordCourses.title })
@@ -208,7 +177,7 @@ export async function createStudentFromLead(
     .limit(1);
 
   let emailSent = false;
-  if (shouldSendEmail && plainPassword!) {
+  if (shouldSendEmail) {
     try {
       await sendPartnerStudentCredentialsEmail({
         to: email,
@@ -224,12 +193,18 @@ export async function createStudentFromLead(
     }
   }
 
-  if (emailSent) {
-    await db
-      .update(partnerLeads)
-      .set({ credentialsSentAt: new Date(), updatedAt: new Date() })
-      .where(eq(partnerLeads.id, lead.id));
-  }
+  const now = new Date();
+  await db
+    .update(partnerLeads)
+    .set({
+      studentCreated: true,
+      studentId,
+      studentUsername: username,
+      credentialsSentAt: emailSent ? now : null,
+      status: "enrolled",
+      updatedAt: now,
+    })
+    .where(eq(partnerLeads.id, lead.id));
 
   if (apiKey) {
     notifyPartnerWebhook(apiKey, "student.created", lead).catch(console.error);

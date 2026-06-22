@@ -106,12 +106,12 @@ export function LeadDetailSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold">{lead.fullName}</DialogTitle>
+          <DialogTitle>{lead.fullName}</DialogTitle>
         </DialogHeader>
 
-        <dl className="grid gap-0 text-sm border border-border/60 rounded-lg overflow-hidden divide-y divide-border/60 bg-muted/20">
+        <dl className="grid gap-2 text-sm">
           <Row label="Email" value={lead.email} />
           <Row label="Phone" value={lead.phone} />
           <Row label="College" value={lead.college ?? "—"} />
@@ -120,9 +120,9 @@ export function LeadDetailSheet({
           <Row label="Course" value={lead.courseName} />
           <Row label="API Key" value={lead.apiKeyName} />
           <Row label="Created" value={formatDateTime(lead.createdAt)} />
-          <div className="grid grid-cols-3 gap-4 p-3 items-center">
-            <dt className="text-muted-foreground font-medium col-span-1">Payment</dt>
-            <dd className="text-right col-span-2">
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">Payment</dt>
+            <dd>
               <Badge variant={lead.paymentStatus === "completed" ? "success" : "secondary"}>
                 {lead.paymentStatus}
               </Badge>
@@ -134,11 +134,11 @@ export function LeadDetailSheet({
           )}
         </dl>
 
-        <div className="space-y-4 pt-2">
-          <div className="space-y-1.5">
-            <Label className="font-semibold">Lead status</Label>
+        <div className="space-y-3 pt-2">
+          <div>
+            <Label>Lead status</Label>
             <Select value={status} onValueChange={(v) => setStatus(v as WidgetLeadDetail["status"])}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -150,21 +150,21 @@ export function LeadDetailSheet({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label className="font-semibold">Admin notes</Label>
-            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add notes about this lead..." />
+          <div>
+            <Label>Admin notes</Label>
+            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </div>
 
-        {message && <p className="text-sm font-medium text-primary mt-2">{message}</p>}
+        {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
-        <DialogFooter className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2 mt-4 pt-4 border-t">
-          <Button variant="outline" onClick={() => saveStatus.mutate()} disabled={saveStatus.isPending} className="w-full sm:w-auto">
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={() => saveStatus.mutate()} disabled={saveStatus.isPending}>
             Save status
           </Button>
           {!lead.convertedToStudent && (
             <>
-              <Button variant="outline" onClick={() => resend.mutate()} disabled={resend.isPending} className="w-full sm:w-auto">
+              <Button variant="outline" onClick={() => resend.mutate()} disabled={resend.isPending}>
                 Resend payment link
               </Button>
               <Button
@@ -174,7 +174,6 @@ export function LeadDetailSheet({
                   }
                 }}
                 disabled={convert.isPending}
-                className="w-full sm:w-auto"
               >
                 Convert manually
               </Button>
@@ -188,9 +187,9 @@ export function LeadDetailSheet({
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-3 gap-4 p-3 items-center">
-      <dt className="text-muted-foreground font-medium col-span-1">{label}</dt>
-      <dd className="text-right col-span-2 break-all sm:break-normal font-medium text-foreground">{value}</dd>
+    <div className="flex justify-between gap-4">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="text-right">{value}</dd>
     </div>
   );
 }
