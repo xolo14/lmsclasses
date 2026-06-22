@@ -22,6 +22,16 @@ async function createUniqueLmsId(): Promise<string> {
   throw new Error("Failed to generate unique LMS ID");
 }
 
+/** Neon HTTP driver has no transactions — roll back a freshly created student on failure. */
+async function rollbackNewStudent(studentId: string) {
+  try {
+    await db.delete(studentCourses).where(eq(studentCourses.studentId, studentId));
+    await db.delete(users).where(eq(users.id, studentId));
+  } catch (rollbackErr) {
+    console.error("[widget-student] rollback failed:", rollbackErr);
+  }
+}
+
 export type CreateStudentFromWidgetLeadResult = {
   studentId: string;
   created: boolean;
@@ -85,8 +95,8 @@ export async function createStudentFromWidgetLead(
   let plainPassword = "";
   let shouldEmail = forceWelcomeEmail || apiKey?.sendWelcomeEmail !== false;
 
-  await db.transaction(async (tx) => {
-    const [existingUser] = await tx
+  try {
+    const [existingUser] = await db
       .select()
       .from(users)
       .where(eq(users.email, email))
@@ -96,7 +106,7 @@ export async function createStudentFromWidgetLead(
       studentId = existingUser.id;
       const needsReactivation = existingUser.deletedAt !== null || !existingUser.isActive;
 
-      const [enrollment] = await tx
+      const [enrollment] = await db
         .select({ id: studentCourses.id, isActive: studentCourses.isActive })
         .from(studentCourses)
         .where(
@@ -110,7 +120,7 @@ export async function createStudentFromWidgetLead(
       if (!enrollment) {
         plainPassword = generateStudentPassword();
         const hashedPassword = await bcrypt.hash(plainPassword, 12);
-        await tx.insert(studentCourses).values({
+        await db.insert(studentCourses).values({
           studentId,
           recordCourseId,
           liveCourseId: null,
@@ -118,7 +128,7 @@ export async function createStudentFromWidgetLead(
           organisationId: null,
           enrollmentSource: "widget",
         });
-        await tx
+        await db
           .update(users)
           .set({
             ...(needsReactivation
@@ -137,7 +147,7 @@ export async function createStudentFromWidgetLead(
           .where(eq(users.id, studentId));
         lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
         if (!existingUser.lmsId) {
-          await tx
+          await db
             .update(users)
             .set({ lmsId, updatedAt: new Date() })
             .where(eq(users.id, studentId));
@@ -145,7 +155,7 @@ export async function createStudentFromWidgetLead(
       } else if (!enrollment.isActive) {
         plainPassword = generateStudentPassword();
         const hashedPassword = await bcrypt.hash(plainPassword, 12);
-        await tx
+        await db
           .update(studentCourses)
           .set({
             isActive: true,
@@ -155,7 +165,7 @@ export async function createStudentFromWidgetLead(
             updatedAt: new Date(),
           })
           .where(eq(studentCourses.id, enrollment.id));
-        await tx
+        await db
           .update(users)
           .set({
             ...(needsReactivation
@@ -174,7 +184,7 @@ export async function createStudentFromWidgetLead(
           .where(eq(users.id, studentId));
         lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
         if (!existingUser.lmsId) {
-          await tx
+          await db
             .update(users)
             .set({ lmsId, updatedAt: new Date() })
             .where(eq(users.id, studentId));
@@ -182,7 +192,7 @@ export async function createStudentFromWidgetLead(
       } else {
         lmsId = existingUser.lmsId ?? (await createUniqueLmsId());
         if (!existingUser.lmsId) {
-          await tx
+          await db
             .update(users)
             .set({ lmsId, updatedAt: new Date() })
             .where(eq(users.id, studentId));
@@ -190,7 +200,7 @@ export async function createStudentFromWidgetLead(
         if (needsReactivation || forceWelcomeEmail) {
           plainPassword = generateStudentPassword();
           const hashedPassword = await bcrypt.hash(plainPassword, 12);
-          await tx
+          await db
             .update(users)
             .set({
               ...(needsReactivation
@@ -217,7 +227,7 @@ export async function createStudentFromWidgetLead(
       lmsId = await createUniqueLmsId();
       const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
-      const [student] = await tx
+      const [student] = await db
         .insert(users)
         .values({
           name: lead.fullName,
@@ -231,7 +241,10 @@ export async function createStudentFromWidgetLead(
         })
         .returning();
 
-      await tx.insert(studentCourses).values({
+      studentId = student.id;
+      created = true;
+
+      await db.insert(studentCourses).values({
         studentId: student.id,
         recordCourseId,
         liveCourseId: null,
@@ -239,12 +252,9 @@ export async function createStudentFromWidgetLead(
         organisationId: null,
         enrollmentSource: "widget",
       });
-
-      studentId = student.id;
-      created = true;
     }
 
-    await tx
+    await db
       .update(widgetLeads)
       .set({
         convertedToStudent: true,
@@ -254,7 +264,12 @@ export async function createStudentFromWidgetLead(
         updatedAt: new Date(),
       })
       .where(eq(widgetLeads.id, lead.id));
-  });
+  } catch (err) {
+    if (created && studentId) {
+      await rollbackNewStudent(studentId);
+    }
+    throw err;
+  }
 
   const [course] = await db
     .select({ title: recordCourses.title })
