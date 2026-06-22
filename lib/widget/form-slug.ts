@@ -17,16 +17,27 @@ export function slugifyApiKeyName(name: string): string {
   return base || "enroll";
 }
 
+function isMissingFormSlugColumn(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /form_slug/i.test(message) && /(does not exist|unknown column|column)/i.test(message);
+}
+
 export async function generateUniqueFormSlug(name: string): Promise<string> {
   const base = slugifyApiKeyName(name);
   for (let i = 0; i < 12; i++) {
     const candidate = `${base}-${token()}`;
-    const [existing] = await db
-      .select({ id: apiKeys.id })
-      .from(apiKeys)
-      .where(eq(apiKeys.formSlug, candidate))
-      .limit(1);
-    if (!existing) return candidate;
+    try {
+      const [existing] = await db
+        .select({ id: apiKeys.id })
+        .from(apiKeys)
+        .where(eq(apiKeys.formSlug, candidate))
+        .limit(1);
+      if (!existing) return candidate;
+    } catch (err) {
+      // form_slug column not migrated yet — skip uniqueness check.
+      if (isMissingFormSlugColumn(err)) return candidate;
+      throw err;
+    }
   }
   throw new Error("Failed to generate unique form link token");
 }
@@ -37,12 +48,18 @@ export function buildFormLink(formSlug: string): string {
 }
 
 /** Backfill formSlug for keys created before hosted forms existed. */
-export async function ensureFormSlug(apiKey: ApiKey): Promise<string> {
+export async function ensureFormSlug(apiKey: ApiKey): Promise<string | null> {
   if (apiKey.formSlug) return apiKey.formSlug;
   const formSlug = await generateUniqueFormSlug(apiKey.name);
-  await db
-    .update(apiKeys)
-    .set({ formSlug, updatedAt: new Date() })
-    .where(eq(apiKeys.id, apiKey.id));
+  try {
+    await db
+      .update(apiKeys)
+      .set({ formSlug, updatedAt: new Date() })
+      .where(eq(apiKeys.id, apiKey.id));
+  } catch (err) {
+    // form_slug column not migrated yet — feature stays dormant until db:push runs.
+    if (isMissingFormSlugColumn(err)) return null;
+    throw err;
+  }
   return formSlug;
 }

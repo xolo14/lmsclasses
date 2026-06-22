@@ -10,7 +10,7 @@ import {
   hashApiKey,
   extractDisplayPrefix,
 } from "@/lib/api-key-service";
-import { serializeApiKey, serializeApiKeyWithCourse } from "@/lib/api-key-admin";
+import { serializeApiKey, serializeApiKeyWithCourse, selectApiKeysSafe } from "@/lib/api-key-admin";
 import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
 import { ensureFormSlug } from "@/lib/widget/form-slug";
 
@@ -25,7 +25,7 @@ export async function GET(
   if (error) return error;
   const { id } = await params;
 
-  const [row] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
+  const [row] = await selectApiKeysSafe(eq(apiKeys.id, id));
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const formSlug = row.formSlug ?? (await ensureFormSlug(row));
   return NextResponse.json(

@@ -11,9 +11,9 @@ import {
   extractDisplayPrefix,
 } from "@/lib/api-key-service";
 import { DEFAULT_LEAD_FIELDS, DEFAULT_RATE_LIMIT } from "@/lib/api-key-types";
-import { serializeApiKey } from "@/lib/api-key-admin";
+import { serializeApiKey, selectApiKeysSafe } from "@/lib/api-key-admin";
 import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
-import { buildFormLink, ensureFormSlug, generateUniqueFormSlug } from "@/lib/widget/form-slug";
+import { buildFormLink, generateUniqueFormSlug } from "@/lib/widget/form-slug";
 import { getApiKeyListSummaries } from "@/lib/widget/widget-stats";
 
 export const runtime = "nodejs";
@@ -39,11 +39,10 @@ export async function GET(request: Request) {
       );
     }
 
-    const list = await db
-      .select()
-      .from(apiKeys)
-      .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(apiKeys.createdAt));
+    const list = await selectApiKeysSafe(
+      conditions.length ? and(...conditions) : undefined,
+      desc(apiKeys.createdAt)
+    );
 
     const courseIds = [
       ...new Set(
@@ -63,15 +62,8 @@ export async function GET(request: Request) {
     const coursePriceById = new Map(courseRows.map((c) => [c.id, parseFloat(c.price)]));
     const statsByKey = await getApiKeyListSummaries(list.map((k) => k.id));
 
-    const listWithSlugs = await Promise.all(
-      list.map(async (k) => ({
-        ...k,
-        formSlug: k.formSlug ?? (await ensureFormSlug(k)),
-      }))
-    );
-
     return NextResponse.json(
-      listWithSlugs.map((k) => {
+      list.map((k) => {
         const courseId = k.courseId ?? (k.allowedCourses?.length === 1 ? k.allowedCourses[0] : null);
         const stats = statsByKey.get(k.id);
         return {
@@ -90,7 +82,7 @@ export async function GET(request: Request) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[api/super-admin/api-keys] GET:", err);
     const schemaOutdated =
-      /course_id/i.test(message) &&
+      /(course_id|form_slug)/i.test(message) &&
       (/does not exist|unknown column/i.test(message) || /column/i.test(message));
     return NextResponse.json(
       {
@@ -142,35 +134,46 @@ export async function POST(request: Request) {
       "get_course_list",
     ];
 
-    const [row] = await db
-      .insert(apiKeys)
-      .values({
-        name: data.name,
-        keyPrefix,
-        keyHash,
-        permissions: defaultPermissions,
-        courseId: data.courseId,
-        allowedCourses: [data.courseId],
-        allowedPaymentGateway: data.allowedPaymentGateway ?? "any",
-        webhookUrl: data.webhookUrl ?? null,
-        webhookSecret: data.webhookSecret ?? null,
-        leadFields: data.leadFields ?? DEFAULT_LEAD_FIELDS,
-        autoCreateStudent: data.autoCreateStudent ?? true,
-        sendWelcomeEmail: data.sendWelcomeEmail ?? true,
-        notifyWebhook: data.notifyWebhook ?? false,
-        rateLimit: data.rateLimit ?? DEFAULT_RATE_LIMIT,
-        ipWhitelist: data.ipWhitelist ?? [],
-        widgetDomainsAllowed: data.widgetDomainsAllowed ?? [],
-        redirectOnSuccess: data.redirectOnSuccess ?? "/login",
-        redirectOnFailure: data.redirectOnFailure ?? null,
-        expiresAt: data.expiresAt ?? null,
-        environment: data.environment ?? "live",
-        isActive: true,
-        createdBy: session!.user.id,
-        notes: data.notes ?? null,
-        formSlug,
-      })
-      .returning();
+    const insertValues = {
+      name: data.name,
+      keyPrefix,
+      keyHash,
+      permissions: defaultPermissions,
+      courseId: data.courseId,
+      allowedCourses: [data.courseId],
+      allowedPaymentGateway: data.allowedPaymentGateway ?? "any",
+      webhookUrl: data.webhookUrl ?? null,
+      webhookSecret: data.webhookSecret ?? null,
+      leadFields: data.leadFields ?? DEFAULT_LEAD_FIELDS,
+      autoCreateStudent: data.autoCreateStudent ?? true,
+      sendWelcomeEmail: data.sendWelcomeEmail ?? true,
+      notifyWebhook: data.notifyWebhook ?? false,
+      rateLimit: data.rateLimit ?? DEFAULT_RATE_LIMIT,
+      ipWhitelist: data.ipWhitelist ?? [],
+      widgetDomainsAllowed: data.widgetDomainsAllowed ?? [],
+      redirectOnSuccess: data.redirectOnSuccess ?? "/login",
+      redirectOnFailure: data.redirectOnFailure ?? null,
+      expiresAt: data.expiresAt ?? null,
+      environment: data.environment ?? "live",
+      isActive: true,
+      createdBy: session!.user.id,
+      notes: data.notes ?? null,
+    };
+
+    let row: typeof apiKeys.$inferSelect;
+    try {
+      [row] = await db
+        .insert(apiKeys)
+        .values({ ...insertValues, formSlug })
+        .returning();
+    } catch (insertErr) {
+      const msg = insertErr instanceof Error ? insertErr.message : String(insertErr);
+      if (!(/form_slug/i.test(msg) && /(does not exist|unknown column|column)/i.test(msg))) {
+        throw insertErr;
+      }
+      // form_slug column not migrated yet — create without it.
+      [row] = await db.insert(apiKeys).values(insertValues).returning();
+    }
 
     await logAction({
       userId: session!.user.id,
@@ -197,7 +200,7 @@ export async function POST(request: Request) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[api/super-admin/api-keys] POST:", err);
     const schemaOutdated =
-      /course_id/i.test(message) &&
+      /(course_id|form_slug)/i.test(message) &&
       (/does not exist|unknown column/i.test(message) || /column/i.test(message));
     return NextResponse.json(
       {

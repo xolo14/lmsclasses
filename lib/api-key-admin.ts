@@ -1,12 +1,68 @@
 import type { ApiKey } from "@/lib/db/schema";
+import type { SQL } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { recordCourses } from "@/lib/db/schema";
+import { apiKeys, recordCourses } from "@/lib/db/schema";
 import { maskFromPrefix } from "@/lib/api-key-service";
 import { buildFormLink } from "@/lib/widget/form-slug";
 
 export function resolveApiKeyCourseId(k: ApiKey): string | null {
   return k.courseId ?? (k.allowedCourses?.length === 1 ? k.allowedCourses[0] : null) ?? null;
+}
+
+/** Columns excluding form_slug — used to read api keys before the migration adds that column. */
+const apiKeyColumnsWithoutFormSlug = {
+  id: apiKeys.id,
+  name: apiKeys.name,
+  keyPrefix: apiKeys.keyPrefix,
+  keyHash: apiKeys.keyHash,
+  permissions: apiKeys.permissions,
+  courseId: apiKeys.courseId,
+  allowedCourses: apiKeys.allowedCourses,
+  allowedPaymentGateway: apiKeys.allowedPaymentGateway,
+  webhookUrl: apiKeys.webhookUrl,
+  webhookSecret: apiKeys.webhookSecret,
+  leadFields: apiKeys.leadFields,
+  autoCreateStudent: apiKeys.autoCreateStudent,
+  sendWelcomeEmail: apiKeys.sendWelcomeEmail,
+  notifyWebhook: apiKeys.notifyWebhook,
+  rateLimit: apiKeys.rateLimit,
+  ipWhitelist: apiKeys.ipWhitelist,
+  environment: apiKeys.environment,
+  isActive: apiKeys.isActive,
+  createdBy: apiKeys.createdBy,
+  lastUsedAt: apiKeys.lastUsedAt,
+  usageCount: apiKeys.usageCount,
+  notes: apiKeys.notes,
+  widgetDomainsAllowed: apiKeys.widgetDomainsAllowed,
+  redirectOnSuccess: apiKeys.redirectOnSuccess,
+  redirectOnFailure: apiKeys.redirectOnFailure,
+  expiresAt: apiKeys.expiresAt,
+  createdAt: apiKeys.createdAt,
+  updatedAt: apiKeys.updatedAt,
+} as const;
+
+function isMissingFormSlugError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /form_slug/i.test(message) && /(does not exist|unknown column|column)/i.test(message);
+}
+
+/**
+ * Reads api keys, tolerating a database where the form_slug column has not been
+ * created yet (migration pending). Falls back to a column list without form_slug.
+ */
+export async function selectApiKeysSafe(where?: SQL, orderBy?: SQL): Promise<ApiKey[]> {
+  try {
+    const base = db.select().from(apiKeys);
+    const filtered = where ? base.where(where) : base;
+    return await (orderBy ? filtered.orderBy(orderBy) : filtered);
+  } catch (err) {
+    if (!isMissingFormSlugError(err)) throw err;
+    const base = db.select(apiKeyColumnsWithoutFormSlug).from(apiKeys);
+    const filtered = where ? base.where(where) : base;
+    const rows = await (orderBy ? filtered.orderBy(orderBy) : filtered);
+    return rows.map((r) => ({ ...r, formSlug: null }) as ApiKey);
+  }
 }
 
 export async function fetchApiKeyCourseMeta(courseId: string | null): Promise<{
