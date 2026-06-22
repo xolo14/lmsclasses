@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -21,11 +22,38 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/utils";
-import {
-  manualConvertLeadAction,
-  resendPaymentLinkAction,
-  updateWidgetLeadStatusAction,
-} from "@/lib/actions/lead";
+
+async function patchWidgetLead(
+  leadId: string,
+  input: { status?: WidgetLeadDetail["status"]; adminNotes?: string | null }
+) {
+  const res = await fetch(`/api/super-admin/widget-leads/${leadId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof json.error === "string" ? json.error : `Update failed (${res.status})`);
+  }
+  return json;
+}
+
+async function postWidgetLeadAction(
+  leadId: string,
+  action: "resend-payment" | "manual-convert"
+) {
+  const res = await fetch(`/api/super-admin/widget-leads/${leadId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof json.error === "string" ? json.error : `Action failed (${res.status})`);
+  }
+  return json as { emailSent?: boolean };
+}
 
 export type WidgetLeadDetail = {
   id: string;
@@ -74,8 +102,7 @@ export function LeadDetailSheet({
   };
 
   const saveStatus = useMutation({
-    mutationFn: () =>
-      updateWidgetLeadStatusAction(lead!.id, { status, adminNotes: notes }),
+    mutationFn: () => patchWidgetLead(lead!.id, { status, adminNotes: notes }),
     onSuccess: () => {
       setMessage("Saved");
       invalidate();
@@ -84,7 +111,7 @@ export function LeadDetailSheet({
   });
 
   const resend = useMutation({
-    mutationFn: () => resendPaymentLinkAction(lead!.id),
+    mutationFn: () => postWidgetLeadAction(lead!.id, "resend-payment"),
     onSuccess: () => {
       setMessage("Payment link emailed to lead");
       invalidate();
@@ -93,7 +120,7 @@ export function LeadDetailSheet({
   });
 
   const convert = useMutation({
-    mutationFn: () => manualConvertLeadAction(lead!.id),
+    mutationFn: () => postWidgetLeadAction(lead!.id, "manual-convert"),
     onSuccess: (result) => {
       setMessage(
         result.emailSent
@@ -113,6 +140,9 @@ export function LeadDetailSheet({
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">{lead.fullName}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Widget lead details and enrollment actions
+          </DialogDescription>
         </DialogHeader>
 
         <dl className="grid gap-0 text-sm border border-border/60 rounded-lg overflow-hidden divide-y divide-border/60 bg-muted/20">
