@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Eye, EyeOff } from "lucide-react";
 import { AuthPageBrand } from "@/components/brand/AuthPageBrand";
 import { SwissAuthShell } from "@/components/layout/SwissAuthShell";
+import { LMS_APP_NAME } from "@/lib/branding";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -70,7 +71,7 @@ export default function LoginPage() {
       <Card className="w-full overflow-hidden p-0 border-swiss-black/10 shadow-none rounded-sm">
         <AuthPageBrand />
         <CardHeader className="space-y-1.5 px-6 pt-6 pb-4 text-center">
-          <CardTitle className="text-2xl font-bold tracking-tight">LMS Classes</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-tight">{LMS_APP_NAME}</CardTitle>
           <CardDescription className="text-swiss-muted">Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent className="px-6 pb-6">

@@ -3,13 +3,14 @@ import { Analytics } from "@/components/analytics/Analytics";
 import { ChunkRecoveryScript } from "@/components/ChunkRecoveryScript";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { LMS_APP_NAME } from "@/lib/branding";
 import { fontSans, fontDisplay, fontMono } from "@/lib/fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "LMS Platform",
-    template: "%s | LMS Platform",
+    default: LMS_APP_NAME,
+    template: `%s | ${LMS_APP_NAME}`,
   },
   description: "Learning Management System",
   icons: {
