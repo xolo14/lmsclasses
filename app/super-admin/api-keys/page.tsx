@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Key, Eye } from "lucide-react";
+import { Plus, Trash2, Key, Eye, Copy, Check, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -29,11 +29,20 @@ type ApiKeyRow = {
   totalConversions?: number;
   conversionRate?: number;
   totalRevenue?: number;
+  formSlug?: string | null;
+  formLink?: string | null;
 };
 
 export default function SuperAdminApiKeysPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyLink = async (id: string, link: string) => {
+    await navigator.clipboard.writeText(link);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const { data: keys = [], isLoading, isError, error, refetch } = useQuery<ApiKeyRow[]>({
     queryKey: ["api-keys"],
@@ -116,6 +125,34 @@ export default function SuperAdminApiKeysPage() {
       cell: ({ row }) => `₹${(row.original.totalRevenue ?? 0).toLocaleString("en-IN")}`,
     },
     {
+      id: "formLink",
+      header: "Form link",
+      cell: ({ row }) =>
+        row.original.formLink ? (
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => copyLink(row.original.id, row.original.formLink!)}
+            >
+              {copiedId === row.original.id ? (
+                <Check className="h-3.5 w-3.5 mr-1" />
+              ) : (
+                <Copy className="h-3.5 w-3.5 mr-1" />
+              )}
+              {copiedId === row.original.id ? "Copied" : "Copy link"}
+            </Button>
+            <Button size="sm" variant="ghost" asChild>
+              <a href={row.original.formLink} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+    },
+    {
       accessorKey: "environment",
       header: "Env",
       cell: ({ row }) => (
@@ -184,7 +221,7 @@ export default function SuperAdminApiKeysPage() {
       <div className="space-y-6">
         <PageHeader
           title="API Keys"
-          description="Manage embeddable enrollment widgets for marketing partners — one key per course."
+          description="Embed on partner sites or share a hosted form link — one key per course."
         />
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 space-y-3">
           <p className="text-destructive font-medium">
@@ -202,7 +239,7 @@ export default function SuperAdminApiKeysPage() {
     <div className="space-y-6">
       <PageHeader
         title="API Keys"
-        description="Manage embeddable enrollment widgets for marketing partners — one key per course."
+        description="Embed on partner sites or share a hosted form link — one key per course."
       >
         <Button onClick={() => setModalOpen(true)}>
           <Plus className="h-4 w-4 mr-2" /> Generate New API Key
@@ -213,7 +250,7 @@ export default function SuperAdminApiKeysPage() {
           <Key className="h-10 w-10 mx-auto text-muted-foreground" />
           <p className="font-medium">No API keys yet</p>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Generate a widget key for each partner. They embed the script on their landing page — visitors pay via Razorpay and become students automatically.
+            Generate a widget key for each partner. Share the hosted form link (no API key exposed) or give them embed code for their website.
           </p>
           <Button onClick={() => setModalOpen(true)}>
             <Plus className="h-4 w-4 mr-2" /> Generate New API Key

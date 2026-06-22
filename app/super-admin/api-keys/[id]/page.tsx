@@ -27,6 +27,8 @@ type ApiKeyDetail = {
   expiresAt: string | null;
   lastUsedAt: string | null;
   notes: string | null;
+  formSlug?: string | null;
+  formLink?: string | null;
 };
 
 export default function ApiKeyDetailPage() {
@@ -104,7 +106,7 @@ export default function ApiKeyDetailPage() {
         </Button>
       </div>
 
-      <PageHeader title={key.name} description="Widget key details, funnel analytics, and embed code">
+      <PageHeader title={key.name} description="Hosted form link, embed code, and funnel analytics">
         <div className="flex flex-wrap gap-2">
           <Badge variant={key.isActive ? "success" : "destructive"}>
             {key.isActive ? "Active" : "Disabled"}
@@ -155,9 +157,32 @@ export default function ApiKeyDetailPage() {
         </div>
       )}
 
+      {key.formLink && (
+        <div className="rounded-xl border border-border p-4 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Hosted form link</h3>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => copy(key.formLink!, "formLink")}>
+                {copied === "formLink" ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+                Copy link
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <a href={key.formLink} target="_blank" rel="noopener noreferrer">
+                  Open
+                </a>
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Share this URL anywhere — WhatsApp, email, ads. The API secret is never exposed in the link.
+          </p>
+          <code className="block text-xs break-all bg-muted/40 p-3 rounded">{key.formLink}</code>
+        </div>
+      )}
+
       <div className="rounded-xl border border-border p-4 space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Embed code template</h3>
+          <h3 className="text-sm font-semibold">Embed code (partner website)</h3>
           <Button size="sm" variant="outline" onClick={() => copy(embedTemplateStr, "template")}>
             {copied === "template" ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </Button>

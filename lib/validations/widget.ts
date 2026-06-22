@@ -58,5 +58,10 @@ export const widgetPaymentCallbackSchema = z.object({
   error_description: z.string().max(500).optional().nullable(),
 });
 
+export const hostedSubmitSchema = widgetSubmitSchema.omit({ key: true });
+export const hostedPaymentCallbackSchema = widgetPaymentCallbackSchema.omit({ key: true });
+
 export type WidgetSubmitInput = z.infer<typeof widgetSubmitSchema>;
 export type WidgetPaymentCallbackInput = z.infer<typeof widgetPaymentCallbackSchema>;
+export type HostedSubmitInput = z.infer<typeof hostedSubmitSchema>;
+export type HostedPaymentCallbackInput = z.infer<typeof hostedPaymentCallbackSchema>;

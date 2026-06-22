@@ -1,5 +1,6 @@
 import type { ApiKey } from "@/lib/db/schema";
 import { maskFromPrefix } from "@/lib/api-key-service";
+import { buildFormLink } from "@/lib/widget/form-slug";
 
 export function resolveApiKeyCourseId(k: ApiKey): string | null {
   return k.courseId ?? (k.allowedCourses?.length === 1 ? k.allowedCourses[0] : null) ?? null;
@@ -39,6 +40,8 @@ export function serializeApiKey(
     lastUsedAt: k.lastUsedAt,
     usageCount: k.usageCount,
     notes: k.notes,
+    formSlug: k.formSlug ?? null,
+    formLink: k.formSlug ? buildFormLink(k.formSlug) : null,
     createdAt: k.createdAt,
     updatedAt: k.updatedAt,
   };

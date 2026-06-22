@@ -30,6 +30,7 @@ interface AddApiKeyModalProps {
 type GeneratedKey = {
   key: string;
   embedSnippet: string;
+  formLink?: string;
   id: string;
   name: string;
   courseId: string;
@@ -41,7 +42,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [generated, setGenerated] = useState<GeneratedKey | null>(null);
-  const [copiedField, setCopiedField] = useState<"key" | "embed" | "courseId" | null>(null);
+  const [copiedField, setCopiedField] = useState<"key" | "embed" | "formLink" | "courseId" | null>(null);
   const [domainsInput, setDomainsInput] = useState("");
   const [redirectMode, setRedirectMode] = useState<"default" | "custom">("default");
   const [failureMode, setFailureMode] = useState<"inline" | "custom">("inline");
@@ -130,6 +131,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
       setGenerated({
         key: data.key,
         embedSnippet: data.embedSnippet,
+        formLink: data.formLink,
         id: data.id,
         name: data.name,
         courseId: data.courseId,
@@ -154,7 +156,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
           <DialogHeader>
             <DialogTitle>API Key Generated — {generated.name}</DialogTitle>
             <DialogDescription className="text-destructive font-medium">
-              Save the API key and embed code now. They will not be shown again.
+              Save the API key now — it won&apos;t be shown again. The form link and embed code are always available in API Keys.
             </DialogDescription>
           </DialogHeader>
 
@@ -164,7 +166,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
               {generated.coursePrice !== undefined ? ` — ₹${generated.coursePrice.toLocaleString("en-IN")}` : ""}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Partners paste the embed code on their landing page. The form loads live pricing automatically.
+              Share the hosted form link (no API key needed) or embed the script on a partner website.
             </p>
           </div>
 
@@ -179,6 +181,25 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
                 {copiedField === "key" ? "Copied" : "Copy API Key"}
               </Button>
             </div>
+
+            {generated.formLink && (
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">Hosted form link</Label>
+                <div className="rounded-lg border border-swiss-black/15 bg-background p-3 mt-1">
+                  <code className="block break-all text-sm font-mono">{generated.formLink}</code>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-2"
+                  onClick={() => copyValue(generated.formLink!, "formLink")}
+                >
+                  {copiedField === "formLink" ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                  {copiedField === "formLink" ? "Copied" : "Copy form link"}
+                </Button>
+              </div>
+            )}
 
             <div>
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">Embed Code</Label>
@@ -199,7 +220,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
 
           <DialogFooter>
             <Button onClick={() => { setGenerated(null); onOpenChange(false); }}>
-              I&apos;ve saved my key and embed code
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -213,7 +234,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
         <DialogHeader>
           <DialogTitle>Generate Partner Widget Key</DialogTitle>
           <DialogDescription>
-            Each key is tied to one course and produces an embeddable enrollment form with live Razorpay checkout.
+            Each key is tied to one course. You get a shareable form link and optional embed code for partner sites.
           </DialogDescription>
         </DialogHeader>
         <form

@@ -12,6 +12,7 @@ import {
 } from "@/lib/api-key-service";
 import { serializeApiKey } from "@/lib/api-key-admin";
 import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
+import { ensureFormSlug } from "@/lib/widget/form-slug";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,10 @@ export async function GET(
 
   const [row] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(serializeApiKey(row, { includeSecrets: true }));
+  const formSlug = row.formSlug ?? (await ensureFormSlug(row));
+  return NextResponse.json(
+    serializeApiKey({ ...row, formSlug }, { includeSecrets: true })
+  );
 }
 
 export async function PATCH(

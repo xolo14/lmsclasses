@@ -13,6 +13,7 @@ import {
 import { DEFAULT_LEAD_FIELDS, DEFAULT_RATE_LIMIT } from "@/lib/api-key-types";
 import { serializeApiKey } from "@/lib/api-key-admin";
 import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
+import { buildFormLink, ensureFormSlug, generateUniqueFormSlug } from "@/lib/widget/form-slug";
 import { getApiKeyListSummaries } from "@/lib/widget/widget-stats";
 
 export const runtime = "nodejs";
@@ -62,8 +63,15 @@ export async function GET(request: Request) {
     const coursePriceById = new Map(courseRows.map((c) => [c.id, parseFloat(c.price)]));
     const statsByKey = await getApiKeyListSummaries(list.map((k) => k.id));
 
+    const listWithSlugs = await Promise.all(
+      list.map(async (k) => ({
+        ...k,
+        formSlug: k.formSlug ?? (await ensureFormSlug(k)),
+      }))
+    );
+
     return NextResponse.json(
-      list.map((k) => {
+      listWithSlugs.map((k) => {
         const courseId = k.courseId ?? (k.allowedCourses?.length === 1 ? k.allowedCourses[0] : null);
         const stats = statsByKey.get(k.id);
         return {
@@ -124,6 +132,7 @@ export async function POST(request: Request) {
     const plainKey = generatePlainApiKey(data.environment);
     const keyHash = hashApiKey(plainKey);
     const keyPrefix = extractDisplayPrefix(plainKey);
+    const formSlug = await generateUniqueFormSlug(data.name);
 
     const defaultPermissions = data.permissions ?? [
       "submit_lead",
@@ -159,6 +168,7 @@ export async function POST(request: Request) {
         isActive: true,
         createdBy: session!.user.id,
         notes: data.notes ?? null,
+        formSlug,
       })
       .returning();
 
@@ -173,6 +183,7 @@ export async function POST(request: Request) {
     });
 
     const embedSnippet = buildEmbedSnippet(plainKey);
+    const formLink = buildFormLink(formSlug);
 
     return NextResponse.json(
       {

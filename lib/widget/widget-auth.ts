@@ -32,27 +32,23 @@ function widgetError(
   );
 }
 
-export async function resolveWidgetApiKey(
-  plainKey: string | null | undefined,
+async function activateApiKeyUsage(apiKey: ApiKey) {
+  db.update(apiKeys)
+    .set({
+      lastUsedAt: new Date(),
+      usageCount: sql`${apiKeys.usageCount} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(eq(apiKeys.id, apiKey.id))
+    .catch(console.error);
+}
+
+async function validateApiKeyRecord(
+  apiKey: ApiKey,
   request: Request,
   options?: { checkDomain?: boolean; logInvalid?: boolean }
 ): Promise<{ error?: NextResponse; context?: WidgetAuthContext }> {
   const ipAddress = getClientIp(request);
-
-  if (!plainKey || !isValidApiKeyFormat(plainKey)) {
-    return { error: widgetError(null, request, 401, "INVALID_KEY", "Invalid API key") };
-  }
-
-  const keyHash = hashApiKey(plainKey);
-  const [apiKey] = await db
-    .select()
-    .from(apiKeys)
-    .where(eq(apiKeys.keyHash, keyHash))
-    .limit(1);
-
-  if (!apiKey) {
-    return { error: widgetError(null, request, 401, "INVALID_KEY", "Invalid API key") };
-  }
 
   if (!apiKey.isActive) {
     if (options?.logInvalid) {
@@ -92,14 +88,7 @@ export async function resolveWidgetApiKey(
     };
   }
 
-  db.update(apiKeys)
-    .set({
-      lastUsedAt: new Date(),
-      usageCount: sql`${apiKeys.usageCount} + 1`,
-      updatedAt: new Date(),
-    })
-    .where(eq(apiKeys.id, apiKey.id))
-    .catch(console.error);
+  await activateApiKeyUsage(apiKey);
 
   return {
     context: {
@@ -108,6 +97,56 @@ export async function resolveWidgetApiKey(
       domain: request.headers.get("origin") ?? null,
     },
   };
+}
+
+export async function resolveApiKeyByFormSlug(
+  formSlug: string | null | undefined,
+  request: Request
+): Promise<{ error?: NextResponse; context?: WidgetAuthContext }> {
+  if (!formSlug || !formSlug.trim()) {
+    return {
+      error: NextResponse.json({ error: "NOT_FOUND", message: "Enrollment form not found" }, { status: 404 }),
+    };
+  }
+
+  const [apiKey] = await db
+    .select()
+    .from(apiKeys)
+    .where(eq(apiKeys.formSlug, formSlug.trim().toLowerCase()))
+    .limit(1);
+
+  if (!apiKey) {
+    return {
+      error: NextResponse.json({ error: "NOT_FOUND", message: "Enrollment form not found" }, { status: 404 }),
+    };
+  }
+
+  return validateApiKeyRecord(apiKey, request, { checkDomain: false });
+}
+
+export async function resolveWidgetApiKey(
+  plainKey: string | null | undefined,
+  request: Request,
+  options?: { checkDomain?: boolean; logInvalid?: boolean }
+): Promise<{ error?: NextResponse; context?: WidgetAuthContext }> {
+  const ipAddress = getClientIp(request);
+
+  if (!plainKey || !isValidApiKeyFormat(plainKey)) {
+    return { error: widgetError(null, request, 401, "INVALID_KEY", "Invalid API key") };
+  }
+
+  const keyHash = hashApiKey(plainKey);
+  const [apiKey] = await db
+    .select()
+    .from(apiKeys)
+    .where(eq(apiKeys.keyHash, keyHash))
+    .limit(1);
+
+  if (!apiKey) {
+    return { error: widgetError(null, request, 401, "INVALID_KEY", "Invalid API key") };
+  }
+
+  return validateApiKeyRecord(apiKey, request, options);
 }
 
 export async function checkWidgetSubmitRateLimit(

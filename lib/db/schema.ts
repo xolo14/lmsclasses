@@ -649,6 +649,7 @@ export const apiKeys = pgTable("api_keys", {
   lastUsedAt: timestamp("last_used_at"),
   usageCount: integer("usage_count").default(0).notNull(),
   notes: text("notes"),
+  formSlug: text("form_slug").unique(),
   widgetDomainsAllowed: jsonb("widget_domains_allowed").$type<string[]>().default([]),
   redirectOnSuccess: text("redirect_on_success").default("/login"),
   redirectOnFailure: text("redirect_on_failure"),
@@ -661,6 +662,7 @@ export const apiKeys = pgTable("api_keys", {
   index("api_keys_is_active_idx").on(table.isActive),
   index("api_keys_environment_idx").on(table.environment),
   index("idx_apikey_course").on(table.courseId),
+  index("api_keys_form_slug_idx").on(table.formSlug),
 ]);
 
 export const partnerLeads = pgTable("partner_leads", {
