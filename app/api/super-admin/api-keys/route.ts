@@ -11,9 +11,9 @@ import {
   extractDisplayPrefix,
 } from "@/lib/api-key-service";
 import { DEFAULT_LEAD_FIELDS, DEFAULT_RATE_LIMIT } from "@/lib/api-key-types";
-import { serializeApiKey, selectApiKeysSafe } from "@/lib/api-key-admin";
+import { serializeApiKey, insertApiKeySafe, selectApiKeysSafe } from "@/lib/api-key-admin";
 import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
-import { buildFormLink, generateUniqueFormSlug } from "@/lib/widget/form-slug";
+import { generateUniqueFormSlug } from "@/lib/widget/form-slug";
 import { getApiKeyListSummaries } from "@/lib/widget/widget-stats";
 
 export const runtime = "nodejs";
@@ -160,20 +160,7 @@ export async function POST(request: Request) {
       notes: data.notes ?? null,
     };
 
-    let row: typeof apiKeys.$inferSelect;
-    try {
-      [row] = await db
-        .insert(apiKeys)
-        .values({ ...insertValues, formSlug })
-        .returning();
-    } catch (insertErr) {
-      const msg = insertErr instanceof Error ? insertErr.message : String(insertErr);
-      if (!(/form_slug/i.test(msg) && /(does not exist|unknown column|column)/i.test(msg))) {
-        throw insertErr;
-      }
-      // form_slug column not migrated yet — create without it.
-      [row] = await db.insert(apiKeys).values(insertValues).returning();
-    }
+    const row = await insertApiKeySafe(insertValues, formSlug);
 
     await logAction({
       userId: session!.user.id,
@@ -186,7 +173,6 @@ export async function POST(request: Request) {
     });
 
     const embedSnippet = buildEmbedSnippet(plainKey);
-    const formLink = buildFormLink(formSlug);
 
     return NextResponse.json(
       {

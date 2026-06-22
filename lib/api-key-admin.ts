@@ -47,6 +47,86 @@ function isMissingFormSlugError(err: unknown): boolean {
   return /form_slug/i.test(message) && /(does not exist|unknown column|column)/i.test(message);
 }
 
+function isMissingColumnError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    /(does not exist|unknown column)/i.test(message) ||
+    /column .* does not exist/i.test(message)
+  );
+}
+
+export type ApiKeyInsertInput = {
+  name: string;
+  keyPrefix: string;
+  keyHash: string;
+  permissions: string[];
+  courseId?: string | null;
+  allowedCourses: string[];
+  allowedPaymentGateway: string;
+  webhookUrl: string | null;
+  webhookSecret: string | null;
+  leadFields: ApiKey["leadFields"];
+  autoCreateStudent: boolean;
+  sendWelcomeEmail: boolean;
+  notifyWebhook: boolean;
+  rateLimit: ApiKey["rateLimit"];
+  ipWhitelist: string[];
+  widgetDomainsAllowed: string[];
+  redirectOnSuccess: string;
+  redirectOnFailure: string | null;
+  expiresAt: Date | null;
+  environment: string;
+  isActive: boolean;
+  createdBy: string;
+  notes: string | null;
+};
+
+/**
+ * Inserts an API key, retrying with fewer columns when the DB is missing newer
+ * migrations (form_slug, course_id, etc.). Always RETURNING without form_slug.
+ */
+export async function insertApiKeySafe(
+  values: ApiKeyInsertInput,
+  formSlug: string | null
+): Promise<ApiKey> {
+  const base = { ...values };
+  const payloads: Record<string, unknown>[] = [];
+
+  if (formSlug) payloads.push({ ...base, formSlug });
+  payloads.push(base);
+
+  if (values.courseId) {
+    const { courseId: _omit, ...withoutCourseId } = base;
+    if (formSlug) payloads.push({ ...withoutCourseId, formSlug });
+    payloads.push(withoutCourseId);
+  }
+
+  const seen = new Set<string>();
+  const attempts = payloads.filter((p) => {
+    const key = JSON.stringify(p);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  let lastErr: unknown;
+  for (const payload of attempts) {
+    try {
+      const [row] = await db
+        .insert(apiKeys)
+        .values(payload as typeof apiKeys.$inferInsert)
+        .returning(apiKeyColumnsWithoutFormSlug);
+      const slug = typeof payload.formSlug === "string" ? payload.formSlug : null;
+      return { ...row, formSlug: slug } as ApiKey;
+    } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+      lastErr = err;
+    }
+  }
+
+  throw lastErr ?? new Error("Failed to insert API key");
+}
+
 /**
  * Reads api keys, tolerating a database where the form_slug column has not been
  * created yet (migration pending). Falls back to a column list without form_slug.
