@@ -144,10 +144,18 @@ export async function POST(request: Request) {
     .where(eq(widgetLeads.id, lead.id))
     .limit(1);
 
-  await createStudentFromWidgetLead(updatedLead!, {
-    ipAddress: ctx.ipAddress,
-    apiKey: ctx.apiKey,
-  });
+  let studentCreated = false;
+  if (ctx.apiKey.autoCreateStudent) {
+    try {
+      await createStudentFromWidgetLead(updatedLead!, {
+        ipAddress: ctx.ipAddress,
+        apiKey: ctx.apiKey,
+      });
+      studentCreated = true;
+    } catch (err) {
+      console.error("[widget/payment-callback] student creation failed:", err);
+    }
+  }
 
   await logWidgetEvent({
     apiKey: ctx.apiKey,
@@ -163,6 +171,11 @@ export async function POST(request: Request) {
   return widgetJson(ctx, request, {
     success: true,
     redirectUrl,
-    message: "Enrollment confirmed! Check your email for login details.",
+    studentCreated,
+    message: studentCreated
+      ? "Enrollment confirmed! Check your email for login details."
+      : ctx.apiKey.autoCreateStudent
+        ? "Payment received. Our team will finish your enrollment shortly."
+        : "Payment confirmed.",
   });
 }

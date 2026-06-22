@@ -326,7 +326,15 @@ export async function confirmRepayPayment(
     .where(eq(widgetLeads.id, leadId));
 
   const [updated] = await db.select().from(widgetLeads).where(eq(widgetLeads.id, leadId)).limit(1);
-  const result = await createStudentFromWidgetLead(updated!, { apiKey: apiKey ?? undefined });
+
+  let result: Awaited<ReturnType<typeof createStudentFromWidgetLead>> | null = null;
+  if (apiKey?.autoCreateStudent !== false) {
+    try {
+      result = await createStudentFromWidgetLead(updated!, { apiKey: apiKey ?? undefined });
+    } catch (err) {
+      console.error("[widget/repay] student creation failed:", err);
+    }
+  }
 
   if (apiKey) {
     await logWidgetEvent({
@@ -339,7 +347,12 @@ export async function confirmRepayPayment(
 
   return {
     success: true,
-    message: "Enrollment confirmed! Check your email for login details.",
-    loginUrl: result.loginUrl ?? resolveRedirectUrl(apiKey?.redirectOnSuccess),
+    studentCreated: !!result,
+    message: result
+      ? "Enrollment confirmed! Check your email for login details."
+      : apiKey?.autoCreateStudent === false
+        ? "Payment confirmed."
+        : "Payment received. Our team will finish your enrollment shortly.",
+    loginUrl: result?.loginUrl ?? resolveRedirectUrl(apiKey?.redirectOnSuccess),
   };
 }
