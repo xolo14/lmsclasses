@@ -33,9 +33,10 @@ export type CreateStudentFromWidgetLeadResult = {
 
 export async function createStudentFromWidgetLead(
   lead: WidgetLead,
-  options?: { ipAddress?: string; apiKey?: ApiKey }
+  options?: { ipAddress?: string; apiKey?: ApiKey; forceWelcomeEmail?: boolean }
 ): Promise<CreateStudentFromWidgetLeadResult> {
   const apiKey = options?.apiKey;
+  const forceWelcomeEmail = options?.forceWelcomeEmail === true;
   const loginUrl = resolveRedirectUrl(apiKey?.redirectOnSuccess);
 
   if (apiKey && isTestKey(apiKey)) {
@@ -82,7 +83,7 @@ export async function createStudentFromWidgetLead(
   let lmsId = "";
   let created = false;
   let plainPassword = "";
-  let shouldEmail = apiKey?.sendWelcomeEmail !== false;
+  let shouldEmail = forceWelcomeEmail || apiKey?.sendWelcomeEmail !== false;
 
   await db.transaction(async (tx) => {
     const [existingUser] = await tx
@@ -186,18 +187,22 @@ export async function createStudentFromWidgetLead(
             .set({ lmsId, updatedAt: new Date() })
             .where(eq(users.id, studentId));
         }
-        if (needsReactivation) {
+        if (needsReactivation || forceWelcomeEmail) {
           plainPassword = generateStudentPassword();
           const hashedPassword = await bcrypt.hash(plainPassword, 12);
           await tx
             .update(users)
             .set({
-              deletedAt: null,
-              isActive: true,
-              name: lead.fullName,
-              phone: lead.phone,
-              collegeName: lead.college ?? existingUser.collegeName,
-              role: "student",
+              ...(needsReactivation
+                ? {
+                    deletedAt: null,
+                    isActive: true,
+                    name: lead.fullName,
+                    phone: lead.phone,
+                    collegeName: lead.college ?? existingUser.collegeName,
+                    role: "student",
+                  }
+                : {}),
               password: hashedPassword,
               updatedAt: new Date(),
             })

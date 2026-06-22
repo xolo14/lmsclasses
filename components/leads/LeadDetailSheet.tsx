@@ -94,8 +94,12 @@ export function LeadDetailSheet({
 
   const convert = useMutation({
     mutationFn: () => manualConvertLeadAction(lead!.id),
-    onSuccess: () => {
-      setMessage("Student created and enrolled");
+    onSuccess: (result) => {
+      setMessage(
+        result.emailSent
+          ? "Student created and welcome email sent with login credentials."
+          : "Student created, but welcome email could not be sent."
+      );
       invalidate();
       onOpenChange(false);
     },
@@ -184,7 +188,11 @@ export function LeadDetailSheet({
               </Button>
               <Button
                 onClick={() => {
-                  if (confirm("Manually convert this lead to a student (offline/cash payment)?")) {
+                  if (
+                    confirm(
+                      "Convert this lead to a student and email welcome credentials to the lead?"
+                    )
+                  ) {
                     convert.mutate();
                   }
                 }}

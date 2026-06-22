@@ -131,20 +131,17 @@ export async function manualConvertWidgetLead(
     .where(eq(apiKeys.id, lead.apiKeyId))
     .limit(1);
 
-  await db
-    .update(widgetLeads)
-    .set({
-      paymentStatus: "completed",
-      status: "converted",
-      updatedAt: new Date(),
-    })
-    .where(eq(widgetLeads.id, leadId));
-
-  const [updated] = await db.select().from(widgetLeads).where(eq(widgetLeads.id, leadId)).limit(1);
-  const result = await createStudentFromWidgetLead(updated!, {
+  const result = await createStudentFromWidgetLead(lead, {
     apiKey: apiKey ?? undefined,
     ipAddress: options?.ipAddress,
+    forceWelcomeEmail: true,
   });
+
+  if (!result.emailSent) {
+    throw new Error(
+      "Student account created but welcome email failed to send. Check SMTP settings and try resending credentials from Students."
+    );
+  }
 
   await logAction({
     userId: options?.actorUserId,
@@ -152,7 +149,7 @@ export async function manualConvertWidgetLead(
     action: "WIDGET_LEAD_MANUAL_CONVERT",
     entity: "WidgetLead",
     entityId: leadId,
-    metadata: { studentId: result.studentId },
+    metadata: { studentId: result.studentId, emailSent: result.emailSent },
     ipAddress: options?.ipAddress,
   });
 
