@@ -590,6 +590,11 @@ export async function updateModuleProgress(input: {
     })
     .where(eq(studentCourses.id, input.enrollmentId));
 
+  if (certificateUnlocked) {
+    const { triggerAutoIssuance } = await import("@/lib/services/certificate-service");
+    void triggerAutoIssuance(input.enrollmentId);
+  }
+
   return { completionPercentage: pct, certificateUnlocked };
 }
 

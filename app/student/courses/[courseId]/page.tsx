@@ -32,6 +32,7 @@ export default async function StudentCourseDetailPage({
   return (
     <StudentCourseDetail
       courseTitle={courseTitle}
+      courseId={parsed.data}
       courseType={courseType}
       content={JSON.parse(JSON.stringify(courseContent))}
     />

@@ -40,6 +40,7 @@ export default auth((req) => {
     pathname.startsWith("/api/widget") ||
     pathname.startsWith("/api/enroll") ||
     pathname.startsWith("/enroll") ||
+    pathname.startsWith("/verify") ||
     pathname.startsWith("/widget/") ||
     pathname === "/api/payments/create-order";
 

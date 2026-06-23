@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Lock, Play, Calendar, ExternalLink } from "lucide-react";
+import { Lock, Play, Calendar, ExternalLink, Award, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -64,10 +64,12 @@ function sourceLabel(source: string) {
 
 export function StudentCourseDetail({
   courseTitle,
+  courseId,
   courseType = "live",
   content,
 }: {
   courseTitle: string;
+  courseId?: string;
   courseType?: string;
   content: CourseContent;
 }) {
@@ -76,7 +78,6 @@ export function StudentCourseDetail({
   const hasLive = enrollment.hasLiveAccess;
   const batchId = enrollment.batchId;
 
-  // PERF: Polling only for live class statuses with a lightweight endpoint every 60s
   const { data: liveStatuses } = useQuery({
     queryKey: ["live-class-statuses", batchId],
     queryFn: async () => {
@@ -86,6 +87,15 @@ export function StudentCourseDetail({
     },
     refetchInterval: 60 * 1000,
     enabled: !!batchId && hasLive,
+  });
+
+  const { data: courseCerts = [] } = useQuery<
+    { id: string; certificateNumber: string; issuedAt: string }[]
+  >({
+    queryKey: ["student-course-certs", courseId],
+    queryFn: () =>
+      fetch(`/api/student/certificates?courseId=${courseId}`).then((r) => r.json()),
+    enabled: !!courseId,
   });
 
   const displayedLiveClasses = content.liveClasses.map((cls) => {
@@ -133,6 +143,40 @@ export function StudentCourseDetail({
           )}
         </div>
       </div>
+
+      {courseId && (
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-start gap-3">
+              <Award className="h-5 w-5 text-primary mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium">Certificate</p>
+                {courseCerts.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {courseCerts.map((c) => (
+                      <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <div>
+                          <p className="font-mono text-primary">{c.certificateNumber}</p>
+                          <p className="text-muted-foreground">Issued {format(new Date(c.issuedAt), "MMM d, yyyy")}</p>
+                        </div>
+                        <Button size="sm" variant="secondary" asChild>
+                          <a href={`/api/certificates/${c.id}/download`}>
+                            <Download className="mr-1 h-3.5 w-3.5" /> Download
+                          </a>
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Complete 100% of the course to unlock your certificate.
+                  </p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs key={defaultTab} defaultValue={defaultTab}>
         <TabsList>

@@ -789,6 +789,75 @@ export const widgetEvents = pgTable("widget_events", {
   index("idx_widget_event_created").on(table.createdAt),
 ]);
 
+export const certificateTemplates = pgTable(
+  "certificate_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    orgId: uuid("org_id").references(() => organisations.id),
+    courseId: uuid("course_id"),
+    courseType: courseTypeEnum("course_type"),
+    name: text("name").notNull(),
+    isDefault: boolean("is_default").notNull().default(false),
+    layout: jsonb("layout").notNull().$type<import("@/lib/types/certificate").TemplateLayout>(),
+    autoIssue: boolean("auto_issue").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    idxOrg: index("idx_cert_tmpl_org").on(t.orgId),
+    idxCourse: index("idx_cert_tmpl_course").on(t.courseId),
+    idxCreatedBy: index("idx_cert_tmpl_creator").on(t.createdBy),
+  })
+);
+
+export const issuedCertificates = pgTable(
+  "issued_certificates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    certificateNumber: text("certificate_number").notNull().unique(),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => certificateTemplates.id, { onDelete: "restrict" }),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    courseId: uuid("course_id").notNull(),
+    courseType: courseTypeEnum("course_type").notNull(),
+    orgId: uuid("org_id").references(() => organisations.id),
+    enrollmentId: uuid("enrollment_id").references(() => studentCourses.id),
+    studentNameSnapshot: text("student_name_snapshot").notNull(),
+    courseNameSnapshot: text("course_name_snapshot").notNull(),
+    orgNameSnapshot: text("org_name_snapshot"),
+    issuedByNameSnapshot: text("issued_by_name_snapshot"),
+    domainSnapshot: text("domain_snapshot"),
+    pdfData: text("pdf_data"),
+    pdfUrl: text("pdf_url"),
+    pdfStoragePath: text("pdf_storage_path"),
+    emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
+    emailSentTo: text("email_sent_to"),
+    emailResendCount: integer("email_resend_count").notNull().default(0),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    isRevoked: boolean("is_revoked").notNull().default(false),
+    revokeReason: text("revoke_reason"),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by").references(() => users.id),
+    verificationToken: text("verification_token").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    idxStudent: index("idx_cert_student").on(t.studentId),
+    idxCourse: index("idx_cert_course").on(t.courseId),
+    idxOrg: index("idx_cert_org").on(t.orgId),
+    idxTemplate: index("idx_cert_template").on(t.templateId),
+    uqCertNum: uniqueIndex("uq_cert_number").on(t.certificateNumber),
+  })
+);
+
 export type User = typeof users.$inferSelect;
 export type Organisation = typeof organisations.$inferSelect;
 export type LiveCourse = typeof liveCourses.$inferSelect;
@@ -818,4 +887,6 @@ export type WidgetLead = typeof widgetLeads.$inferSelect;
 export type WidgetEvent = typeof widgetEvents.$inferSelect;
 export type ApiKeyUsageLog = typeof apiKeyUsageLogs.$inferSelect;
 export type SystemSetting = typeof systemSettings.$inferSelect;
+export type CertificateTemplate = typeof certificateTemplates.$inferSelect;
+export type IssuedCertificate = typeof issuedCertificates.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];

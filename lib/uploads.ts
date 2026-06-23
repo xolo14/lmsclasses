@@ -5,6 +5,7 @@ export type UploadCategory =
   | "course-thumbnails"
   | "hr-logos"
   | "org-logos"
+  | "certificates"
   | "resumes"
   | "live-classes"
   | "record-classes";
@@ -16,6 +17,7 @@ const ALLOWED_CATEGORIES = new Set<UploadCategory>([
   "course-thumbnails",
   "hr-logos",
   "org-logos",
+  "certificates",
   "resumes",
   "live-classes",
   "record-classes",

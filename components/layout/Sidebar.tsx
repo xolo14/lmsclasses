@@ -25,6 +25,7 @@ import {
   Play,
   Contact,
   Key,
+  Award,
   type LucideIcon,
 } from "lucide-react";
 
@@ -116,6 +117,7 @@ export function SuperAdminSidebar(props: Omit<SidebarProps, "items" | "title">) 
     { label: "Coupons", href: "/super-admin/coupons", icon: Tag },
     { label: "Mentors", href: "/super-admin/mentors", icon: UserCheck },
     { label: "Live Classes", href: "/super-admin/live-classes", icon: Video },
+    { label: "Certificates", href: "/super-admin/certificates", icon: Award },
     { label: "Recording Classes", href: "/super-admin/recording-classes", icon: Film },
     { label: "Trash", href: "/super-admin/trash", icon: Trash2 },
     { label: "Audit Logs", href: "/super-admin/audit-logs", icon: ScrollText },
@@ -153,6 +155,7 @@ export function OrgAdminSidebar(props: Omit<SidebarProps, "items" | "title">) {
     { label: "Record Students", href: "/org-admin/record-students", icon: GraduationCap },
     { label: "History", href: "/org-admin/history", icon: History },
     { label: "Coupons", href: "/org-admin/coupons", icon: Tag },
+    { label: "Certificates", href: "/org-admin/certificates", icon: Award },
     { label: "Settings", href: "/org-admin/settings", icon: Settings },
   ];
   return <Sidebar items={items} title="Org Admin" {...props} />;
@@ -179,6 +182,7 @@ export function StudentSidebar({
     ...(hasRecordCourseEnrollment
       ? [{ label: "Recording Classes", href: "/student/recording-classes", icon: Film }]
       : []),
+    { label: "Certificates", href: "/student/certificates", icon: Award },
     ...(jobPortalAccess
       ? [
           { label: "Job Portal", href: "/student/job-portal", icon: Building2 },

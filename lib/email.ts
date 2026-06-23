@@ -684,3 +684,47 @@ export async function sendEnrollmentRevokedEmail({
     html: `<p>Hi ${escapeHtml(studentName)}, your enrollment in ${escapeHtml(courseTitle)} was deactivated. Reason: ${escapeHtml(reason)}</p>`,
   });
 }
+
+export async function sendCertificateEmail(params: {
+  to: string;
+  studentName: string;
+  courseName: string;
+  certificateNumber: string;
+  verifyUrl: string;
+  pdfBuffer: Buffer;
+  pdfFilename: string;
+}) {
+  const {
+    to,
+    studentName,
+    courseName,
+    certificateNumber,
+    verifyUrl,
+    pdfBuffer,
+    pdfFilename,
+  } = params;
+
+  await sendEmail({
+    to,
+    subject: `Your certificate for ${courseName} is ready`,
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #0f172a; color: #fff; padding: 24px; border-radius: 8px 8px 0 0;">
+          <h2 style="margin: 0; font-size: 22px;">${escapeHtml(appName)}</h2>
+        </div>
+        <div style="background: #ffffff; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px; color: #334155;">
+          <p style="font-size: 18px; font-weight: 600; color: #0f172a;">Congratulations, ${escapeHtml(studentName)}!</p>
+          <p>Your certificate of completion for <strong>${escapeHtml(courseName)}</strong> is ready.</p>
+          <p style="font-family: monospace; color: #0f766e;">Certificate No: ${escapeHtml(certificateNumber)}</p>
+          <p style="margin: 24px 0;">
+            <a href="${escapeHtml(verifyUrl)}" style="display: inline-block; background: #06b6d4; color: #0f172a; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">View &amp; Verify Certificate</a>
+          </p>
+          <p style="font-size: 14px; color: #64748b;">Verify authenticity: <a href="${escapeHtml(verifyUrl)}">${escapeHtml(verifyUrl)}</a></p>
+          <p style="font-size: 14px; color: #64748b;">Your certificate is attached to this email as a PDF. You can also download it anytime from your student portal.</p>
+          <p style="margin-top: 24px; font-size: 14px;">— ${escapeHtml(appName)} Team</p>
+        </div>
+      </div>
+    `,
+    attachments: [{ filename: pdfFilename, content: pdfBuffer }],
+  });
+}
