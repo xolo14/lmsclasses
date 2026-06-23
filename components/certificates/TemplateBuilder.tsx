@@ -101,6 +101,7 @@ function newTextElement(): TextElement {
     fontWeight: "normal",
     fontStyle: "normal",
     color: "#0f172a",
+    backgroundColor: "",
     textAlign: "left",
     letterSpacing: 0,
     lineHeight: 1.4,
@@ -110,6 +111,57 @@ function newTextElement(): TextElement {
 let zCounter = 10;
 function stateZIndex() {
   return zCounter++;
+}
+
+function normalizeHexColor(value: string, fallback = "#000000") {
+  if (/^#[0-9A-Fa-f]{6}$/.test(value)) return value;
+  const short = value.match(/^#([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])$/);
+  if (short) {
+    const [, r, g, b] = short;
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return fallback;
+}
+
+function ColorField({
+  label,
+  value,
+  onChange,
+  allowClear,
+  onClear,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  allowClear?: boolean;
+  onClear?: () => void;
+}) {
+  const pickerValue = normalizeHexColor(value || "#000000");
+  return (
+    <div className="space-y-1">
+      <Label>{label}</Label>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          value={pickerValue}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 w-11 shrink-0 cursor-pointer rounded border border-input bg-background p-0.5"
+          aria-label={`${label} picker`}
+        />
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="#000000"
+          className="font-mono text-xs"
+        />
+        {allowClear && value ? (
+          <Button type="button" variant="ghost" size="sm" className="shrink-0 px-2" onClick={onClear}>
+            Clear
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 type CourseOption = { id: string; title: string; type: "live" | "record" };
@@ -183,10 +235,15 @@ export function TemplateBuilder({
   const scale = 0.55;
 
   const onSave = async () => {
+    const trimmedName = state.name.trim();
+    if (trimmedName.length < 2) {
+      setError("Template name must be at least 2 characters.");
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload = {
-      name: state.name,
+      name: trimmedName,
       layout: state.layout,
       courseId: state.courseId || undefined,
       courseType: state.courseType || undefined,
@@ -198,7 +255,19 @@ export function TemplateBuilder({
       : await createTemplateAction(payload);
     setSaving(false);
     if (!res.success) {
-      setError(typeof res.error === "string" ? res.error : "Save failed");
+      const err = res.error;
+      if (typeof err === "string") {
+        setError(err);
+      } else if (err && typeof err === "object" && "formErrors" in err) {
+        setError(err.formErrors?.join(", ") || "Save failed");
+      } else {
+        setError("Save failed — check template name and layout.");
+      }
+      return;
+    }
+    if (!templateId && "templateId" in res && res.templateId) {
+      router.push(`/${portal}/certificates/templates/${res.templateId}/edit`);
+      router.refresh();
       return;
     }
     router.push(`/${portal}/certificates`);
@@ -213,15 +282,17 @@ export function TemplateBuilder({
     if (!rect) return;
     dragRef.current = {
       id: el.id,
-      ox: e.clientX / scale - el.x,
-      oy: e.clientY / scale - el.y,
+      ox: (e.clientX - rect.left) / scale - el.x,
+      oy: (e.clientY - rect.top) / scale - el.y,
     };
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
     if (!dragRef.current) return;
-    const x = Math.max(0, e.clientX / scale - dragRef.current.ox);
-    const y = Math.max(0, e.clientY / scale - dragRef.current.oy);
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = Math.max(0, (e.clientX - rect.left) / scale - dragRef.current.ox);
+    const y = Math.max(0, (e.clientY - rect.top) / scale - dragRef.current.oy);
     dispatch({ type: "MOVE", id: dragRef.current.id, x, y });
   };
 
@@ -238,11 +309,14 @@ export function TemplateBuilder({
           </Button>
           <h1 className="text-xl font-bold">Certificate Template Builder</h1>
         </div>
-        <Button onClick={onSave} disabled={saving || !state.name.trim()}>
-          {saving ? "Saving..." : "Save Template"}
+        <Button onClick={onSave} disabled={saving}>
+          {saving ? "Saving..." : templateId ? "Save Template" : "Create Template"}
         </Button>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {!state.name.trim() && (
+        <p className="text-sm text-muted-foreground">Enter a template name (min. 2 characters) to save.</p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[280px_1fr_280px]">
         <div className="space-y-4 rounded-lg border border-border bg-card p-4">
@@ -330,16 +404,30 @@ export function TemplateBuilder({
             </Button>
           </div>
           <div className="space-y-2 border-t border-border pt-3">
-            <Label>Background</Label>
-            <Input
-              value={state.layout.background.value}
-              onChange={(e) =>
-                dispatch({
-                  type: "SET_LAYOUT",
-                  layout: { ...state.layout, background: { type: "color", value: e.target.value } },
-                })
-              }
-            />
+            <Label>Canvas background</Label>
+            {state.layout.background.type === "gradient" ? (
+              <Input
+                value={state.layout.background.value}
+                onChange={(e) =>
+                  dispatch({
+                    type: "SET_LAYOUT",
+                    layout: { ...state.layout, background: { type: "gradient", value: e.target.value } },
+                  })
+                }
+                placeholder="linear-gradient(...)"
+              />
+            ) : (
+              <ColorField
+                label="Background color"
+                value={state.layout.background.value}
+                onChange={(value) =>
+                  dispatch({
+                    type: "SET_LAYOUT",
+                    layout: { ...state.layout, background: { type: "color", value } },
+                  })
+                }
+              />
+            )}
           </div>
         </div>
 
@@ -360,7 +448,11 @@ export function TemplateBuilder({
                 ? `${state.layout.border.width}px ${state.layout.border.style === "double" ? "double" : "solid"} ${state.layout.border.color}`
                 : undefined,
             }}
-            onClick={() => dispatch({ type: "SELECT", id: null })}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                dispatch({ type: "SELECT", id: null });
+              }
+            }}
           >
             {[...state.layout.elements]
               .sort((a, b) => a.zIndex - b.zIndex)
@@ -368,6 +460,7 @@ export function TemplateBuilder({
                 <div
                   key={el.id}
                   onMouseDown={(e) => onCanvasMouseDown(e, el)}
+                  onClick={(e) => e.stopPropagation()}
                   className={`absolute cursor-move select-none ${
                     state.selectedId === el.id ? "ring-2 ring-cyan-500 ring-offset-1" : ""
                   }`}
@@ -381,15 +474,18 @@ export function TemplateBuilder({
                 >
                   {el.type === "text" && (
                     <div
+                      className="h-full w-full overflow-hidden rounded-sm"
                       style={{
                         fontFamily: el.fontFamily,
                         fontSize: el.fontSize * scale,
                         fontWeight: el.fontWeight,
                         fontStyle: el.fontStyle,
                         color: el.color,
+                        backgroundColor: el.backgroundColor || "transparent",
                         textAlign: el.textAlign,
                         lineHeight: el.lineHeight,
                         whiteSpace: "pre-wrap",
+                        padding: "2px 4px",
                       }}
                     >
                       {el.content}
@@ -452,12 +548,73 @@ export function TemplateBuilder({
                   />
                 </div>
                 <div>
-                  <Label>Color</Label>
-                  <Input
-                    value={selected.color}
-                    onChange={(e) => dispatch({ type: "UPDATE_ELEMENT", id: selected.id, patch: { color: e.target.value } })}
-                  />
+                  <Label>Align</Label>
+                  <Select
+                    value={selected.textAlign}
+                    onValueChange={(v) =>
+                      dispatch({
+                        type: "UPDATE_ELEMENT",
+                        id: selected.id,
+                        patch: { textAlign: v as TextElement["textAlign"] },
+                      })
+                    }
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="left">Left</SelectItem>
+                      <SelectItem value="center">Center</SelectItem>
+                      <SelectItem value="right">Right</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
+              <ColorField
+                label="Text color"
+                value={selected.color}
+                onChange={(value) =>
+                  dispatch({ type: "UPDATE_ELEMENT", id: selected.id, patch: { color: value } })
+                }
+              />
+              <ColorField
+                label="Text background"
+                value={selected.backgroundColor ?? ""}
+                onChange={(value) =>
+                  dispatch({ type: "UPDATE_ELEMENT", id: selected.id, patch: { backgroundColor: value } })
+                }
+                allowClear
+                onClear={() =>
+                  dispatch({ type: "UPDATE_ELEMENT", id: selected.id, patch: { backgroundColor: "" } })
+                }
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selected.fontWeight === "bold"}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "UPDATE_ELEMENT",
+                        id: selected.id,
+                        patch: { fontWeight: e.target.checked ? "bold" : "normal" },
+                      })
+                    }
+                  />
+                  Bold
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selected.fontStyle === "italic"}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "UPDATE_ELEMENT",
+                        id: selected.id,
+                        patch: { fontStyle: e.target.checked ? "italic" : "normal" },
+                      })
+                    }
+                  />
+                  Italic
+                </label>
               </div>
               <Button variant="destructive" size="sm" onClick={() => dispatch({ type: "DELETE_ELEMENT", id: selected.id })}>
                 Delete element
@@ -475,6 +632,13 @@ export function TemplateBuilder({
               <Input
                 value={selected.signatureText ?? ""}
                 onChange={(e) => dispatch({ type: "UPDATE_ELEMENT", id: selected.id, patch: { signatureText: e.target.value } })}
+              />
+              <ColorField
+                label="Label color"
+                value={selected.labelColor}
+                onChange={(value) =>
+                  dispatch({ type: "UPDATE_ELEMENT", id: selected.id, patch: { labelColor: value } })
+                }
               />
               <Button variant="destructive" size="sm" onClick={() => dispatch({ type: "DELETE_ELEMENT", id: selected.id })}>
                 Delete element

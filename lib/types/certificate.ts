@@ -39,6 +39,7 @@ export interface TextElement extends BaseElement {
   fontWeight: "normal" | "bold";
   fontStyle: "normal" | "italic";
   color: string;
+  backgroundColor?: string;
   textAlign: "left" | "center" | "right";
   letterSpacing: number;
   lineHeight: number;

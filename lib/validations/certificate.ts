@@ -20,6 +20,7 @@ const textElementSchema = baseElementSchema.extend({
   fontWeight: z.enum(["normal", "bold"]),
   fontStyle: z.enum(["normal", "italic"]),
   color: z.string(),
+  backgroundColor: z.string().optional(),
   textAlign: z.enum(["left", "center", "right"]),
   letterSpacing: z.number(),
   lineHeight: z.number().positive(),

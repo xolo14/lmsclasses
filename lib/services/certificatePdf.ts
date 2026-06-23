@@ -92,6 +92,9 @@ function drawBorder(doc: PdfDoc, layout: TemplateLayout) {
 }
 
 function drawTextElement(doc: PdfDoc, el: TextElement) {
+  if (el.backgroundColor) {
+    doc.rect(el.x, el.y, el.width, el.height).fill(el.backgroundColor);
+  }
   const font = pdfFont(el.fontFamily, el.fontWeight, el.fontStyle);
   doc.font(font).fontSize(el.fontSize).fillColor(el.color);
   const lines = el.content.split("\n");
