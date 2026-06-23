@@ -1,4 +1,22 @@
 const INTERAKT_MESSAGE_URL = "https://api.interakt.ai/v1/public/message/";
+const INTERAKT_TRACK_USER_URL = "https://api.interakt.ai/v1/public/track/users/";
+
+function interaktHeaders(apiKey: string) {
+  return {
+    Authorization: `Basic ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export function getInteraktConfigSummary() {
+  return {
+    configured: isInteraktConfigured(),
+    templateName: getInteraktTemplateName(),
+    countryCode: getInteraktCountryCode(),
+    languageCode: getInteraktTemplateLanguage(),
+    hasApiKey: !!getInteraktApiKey(),
+  };
+}
 
 export function isInteraktConfigured(): boolean {
   return !!(
@@ -51,6 +69,80 @@ export type InteraktSendResult =
   | { ok: true; messageId?: string }
   | { ok: false; error: string; status?: number };
 
+async function parseInteraktResponse(res: Response): Promise<{
+  ok: boolean;
+  error?: string;
+  status: number;
+  messageId?: string;
+  raw?: string;
+}> {
+  const text = await res.text();
+  let data: unknown = text;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    // keep raw text
+  }
+
+  if (!res.ok) {
+    const errMsg =
+      typeof data === "object" &&
+      data !== null &&
+      "message" in data &&
+      typeof (data as { message: unknown }).message === "string"
+        ? (data as { message: string }).message
+        : text || `Interakt HTTP ${res.status}`;
+    return { ok: false, error: errMsg, status: res.status, raw: text };
+  }
+
+  const messageId =
+    typeof data === "object" &&
+    data !== null &&
+    "id" in data &&
+    typeof (data as { id: unknown }).id === "string"
+      ? (data as { id: string }).id
+      : undefined;
+
+  return { ok: true, status: res.status, messageId, raw: text };
+}
+
+/** Register or update a contact in Interakt before sending template messages. */
+export async function trackInteraktUser(opts: {
+  phoneNumber: string;
+  countryCode?: string;
+  userId?: string;
+  traits?: { name?: string; email?: string };
+}): Promise<InteraktSendResult> {
+  const apiKey = getInteraktApiKey();
+  if (!apiKey) {
+    return { ok: false, error: "INTERAKT_API_KEY is not configured" };
+  }
+
+  const countryCode = opts.countryCode || getInteraktCountryCode();
+
+  try {
+    const res = await fetch(INTERAKT_TRACK_USER_URL, {
+      method: "POST",
+      headers: interaktHeaders(apiKey),
+      body: JSON.stringify({
+        ...(opts.userId ? { userId: opts.userId } : {}),
+        countryCode,
+        phoneNumber: opts.phoneNumber,
+        ...(opts.traits ? { traits: opts.traits } : {}),
+      }),
+    });
+
+    const parsed = await parseInteraktResponse(res);
+    if (!parsed.ok) {
+      return { ok: false, error: parsed.error ?? "Track user failed", status: parsed.status };
+    }
+    return { ok: true, messageId: parsed.messageId };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
+}
+
 export async function sendInteraktTemplateMessage(opts: {
   phoneNumber: string;
   countryCode?: string;
@@ -72,10 +164,7 @@ export async function sendInteraktTemplateMessage(opts: {
   try {
     const res = await fetch(INTERAKT_MESSAGE_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Basic ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: interaktHeaders(apiKey),
       body: JSON.stringify({
         countryCode,
         phoneNumber: opts.phoneNumber,
@@ -90,34 +179,11 @@ export async function sendInteraktTemplateMessage(opts: {
       }),
     });
 
-    const text = await res.text();
-    let data: unknown = text;
-    try {
-      data = text ? JSON.parse(text) : {};
-    } catch {
-      // keep raw text
+    const parsed = await parseInteraktResponse(res);
+    if (!parsed.ok) {
+      return { ok: false, error: parsed.error ?? "Send failed", status: parsed.status };
     }
-
-    if (!res.ok) {
-      const errMsg =
-        typeof data === "object" &&
-        data !== null &&
-        "message" in data &&
-        typeof (data as { message: unknown }).message === "string"
-          ? (data as { message: string }).message
-          : text || `Interakt HTTP ${res.status}`;
-      return { ok: false, error: errMsg, status: res.status };
-    }
-
-    const messageId =
-      typeof data === "object" &&
-      data !== null &&
-      "id" in data &&
-      typeof (data as { id: unknown }).id === "string"
-        ? (data as { id: string }).id
-        : undefined;
-
-    return { ok: true, messageId };
+    return { ok: true, messageId: parsed.messageId };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: msg };
@@ -177,6 +243,18 @@ export async function sendLiveClassMeetingLinkWhatsApp(opts: {
     return { ok: false, error: "Meeting link is required" };
   }
 
+  const trackResult = await trackInteraktUser({
+    countryCode: parsed.countryCode,
+    phoneNumber: parsed.phoneNumber,
+    traits: { name: opts.studentName.trim() },
+  });
+  if (!trackResult.ok) {
+    console.warn("[interakt] track user before send:", trackResult.error, {
+      phone: opts.phone,
+      liveClassId: opts.liveClassId,
+    });
+  }
+
   return sendInteraktTemplateMessage({
     countryCode: parsed.countryCode,
     phoneNumber: parsed.phoneNumber,
@@ -189,7 +267,49 @@ export async function sendLiveClassMeetingLinkWhatsApp(opts: {
       scheduledLabel,
     ],
     buttonValues: {
-      "1": [linkButton],
+      "0": [linkButton],
     },
   });
+}
+
+/** Super-admin diagnostic: track contact then send a test template message. */
+export async function testInteraktDelivery(opts: {
+  phone: string;
+  studentName?: string;
+}): Promise<{
+  configured: boolean;
+  track: InteraktSendResult;
+  send: InteraktSendResult;
+}> {
+  const configured = isInteraktConfigured();
+  const parsed = parsePhoneForInterakt(opts.phone);
+  if (!parsed) {
+    const invalid = { ok: false as const, error: `Invalid phone number: ${opts.phone}` };
+    return { configured, track: invalid, send: invalid };
+  }
+
+  const name = opts.studentName?.trim() || "Test Student";
+  const track = await trackInteraktUser({
+    countryCode: parsed.countryCode,
+    phoneNumber: parsed.phoneNumber,
+    traits: { name },
+  });
+
+  const send = await sendInteraktTemplateMessage({
+    countryCode: parsed.countryCode,
+    phoneNumber: parsed.phoneNumber,
+    callbackData: "lms-interakt-test",
+    bodyValues: [
+      formatStudentGreeting(name),
+      "Test Live Class",
+      "Test Course",
+      "Test Batch",
+      formatScheduledAt(new Date()),
+    ],
+    buttonValues: {
+      "0": ["meet.google.com/test-link"],
+    },
+  });
+
+  return { configured, track, send };
 }
