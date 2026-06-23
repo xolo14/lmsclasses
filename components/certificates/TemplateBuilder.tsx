@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import type { TemplateElement, TemplateLayout, TextElement } from "@/lib/types/certificate";
 import { CERTIFICATE_TOKENS, DEFAULT_LAYOUT_SIZE } from "@/lib/types/certificate";
+import { resolveCanvasBackgroundStyle, parseCssColor } from "@/lib/certificate-colors";
 import { createTemplateAction, updateTemplateAction } from "@/lib/actions/certificate";
 
 type BuilderState = {
@@ -205,6 +206,8 @@ export function TemplateBuilder({
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bgUploading, setBgUploading] = useState(false);
+  const [bgUploadError, setBgUploadError] = useState<string | null>(null);
 
   const loadCourses = useCallback(async () => {
     const [live, record] = await Promise.all([
@@ -299,6 +302,60 @@ export function TemplateBuilder({
   const onMouseUp = () => {
     dragRef.current = null;
   };
+
+  const uploadBackgroundImage = async (file: File) => {
+    setBgUploading(true);
+    setBgUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/uploads/certificate-background", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Upload failed");
+      }
+      const underlay =
+        state.layout.background.type === "color"
+          ? state.layout.background.value
+          : state.layout.background.underlayColor ?? "#ffffff";
+      dispatch({
+        type: "SET_LAYOUT",
+        layout: {
+          ...state.layout,
+          background: {
+            type: "image",
+            value: data.url as string,
+            underlayColor: parseCssColor(underlay, "#ffffff"),
+          },
+        },
+      });
+    } catch (e) {
+      setBgUploadError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBgUploading(false);
+    }
+  };
+
+  const clearBackgroundImage = () => {
+    const underlay = state.layout.background.underlayColor ?? "#ffffff";
+    dispatch({
+      type: "SET_LAYOUT",
+      layout: {
+        ...state.layout,
+        background: { type: "color", value: underlay },
+      },
+    });
+  };
+
+  const bgColorValue =
+    state.layout.background.type === "image"
+      ? (state.layout.background.underlayColor ?? "#ffffff")
+      : state.layout.background.type === "color"
+        ? state.layout.background.value
+        : "#ffffff";
 
   return (
     <div className="space-y-4">
@@ -405,6 +462,51 @@ export function TemplateBuilder({
           </div>
           <div className="space-y-2 border-t border-border pt-3">
             <Label>Canvas background</Label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={state.layout.background.type === "color" ? "default" : "outline"}
+                onClick={() =>
+                  dispatch({
+                    type: "SET_LAYOUT",
+                    layout: {
+                      ...state.layout,
+                      background: {
+                        type: "color",
+                        value: state.layout.background.type === "color"
+                          ? state.layout.background.value
+                          : "#ffffff",
+                      },
+                    },
+                  })
+                }
+              >
+                Solid
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={state.layout.background.type === "gradient" ? "default" : "outline"}
+                onClick={() =>
+                  dispatch({
+                    type: "SET_LAYOUT",
+                    layout: {
+                      ...state.layout,
+                      background: {
+                        type: "gradient",
+                        value:
+                          state.layout.background.type === "gradient"
+                            ? state.layout.background.value
+                            : "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+                      },
+                    },
+                  })
+                }
+              >
+                Gradient
+              </Button>
+            </div>
             {state.layout.background.type === "gradient" ? (
               <Input
                 value={state.layout.background.value}
@@ -419,14 +521,63 @@ export function TemplateBuilder({
             ) : (
               <ColorField
                 label="Background color"
-                value={state.layout.background.value}
-                onChange={(value) =>
-                  dispatch({
-                    type: "SET_LAYOUT",
-                    layout: { ...state.layout, background: { type: "color", value } },
-                  })
-                }
+                value={bgColorValue}
+                onChange={(value) => {
+                  if (state.layout.background.type === "image") {
+                    dispatch({
+                      type: "SET_LAYOUT",
+                      layout: {
+                        ...state.layout,
+                        background: {
+                          ...state.layout.background,
+                          underlayColor: value,
+                        },
+                      },
+                    });
+                  } else {
+                    dispatch({
+                      type: "SET_LAYOUT",
+                      layout: { ...state.layout, background: { type: "color", value } },
+                    });
+                  }
+                }}
               />
+            )}
+            {state.layout.background.type !== "gradient" && (
+              <div className="space-y-2 border-t border-border pt-3">
+                <Label>Background image</Label>
+                <p className="text-xs text-muted-foreground">
+                  Optional. Upload a JPG/PNG to use as the certificate background (covers the canvas).
+                </p>
+                <Input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  disabled={bgUploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void uploadBackgroundImage(file);
+                    e.target.value = "";
+                  }}
+                />
+                {bgUploading && (
+                  <p className="text-xs text-muted-foreground">Uploading background image…</p>
+                )}
+                {bgUploadError && <p className="text-xs text-destructive">{bgUploadError}</p>}
+                {state.layout.background.type === "image" && state.layout.background.value && (
+                  <div className="space-y-2">
+                    <div className="overflow-hidden rounded-md border border-border">
+                      <img
+                        src={state.layout.background.value}
+                        alt="Certificate background preview"
+                        className="h-24 w-full object-cover"
+                      />
+                    </div>
+                    <Button type="button" size="sm" variant="outline" onClick={clearBackgroundImage}>
+                      Remove background image
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -443,7 +594,7 @@ export function TemplateBuilder({
             style={{
               width: state.layout.width * scale,
               height: state.layout.height * scale,
-              background: state.layout.background.value,
+              ...resolveCanvasBackgroundStyle(state.layout.background),
               border: state.layout.border.show
                 ? `${state.layout.border.width}px ${state.layout.border.style === "double" ? "double" : "solid"} ${state.layout.border.color}`
                 : undefined,
@@ -480,8 +631,8 @@ export function TemplateBuilder({
                         fontSize: el.fontSize * scale,
                         fontWeight: el.fontWeight,
                         fontStyle: el.fontStyle,
-                        color: el.color,
-                        backgroundColor: el.backgroundColor || "transparent",
+                        color: parseCssColor(el.color, "#0f172a"),
+                        backgroundColor: el.backgroundColor ? parseCssColor(el.backgroundColor) : "transparent",
                         textAlign: el.textAlign,
                         lineHeight: el.lineHeight,
                         whiteSpace: "pre-wrap",
@@ -493,11 +644,24 @@ export function TemplateBuilder({
                   )}
                   {el.type === "signature" && (
                     <div className="flex h-full flex-col items-center justify-end text-center">
-                      <span style={{ fontFamily: el.signatureFont, fontSize: (el.signatureFontSize ?? 20) * scale }}>
+                      <span
+                        style={{
+                          fontFamily: el.signatureFont,
+                          fontSize: (el.signatureFontSize ?? 20) * scale,
+                          color: el.signatureColor ?? "#0f172a",
+                        }}
+                      >
                         {el.signatureText}
                       </span>
-                      {el.borderBottom && <div className="my-1 h-px w-4/5 bg-slate-800" />}
-                      <span style={{ fontSize: el.labelFontSize * scale, color: el.labelColor }}>{el.label}</span>
+                      {el.borderBottom && (
+                        <div
+                          className="my-1 h-px w-4/5"
+                          style={{ backgroundColor: el.signatureColor ?? "#0f172a" }}
+                        />
+                      )}
+                      <span style={{ fontSize: el.labelFontSize * scale, color: el.labelColor }}>
+                        {el.label}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -638,6 +802,13 @@ export function TemplateBuilder({
                 value={selected.labelColor}
                 onChange={(value) =>
                   dispatch({ type: "UPDATE_ELEMENT", id: selected.id, patch: { labelColor: value } })
+                }
+              />
+              <ColorField
+                label="Signature color"
+                value={selected.signatureColor ?? "#0f172a"}
+                onChange={(value) =>
+                  dispatch({ type: "UPDATE_ELEMENT", id: selected.id, patch: { signatureColor: value } })
                 }
               />
               <Button variant="destructive" size="sm" onClick={() => dispatch({ type: "DELETE_ELEMENT", id: selected.id })}>

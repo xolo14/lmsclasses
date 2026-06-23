@@ -114,13 +114,23 @@ export async function GET() {
 
   const razorpayOk = isRazorpayConfigured();
 
-  const uploadsRoot = getUploadsRootDir();
-  let uploadsWritable = false;
-  let uploadsError: string | null = null;
+  let uploadsRoot = "";
+  let uploadsConfigError: string | null = null;
   try {
-    await mkdir(uploadsRoot, { recursive: true });
-    await access(uploadsRoot, constants.W_OK);
-    uploadsWritable = true;
+    uploadsRoot = getUploadsRootDir();
+  } catch (err) {
+    uploadsConfigError = err instanceof Error ? err.message : "Invalid UPLOADS_DIR";
+    warnings.push(uploadsConfigError);
+  }
+
+  let uploadsWritable = false;
+  let uploadsError: string | null = uploadsConfigError;
+  try {
+    if (!uploadsConfigError) {
+      await mkdir(uploadsRoot, { recursive: true });
+      await access(uploadsRoot, constants.W_OK);
+      uploadsWritable = true;
+    }
   } catch (err) {
     uploadsError = err instanceof Error ? err.message : "Uploads directory not writable";
     if (!process.env.UPLOADS_DIR?.trim()) {

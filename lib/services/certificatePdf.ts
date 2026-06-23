@@ -6,10 +6,14 @@ import type {
   SignatureElement,
   DividerElement,
 } from "@/lib/types/certificate";
+import { extractGradientColors, parseCssColor } from "@/lib/certificate-colors";
+import { loadBackgroundImageBuffer } from "@/lib/certificate-background-image";
 
 type PdfDoc = InstanceType<typeof PDFDocument>;
+
 export type TokenData = {
   studentName: string;
+  lmsId: string;
   studentId: string;
   courseName: string;
   domain: string;
@@ -22,7 +26,8 @@ export type TokenData = {
 
 const TOKEN_MAP: Record<string, keyof TokenData> = {
   "{{studentName}}": "studentName",
-  "{{studentId}}": "studentId",
+  "{{lmsId}}": "lmsId",
+  "{{studentId}}": "lmsId",
   "{{courseName}}": "courseName",
   "{{domain}}": "domain",
   "{{orgName}}": "orgName",
@@ -54,35 +59,67 @@ export function resolveTokens(layout: TemplateLayout, data: TokenData): Template
   return cloned;
 }
 
+function normalizeLayoutBackground(layout: TemplateLayout): TemplateLayout {
+  const { background } = layout;
+  if (background.type === "image") {
+    return layout;
+  }
+  const v = background.value?.trim() ?? "";
+  if (background.type === "gradient" || v.includes("gradient(")) {
+    return layout;
+  }
+  return {
+    ...layout,
+    background: {
+      type: "color",
+      value: parseCssColor(v, "#ffffff"),
+      underlayColor: background.underlayColor,
+    },
+  };
+}
+
 function pdfFont(family: string, weight: "normal" | "bold", style: "normal" | "italic"): string {
   const f = family.toLowerCase();
-  if (f.includes("georgia") || f.includes("playfair") || f.includes("times")) {
+  if (f.includes("georgia") || f.includes("playfair") || f.includes("times") || f.includes("serif")) {
     if (weight === "bold" && style === "italic") return "Times-BoldItalic";
     if (weight === "bold") return "Times-Bold";
     if (style === "italic") return "Times-Italic";
     return "Times-Roman";
   }
+  if (weight === "bold" && style === "italic") return "Helvetica-BoldOblique";
   if (weight === "bold") return "Helvetica-Bold";
   if (style === "italic") return "Helvetica-Oblique";
   return "Helvetica";
 }
 
-function drawBackground(doc: PdfDoc, layout: TemplateLayout) {
+function drawBackground(doc: PdfDoc, layout: TemplateLayout, bgImage: Buffer | null) {
   const { width, height, background } = layout;
-  if (background.type === "color") {
-    doc.rect(0, 0, width, height).fill(background.value);
-  } else if (background.type === "gradient") {
-    doc.rect(0, 0, width, height).fill("#0f172a");
-  } else {
-    doc.rect(0, 0, width, height).fill("#ffffff");
+  const v = background.value ?? "";
+
+  if (background.type === "image") {
+    doc.rect(0, 0, width, height).fill(parseCssColor(background.underlayColor, "#ffffff"));
+    if (bgImage) {
+      doc.image(bgImage, 0, 0, { width, height });
+    }
+    return;
   }
+
+  if (background.type === "gradient" || v.includes("gradient(")) {
+    const [c1, c2] = extractGradientColors(v);
+    const grad = doc.linearGradient(0, 0, width, height);
+    grad.stop(0, c1).stop(1, c2);
+    doc.rect(0, 0, width, height).fill(grad);
+    return;
+  }
+
+  doc.rect(0, 0, width, height).fill(parseCssColor(v, "#ffffff"));
 }
 
 function drawBorder(doc: PdfDoc, layout: TemplateLayout) {
   const { border, width, height } = layout;
   if (!border.show || border.style === "none") return;
   const inset = border.width;
-  doc.lineWidth(border.width).strokeColor(border.color);
+  doc.lineWidth(border.width).strokeColor(parseCssColor(border.color, "#0f172a"));
   if (border.style === "double") {
     doc.rect(inset, inset, width - inset * 2, height - inset * 2).stroke();
     doc.rect(inset * 2, inset * 2, width - inset * 4, height - inset * 4).stroke();
@@ -93,46 +130,56 @@ function drawBorder(doc: PdfDoc, layout: TemplateLayout) {
 
 function drawTextElement(doc: PdfDoc, el: TextElement) {
   if (el.backgroundColor) {
-    doc.rect(el.x, el.y, el.width, el.height).fill(el.backgroundColor);
+    doc.rect(el.x, el.y, el.width, el.height).fill(parseCssColor(el.backgroundColor));
   }
+
   const font = pdfFont(el.fontFamily, el.fontWeight, el.fontStyle);
-  doc.font(font).fontSize(el.fontSize).fillColor(el.color);
+  doc.font(font).fontSize(el.fontSize).fillColor(parseCssColor(el.color, "#0f172a"));
+
   const lines = el.content.split("\n");
-  let y = el.y;
   const lineH = el.fontSize * el.lineHeight;
+  const blockH = lines.length * lineH;
+  let y = el.y + Math.max(0, (el.height - blockH) / 2);
+
   for (const line of lines) {
-    const textWidth = doc.widthOfString(line);
-    let x = el.x;
-    if (el.textAlign === "center") x = el.x + (el.width - textWidth) / 2;
-    if (el.textAlign === "right") x = el.x + el.width - textWidth;
-    doc.text(line, x, y, { width: el.width, align: el.textAlign });
+    doc.text(line, el.x, y, {
+      width: el.width,
+      align: el.textAlign,
+      lineBreak: false,
+    });
     y += lineH;
   }
 }
 
 function drawSignatureElement(doc: PdfDoc, el: SignatureElement) {
-  const sigY = el.y + 10;
+  const sigColor = parseCssColor(el.signatureColor ?? "#0f172a");
+  const sigFontSize = el.signatureFontSize ?? 24;
+  const sigY = el.y + Math.max(8, (el.height - sigFontSize - el.labelFontSize - 20) / 2);
+
   if (el.signatureType === "text" && el.signatureText) {
     const font = pdfFont(el.signatureFont ?? "Georgia", "normal", "normal");
-    doc.font(font).fontSize(el.signatureFontSize ?? 24).fillColor("#0f172a");
-    doc.text(el.signatureText, el.x, sigY, { width: el.width, align: "center" });
+    doc.font(font).fontSize(sigFontSize).fillColor(sigColor);
+    doc.text(el.signatureText, el.x, sigY, { width: el.width, align: "center", lineBreak: false });
   }
+
   if (el.borderBottom) {
-    const lineY = sigY + (el.signatureFontSize ?? 24) + 8;
+    const lineY = sigY + sigFontSize + 6;
     doc
-      .moveTo(el.x + 10, lineY)
-      .lineTo(el.x + el.width - 10, lineY)
-      .lineWidth(1.5)
-      .strokeColor("#0f172a")
+      .moveTo(el.x + el.width * 0.15, lineY)
+      .lineTo(el.x + el.width * 0.85, lineY)
+      .lineWidth(1.2)
+      .strokeColor(sigColor)
       .stroke();
   }
+
   doc
     .font("Helvetica")
     .fontSize(el.labelFontSize)
-    .fillColor(el.labelColor)
-    .text(el.label, el.x, el.y + el.height - el.labelFontSize - 8, {
+    .fillColor(parseCssColor(el.labelColor, "#64748b"))
+    .text(el.label, el.x, el.y + el.height - el.labelFontSize - 6, {
       width: el.width,
       align: "center",
+      lineBreak: false,
     });
 }
 
@@ -142,7 +189,7 @@ function drawDividerElement(doc: PdfDoc, el: DividerElement) {
     .moveTo(el.x, midY)
     .lineTo(el.x + el.width, midY)
     .lineWidth(el.thickness)
-    .strokeColor(el.color)
+    .strokeColor(parseCssColor(el.color, "#cbd5e1"))
     .stroke();
 }
 
@@ -156,7 +203,12 @@ export async function generateCertificatePdf(
   layout: TemplateLayout,
   resolvedTokens: TokenData
 ): Promise<Buffer> {
-  const resolved = resolveTokens(layout, resolvedTokens);
+  const normalized = normalizeLayoutBackground(layout);
+  const resolved = resolveTokens(normalized, resolvedTokens);
+  const bgImage =
+    resolved.background.type === "image" && resolved.background.value
+      ? await loadBackgroundImageBuffer(resolved.background.value)
+      : null;
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -168,12 +220,10 @@ export async function generateCertificatePdf(
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    drawBackground(doc, resolved);
+    drawBackground(doc, resolved, bgImage);
     const sorted = [...resolved.elements].sort((a, b) => a.zIndex - b.zIndex);
     for (const el of sorted) drawElement(doc, el);
     drawBorder(doc, resolved);
     doc.end();
   });
 }
-
-// Certificates are stored on disk under uploads/certificates/ (see lib/certificate-storage.ts).

@@ -45,6 +45,7 @@ const signatureElementSchema = baseElementSchema.extend({
   borderBottom: z.boolean(),
   labelFontSize: z.number(),
   labelColor: z.string(),
+  signatureColor: z.string().optional(),
 });
 
 const dividerElementSchema = baseElementSchema.extend({
@@ -67,6 +68,7 @@ export const templateLayoutSchema: z.ZodType<TemplateLayout> = z.object({
   background: z.object({
     type: z.enum(["color", "gradient", "image"]),
     value: z.string(),
+    underlayColor: z.string().optional(),
   }),
   border: z.object({
     show: z.boolean(),

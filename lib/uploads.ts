@@ -6,6 +6,7 @@ export type UploadCategory =
   | "hr-logos"
   | "org-logos"
   | "certificates"
+  | "certificate-backgrounds"
   | "resumes"
   | "live-classes"
   | "record-classes";
@@ -18,6 +19,7 @@ const ALLOWED_CATEGORIES = new Set<UploadCategory>([
   "hr-logos",
   "org-logos",
   "certificates",
+  "certificate-backgrounds",
   "resumes",
   "live-classes",
   "record-classes",
@@ -26,13 +28,31 @@ const ALLOWED_CATEGORIES = new Set<UploadCategory>([
 /**
  * Filesystem root for uploads (outside public/ so redeploys don't wipe user files).
  * Local dev: {project}/uploads
- * Hostinger default: {nodejs}/uploads  e.g. /home/USER/domains/lmsclasses.com/nodejs/uploads
+ * Hostinger default: {nodejs}/uploads  e.g. /home/u123456789/domains/lmsclasses.com/nodejs/uploads
  * Override with UPLOADS_DIR if needed.
  */
+function validateUploadsDir(configured: string): string {
+  const trimmed = configured.trim();
+  if (!trimmed) {
+    throw new Error("UPLOADS_DIR is empty");
+  }
+  if (/\/USER(\/|$)/i.test(trimmed) || trimmed.includes("USER/domains")) {
+    throw new Error(
+      "UPLOADS_DIR still contains the placeholder USER. Replace it with your real Hostinger path, e.g. /home/u123456789/domains/lmsclasses.com/nodejs/uploads"
+    );
+  }
+  if (/^\/HOME(\/|$)/i.test(trimmed)) {
+    throw new Error(
+      "UPLOADS_DIR starts with /HOME — use lowercase /home/... on Linux (e.g. /home/u123456789/domains/lmsclasses.com/nodejs/uploads)"
+    );
+  }
+  return path.resolve(trimmed);
+}
+
 export function getUploadsRootDir(): string {
   const configured = process.env.UPLOADS_DIR?.trim();
   if (configured) {
-    return path.resolve(configured);
+    return validateUploadsDir(configured);
   }
   return path.join(process.cwd(), "uploads");
 }
@@ -69,8 +89,15 @@ export async function saveUploadFile(
   data: Buffer
 ): Promise<{ diskPath: string; url: string }> {
   const dir = getUploadCategoryDir(category);
-  await mkdir(dir, { recursive: true });
-  const diskPath = path.join(dir, filename);
-  await writeFile(diskPath, data);
-  return { diskPath, url: getUploadPublicUrl(category, filename) };
+  try {
+    await mkdir(dir, { recursive: true });
+    const diskPath = path.join(dir, filename);
+    await writeFile(diskPath, data);
+    return { diskPath, url: getUploadPublicUrl(category, filename) };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Upload failed";
+    throw new Error(
+      `Cannot save file to ${dir}: ${msg}. Check UPLOADS_DIR in .env (use /home/your-user/domains/lmsclasses.com/nodejs/uploads, not /HOME/USER/...).`
+    );
+  }
 }

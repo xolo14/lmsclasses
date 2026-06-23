@@ -403,11 +403,18 @@ export async function issueCertificate(
   }
 
   const [student] = await db
-    .select({ name: users.name, email: users.email, organisationId: users.organisationId })
+    .select({
+      name: users.name,
+      email: users.email,
+      organisationId: users.organisationId,
+      lmsId: users.lmsId,
+    })
     .from(users)
     .where(eq(users.id, input.studentId))
     .limit(1);
   if (!student) throw new Error("Student not found");
+
+  const lmsId = student.lmsId?.trim() || shortStudentId(input.studentId);
 
   const { name: courseName, domain } = await getCourseName(input.courseId, input.courseType);
 
@@ -439,7 +446,8 @@ export async function issueCertificate(
 
   const tokenData: TokenData = {
     studentName: student.name,
-    studentId: shortStudentId(input.studentId),
+    lmsId,
+    studentId: lmsId,
     courseName,
     domain,
     orgName: orgName ?? "LMS Classes",
