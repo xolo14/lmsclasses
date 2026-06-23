@@ -16,6 +16,7 @@ export async function GET(request: Request) {
   const courseId = searchParams.get("courseId");
   const courseType = searchParams.get("courseType") as "live" | "record" | null;
   const templateId = searchParams.get("templateId") ?? undefined;
+  const eligibleOnly = searchParams.get("eligibleOnly") === "true";
   if (!courseId || !courseType) {
     return NextResponse.json({ error: "courseId and courseType required" }, { status: 400 });
   }
@@ -30,6 +31,8 @@ export async function GET(request: Request) {
         : session.user.organisationId ?? null,
   };
 
-  const data = await listEnrolledStudentsForCourse(actor, courseId, courseType, templateId);
+  const data = await listEnrolledStudentsForCourse(actor, courseId, courseType, templateId, {
+    eligibleOnly,
+  });
   return NextResponse.json(data);
 }

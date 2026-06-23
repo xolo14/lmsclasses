@@ -169,7 +169,7 @@ export function StudentCourseDetail({
                   </div>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Complete 100% of the course to unlock your certificate.
+                    Your certificate will appear here once you are eligible (based on course duration from your enrollment date).
                   </p>
                 )}
               </div>

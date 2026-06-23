@@ -14,6 +14,10 @@ import { logAction } from "@/lib/audit";
 import { getAppUrl } from "@/lib/app-url";
 import { sendCertificateEmail } from "@/lib/email";
 import { saveCertificatePdf, readCertificatePdf } from "@/lib/certificate-storage";
+import {
+  getDurationEligibleAt,
+  isEnrollmentDurationComplete,
+} from "@/lib/certificate-duration";
 import { generateCertificatePdf, type TokenData } from "@/lib/services/certificatePdf";
 import type { TemplateLayout } from "@/lib/types/certificate";
 import { nanoid } from "nanoid";
@@ -60,6 +64,23 @@ async function getCourseName(courseId: string, courseType: "live" | "record") {
     .where(eq(recordCourses.id, courseId))
     .limit(1);
   return { name: row?.title ?? "Course", domain: row?.level ?? "General" };
+}
+
+async function getCourseDuration(courseId: string, courseType: "live" | "record") {
+  if (courseType === "live") {
+    const [row] = await db
+      .select({ duration: liveCourses.duration })
+      .from(liveCourses)
+      .where(eq(liveCourses.id, courseId))
+      .limit(1);
+    return row?.duration ?? null;
+  }
+  const [row] = await db
+    .select({ duration: recordCourses.duration })
+    .from(recordCourses)
+    .where(eq(recordCourses.id, courseId))
+    .limit(1);
+  return row?.duration ?? null;
 }
 
 async function nextCertificateNumber(): Promise<string> {
@@ -150,6 +171,9 @@ export async function createTemplate(
 
   const orgId = isOrgAdmin(actor.role) ? actor.organisationId : null;
   if (isOrgAdmin(actor.role) && !orgId) throw new Error("Organisation not found");
+  if (input.autoIssue && (!input.courseId || !input.courseType)) {
+    throw new Error("Link a course to this template to enable auto-issue");
+  }
 
   if (input.isDefault && input.courseId && input.courseType) {
     await unsetDefaultForCourse(orgId, input.courseId, input.courseType);
@@ -198,6 +222,13 @@ export async function updateTemplate(
   const existing = await assertTemplateAccess(templateId, actor);
   if (!isSuperAdmin(actor.role) && existing.orgId === null) {
     throw new Error("Cannot edit global templates");
+  }
+
+  const nextAutoIssue = input.autoIssue ?? existing.autoIssue;
+  const nextCourseId = input.courseId !== undefined ? input.courseId : existing.courseId;
+  const nextCourseType = input.courseType !== undefined ? input.courseType : existing.courseType;
+  if (nextAutoIssue && (!nextCourseId || !nextCourseType)) {
+    throw new Error("Link a course to this template to enable auto-issue");
   }
 
   if (input.isDefault && (input.courseId ?? existing.courseId)) {
@@ -306,6 +337,15 @@ export async function listTemplates(
       )`,
       orgName: organisations.name,
       creatorName: users.name,
+      courseTitle: sql<string | null>`CASE
+        WHEN ${certificateTemplates.courseType} = 'live' THEN (
+          SELECT title FROM live_courses WHERE id = ${certificateTemplates.courseId}
+        )
+        WHEN ${certificateTemplates.courseType} = 'record' THEN (
+          SELECT title FROM record_courses WHERE id = ${certificateTemplates.courseId}
+        )
+        ELSE NULL
+      END`,
     })
     .from(certificateTemplates)
     .leftJoin(organisations, eq(certificateTemplates.orgId, organisations.id))
@@ -318,6 +358,7 @@ export async function listTemplates(
     issueCount: r.issueCount ?? 0,
     orgName: r.orgName,
     creatorName: r.creatorName,
+    courseTitle: r.courseTitle,
     isGlobal: r.template.orgId === null,
     canEdit: isSuperAdmin(actor.role) || r.template.orgId === actor.organisationId,
   }));
@@ -480,7 +521,7 @@ export async function bulkIssueCertificates(
 ) {
   const issued: string[] = [];
   const skipped: string[] = [];
-  const failed: string[] = [];
+  const failed: { studentId: string; message: string }[] = [];
 
   for (const studentId of input.studentIds) {
     try {
@@ -510,7 +551,10 @@ export async function bulkIssueCertificates(
       if (err instanceof CertificateConflictError) {
         skipped.push(studentId);
       } else {
-        failed.push(studentId);
+        failed.push({
+          studentId,
+          message: err instanceof Error ? err.message : "Issue failed",
+        });
         console.error("[certificate] bulk issue failed:", studentId, err);
       }
     }
@@ -757,17 +801,20 @@ export async function getCertificateAnalytics(actor: CertActor) {
   return { monthly, byCourse, totals: totals ?? { total: 0, revoked: 0 } };
 }
 
-export async function triggerAutoIssuance(enrollmentId: string) {
+export async function checkAndAutoIssueForEnrollment(enrollmentId: string) {
   const [enrollment] = await db
     .select()
     .from(studentCourses)
     .where(eq(studentCourses.id, enrollmentId))
     .limit(1);
-  if (!enrollment || enrollment.completionPercentage < 100) return;
+  if (!enrollment || !enrollment.isActive) return false;
 
   const courseId = enrollment.recordCourseId ?? enrollment.liveCourseId;
   const courseType = enrollment.recordCourseId ? ("record" as const) : ("live" as const);
-  if (!courseId) return;
+  if (!courseId) return false;
+
+  const duration = await getCourseDuration(courseId, courseType);
+  if (!isEnrollmentDurationComplete(enrollment.enrolledAt, duration)) return false;
 
   const templates = await db
     .select()
@@ -784,7 +831,21 @@ export async function triggerAutoIssuance(enrollmentId: string) {
   const orgTemplate = templates.find((t) => t.orgId === enrollment.organisationId);
   const globalTemplate = templates.find((t) => t.orgId === null);
   const template = orgTemplate ?? globalTemplate;
-  if (!template) return;
+  if (!template) return false;
+
+  const [existing] = await db
+    .select({ id: issuedCertificates.id })
+    .from(issuedCertificates)
+    .where(
+      and(
+        eq(issuedCertificates.templateId, template.id),
+        eq(issuedCertificates.studentId, enrollment.studentId),
+        eq(issuedCertificates.courseId, courseId),
+        eq(issuedCertificates.isRevoked, false)
+      )
+    )
+    .limit(1);
+  if (existing) return false;
 
   const actor: CertActor = {
     userId: template.createdBy,
@@ -801,18 +862,86 @@ export async function triggerAutoIssuance(enrollmentId: string) {
       courseType,
       enrollmentId,
     });
+    return true;
   } catch (err) {
     if (!(err instanceof CertificateConflictError)) {
       console.error("[certificate] auto-issue failed:", err);
     }
+    return false;
   }
+}
+
+export async function triggerAutoIssuance(enrollmentId: string) {
+  await checkAndAutoIssueForEnrollment(enrollmentId);
+}
+
+export async function processPendingAutoIssuances() {
+  const templates = await db
+    .select()
+    .from(certificateTemplates)
+    .where(
+      and(
+        eq(certificateTemplates.autoIssue, true),
+        eq(certificateTemplates.isActive, true),
+        sql`${certificateTemplates.courseId} IS NOT NULL`,
+        sql`${certificateTemplates.courseType} IS NOT NULL`
+      )
+    );
+
+  let issued = 0;
+  const durationCache = new Map<string, string | null>();
+
+  for (const template of templates) {
+    if (!template.courseId || !template.courseType) continue;
+    const cacheKey = `${template.courseType}:${template.courseId}`;
+    let duration = durationCache.get(cacheKey);
+    if (duration === undefined) {
+      duration = await getCourseDuration(template.courseId, template.courseType);
+      durationCache.set(cacheKey, duration);
+    }
+
+    const enrollments = await db
+      .select()
+      .from(studentCourses)
+      .where(
+        and(
+          eq(studentCourses.isActive, true),
+          template.courseType === "live"
+            ? eq(studentCourses.liveCourseId, template.courseId)
+            : eq(studentCourses.recordCourseId, template.courseId)
+        )
+      );
+
+    for (const enrollment of enrollments) {
+      if (!isEnrollmentDurationComplete(enrollment.enrolledAt, duration)) continue;
+      const ok = await checkAndAutoIssueForEnrollment(enrollment.id);
+      if (ok) issued += 1;
+    }
+  }
+
+  return { issued };
+}
+
+export async function processStudentAutoIssuances(studentId: string) {
+  const enrollments = await db
+    .select({ id: studentCourses.id })
+    .from(studentCourses)
+    .where(and(eq(studentCourses.studentId, studentId), eq(studentCourses.isActive, true)));
+
+  let issued = 0;
+  for (const enrollment of enrollments) {
+    const ok = await checkAndAutoIssueForEnrollment(enrollment.id);
+    if (ok) issued += 1;
+  }
+  return { issued };
 }
 
 export async function listEnrolledStudentsForCourse(
   actor: CertActor,
   courseId: string,
   courseType: "live" | "record",
-  templateId?: string
+  templateId?: string,
+  options?: { eligibleOnly?: boolean }
 ) {
   if (!canManageCerts(actor.role)) throw new Error("Unauthorized");
 
@@ -853,5 +982,16 @@ export async function listEnrolledStudentsForCourse(
     );
 
   const hasCert = new Set(existing.map((e) => e.studentId));
-  return students.map((s) => ({ ...s, alreadyHasCert: hasCert.has(s.id) }));
+  const duration = await getCourseDuration(courseId, courseType);
+  const mapped = students.map((s) => ({
+    ...s,
+    alreadyHasCert: hasCert.has(s.id),
+    durationEligible: isEnrollmentDurationComplete(s.enrolledAt, duration),
+    eligibleAt: getDurationEligibleAt(s.enrolledAt, duration)?.toISOString() ?? null,
+  }));
+
+  if (options?.eligibleOnly) {
+    return mapped.filter((s) => !s.alreadyHasCert);
+  }
+  return mapped;
 }

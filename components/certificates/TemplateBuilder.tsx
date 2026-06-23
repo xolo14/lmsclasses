@@ -357,7 +357,7 @@ export function TemplateBuilder({
               checked={state.autoIssue}
               onChange={(e) => dispatch({ type: "SET_FIELD", field: "autoIssue", value: e.target.checked })}
             />
-            Auto-issue at 100% completion
+            Auto-issue after course duration from enrollment date
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input

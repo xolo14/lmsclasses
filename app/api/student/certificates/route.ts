@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { listIssuedCertificates, type CertActor } from "@/lib/services/certificate-service";
+import { listIssuedCertificates, processStudentAutoIssuances, type CertActor } from "@/lib/services/certificate-service";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,8 @@ export async function GET(request: Request) {
     name: session.user.name ?? "Student",
     organisationId: session.user.organisationId ?? null,
   };
+
+  await processStudentAutoIssuances(session.user.id);
 
   const data = await listIssuedCertificates(actor, {
     courseId,

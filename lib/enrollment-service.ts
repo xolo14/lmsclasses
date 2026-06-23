@@ -332,6 +332,9 @@ export async function assignCoursesToStudent(
         ipAddress: actor.ipAddress,
       });
 
+      const { checkAndAutoIssueForEnrollment } = await import("@/lib/services/certificate-service");
+      void checkAndAutoIssueForEnrollment(row.id);
+
       enrolled.push(course.title);
     } catch (err) {
       if (slotConsumed && orgId) await freeOneSlot(orgId, course);

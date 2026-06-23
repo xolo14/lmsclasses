@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Award, Download, Mail, Ban, Copy, Pencil } from "lucide-react";
@@ -25,6 +25,7 @@ type TemplateRow = {
   name: string;
   courseId: string | null;
   courseType: string | null;
+  courseTitle?: string | null;
   orgName: string | null;
   autoIssue: boolean;
   isDefault: boolean;
@@ -100,7 +101,12 @@ export function CertificatesAdminPage({ portal }: { portal: "super-admin" | "org
     {
       accessorKey: "courseId",
       header: "Course",
-      cell: ({ row }) => (row.original.courseId ? `${row.original.courseType}` : "General"),
+      cell: ({ row }) =>
+        row.original.courseTitle
+          ? `[${row.original.courseType}] ${row.original.courseTitle}`
+          : row.original.courseId
+            ? `${row.original.courseType}`
+            : "General",
     },
     {
       accessorKey: "orgName",
@@ -142,7 +148,17 @@ export function CertificatesAdminPage({ portal }: { portal: "super-admin" | "org
           <Button size="sm" variant="ghost" onClick={() => duplicateTemplate.mutate(row.original.id)}>
             <Copy className="h-3.5 w-3.5" />
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setIssueTemplate(row.original)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!row.original.courseId || !row.original.courseType}
+            title={
+              !row.original.courseId || !row.original.courseType
+                ? "Link a course to this template first"
+                : "Issue certificates"
+            }
+            onClick={() => setIssueTemplate(row.original)}
+          >
             Issue
           </Button>
           {row.original.canEdit && (
@@ -216,6 +232,14 @@ export function CertificatesAdminPage({ portal }: { portal: "super-admin" | "org
     revenue: m.count,
   }));
 
+  useEffect(() => {
+    void fetch("/api/certificates/auto-issue/process", { method: "POST" }).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["cert-issued"] });
+      queryClient.invalidateQueries({ queryKey: ["cert-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["cert-analytics"] });
+    });
+  }, [queryClient]);
+
   return (
     <div className="space-y-6">
       <PageHeader title="Certificates" description="Manage templates and issued certificates">
@@ -261,9 +285,10 @@ export function CertificatesAdminPage({ portal }: { portal: "super-admin" | "org
           open={!!issueTemplate}
           onOpenChange={(o) => !o && setIssueTemplate(null)}
           template={issueTemplate}
-          onDone={() => {
-            setIssueTemplate(null);
+          onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["cert-issued"] });
+            queryClient.invalidateQueries({ queryKey: ["cert-templates"] });
+            queryClient.invalidateQueries({ queryKey: ["cert-analytics"] });
           }}
         />
       )}

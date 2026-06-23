@@ -59,8 +59,12 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
-    const result = await bulkIssueCertificates(actor, parsed.data);
-    return NextResponse.json(result);
+    try {
+      const result = await bulkIssueCertificates(actor, parsed.data);
+      return NextResponse.json(result);
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
   }
 
   const parsed = issueCertificateSchema.safeParse(body);
