@@ -263,9 +263,11 @@ export async function deleteTemplate(actor: CertActor, templateId: string) {
   const [used] = await db
     .select({ c: count() })
     .from(issuedCertificates)
-    .where(eq(issuedCertificates.templateId, templateId));
+    .where(
+      and(eq(issuedCertificates.templateId, templateId), eq(issuedCertificates.isRevoked, false))
+    );
   if ((used?.c ?? 0) > 0) {
-    throw new Error("Cannot delete template with issued certificates");
+    throw new Error("Cannot delete template with active issued certificates");
   }
 
   await db.delete(certificateTemplates).where(eq(certificateTemplates.id, templateId));
@@ -334,6 +336,7 @@ export async function listTemplates(
       issueCount: sql<number>`(
         SELECT count(*)::int FROM issued_certificates ic
         WHERE ic.template_id = ${certificateTemplates.id}
+        AND ic.is_revoked = false
       )`,
       orgName: organisations.name,
       creatorName: users.name,

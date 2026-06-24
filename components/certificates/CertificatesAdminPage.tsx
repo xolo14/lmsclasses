@@ -93,7 +93,11 @@ export function CertificatesAdminPage({ portal }: { portal: "super-admin" | "org
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cert-issued"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cert-issued"] });
+      queryClient.invalidateQueries({ queryKey: ["cert-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["cert-analytics"] });
+    },
   });
 
   const templateColumns: ColumnDef<TemplateRow>[] = [
