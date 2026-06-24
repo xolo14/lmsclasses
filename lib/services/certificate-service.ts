@@ -21,6 +21,7 @@ import {
 import { generateCertificatePdf, type TokenData } from "@/lib/services/certificatePdf";
 import type { TemplateLayout } from "@/lib/types/certificate";
 import { nanoid } from "nanoid";
+import { isDirectPlatformStudent } from "@/lib/enrollment-service";
 
 export type CertActor = {
   userId: string;
@@ -47,6 +48,46 @@ function isOrgAdmin(role: string) {
 
 function canManageCerts(role: string) {
   return role === "super_admin" || role === "org_admin";
+}
+
+export const ORG_STUDENT_ORG_ADMIN_ONLY_MSG =
+  "Organisation students can only receive certificates issued by their org admin.";
+
+type AutoIssueTemplate = typeof certificateTemplates.$inferSelect;
+
+/** Global auto-issue applies to direct students only; org students use their org template. */
+function selectAutoIssueTemplate(
+  templates: AutoIssueTemplate[],
+  studentOrgId: string | null
+): AutoIssueTemplate | null {
+  if (studentOrgId) {
+    return templates.find((t) => t.orgId === studentOrgId) ?? null;
+  }
+  return templates.find((t) => t.orgId === null) ?? null;
+}
+
+/** One active certificate per student per course (any template). */
+async function findActiveCertificateForCourse(
+  studentId: string,
+  courseId: string,
+  courseType: "live" | "record"
+) {
+  const [existing] = await db
+    .select({
+      id: issuedCertificates.id,
+      certificateNumber: issuedCertificates.certificateNumber,
+    })
+    .from(issuedCertificates)
+    .where(
+      and(
+        eq(issuedCertificates.studentId, studentId),
+        eq(issuedCertificates.courseId, courseId),
+        eq(issuedCertificates.courseType, courseType),
+        eq(issuedCertificates.isRevoked, false)
+      )
+    )
+    .limit(1);
+  return existing ?? null;
 }
 
 async function getCourseName(courseId: string, courseType: "live" | "record") {
@@ -386,22 +427,15 @@ export async function issueCertificate(
 
   const template = await assertTemplateAccess(input.templateId, actor);
 
-  const [existing] = await db
-    .select({ id: issuedCertificates.id, certificateNumber: issuedCertificates.certificateNumber })
-    .from(issuedCertificates)
-    .where(
-      and(
-        eq(issuedCertificates.templateId, input.templateId),
-        eq(issuedCertificates.studentId, input.studentId),
-        eq(issuedCertificates.courseId, input.courseId),
-        eq(issuedCertificates.isRevoked, false)
-      )
-    )
-    .limit(1);
+  const existing = await findActiveCertificateForCourse(
+    input.studentId,
+    input.courseId,
+    input.courseType
+  );
 
   if (existing) {
     throw new CertificateConflictError(
-      `Certificate already issued: ${existing.certificateNumber}`
+      `Certificate already issued for this course: ${existing.certificateNumber}`
     );
   }
 
@@ -416,6 +450,15 @@ export async function issueCertificate(
     .where(eq(users.id, input.studentId))
     .limit(1);
   if (!student) throw new Error("Student not found");
+
+  if (isSuperAdmin(actor.role) && !isDirectPlatformStudent(student)) {
+    throw new Error(ORG_STUDENT_ORG_ADMIN_ONLY_MSG);
+  }
+  if (isOrgAdmin(actor.role) && actor.organisationId) {
+    if (student.organisationId !== actor.organisationId) {
+      throw new Error("Forbidden");
+    }
+  }
 
   const lmsId = student.lmsId?.trim() || shortStudentId(input.studentId);
 
@@ -827,6 +870,13 @@ export async function checkAndAutoIssueForEnrollment(enrollmentId: string) {
   const duration = await getCourseDuration(courseId, courseType);
   if (!isEnrollmentDurationComplete(enrollment.enrolledAt, duration)) return false;
 
+  const [student] = await db
+    .select({ organisationId: users.organisationId })
+    .from(users)
+    .where(eq(users.id, enrollment.studentId))
+    .limit(1);
+  if (!student) return false;
+
   const templates = await db
     .select()
     .from(certificateTemplates)
@@ -839,30 +889,21 @@ export async function checkAndAutoIssueForEnrollment(enrollmentId: string) {
       )
     );
 
-  const orgTemplate = templates.find((t) => t.orgId === enrollment.organisationId);
-  const globalTemplate = templates.find((t) => t.orgId === null);
-  const template = orgTemplate ?? globalTemplate;
+  const template = selectAutoIssueTemplate(templates, student.organisationId);
   if (!template) return false;
 
-  const [existing] = await db
-    .select({ id: issuedCertificates.id })
-    .from(issuedCertificates)
-    .where(
-      and(
-        eq(issuedCertificates.templateId, template.id),
-        eq(issuedCertificates.studentId, enrollment.studentId),
-        eq(issuedCertificates.courseId, courseId),
-        eq(issuedCertificates.isRevoked, false)
-      )
-    )
-    .limit(1);
+  const existing = await findActiveCertificateForCourse(
+    enrollment.studentId,
+    courseId,
+    courseType
+  );
   if (existing) return false;
 
   const actor: CertActor = {
     userId: template.createdBy,
-    role: "super_admin",
+    role: template.orgId ? "org_admin" : "super_admin",
     name: "System",
-    organisationId: enrollment.organisationId,
+    organisationId: template.orgId ?? null,
   };
 
   try {
@@ -966,6 +1007,19 @@ export async function listEnrolledStudentsForCourse(
     conditions.push(eq(studentCourses.organisationId, actor.organisationId));
   }
 
+  let templateOrgId: string | null | undefined;
+  if (templateId) {
+    const [template] = await db
+      .select({ orgId: certificateTemplates.orgId })
+      .from(certificateTemplates)
+      .where(eq(certificateTemplates.id, templateId))
+      .limit(1);
+    templateOrgId = template?.orgId;
+    if (isSuperAdmin(actor.role) && templateOrgId === null) {
+      conditions.push(isNull(users.organisationId));
+    }
+  }
+
   const students = await db
     .select({
       id: users.id,
@@ -986,8 +1040,8 @@ export async function listEnrolledStudentsForCourse(
     .from(issuedCertificates)
     .where(
       and(
-        eq(issuedCertificates.templateId, templateId),
         eq(issuedCertificates.courseId, courseId),
+        eq(issuedCertificates.courseType, courseType),
         eq(issuedCertificates.isRevoked, false)
       )
     );
