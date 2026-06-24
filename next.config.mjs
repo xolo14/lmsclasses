@@ -16,6 +16,13 @@ const nextConfig = {
     minimumCacheTTL: 60 * 60 * 24,
   },
   experimental: {
+    /** Allow large certificate background uploads through middleware (default is 10MB). */
+    middlewareClientMaxBodySize: "62mb",
+    /** Standalone/proxy body buffer for large multipart uploads. */
+    proxyClientMaxBodySize: "62mb",
+    serverActions: {
+      bodySizeLimit: "62mb",
+    },
     optimizePackageImports: [
       "lucide-react",
       "recharts",

@@ -18,6 +18,11 @@ import type { TemplateElement, TemplateLayout, TextElement } from "@/lib/types/c
 import { CERTIFICATE_TOKENS, DEFAULT_LAYOUT_SIZE } from "@/lib/types/certificate";
 import { resolveCanvasBackgroundStyle, parseCssColor } from "@/lib/certificate-colors";
 import { createTemplateAction, updateTemplateAction } from "@/lib/actions/certificate";
+import { readApiJson } from "@/lib/api-response";
+import {
+  CERTIFICATE_BACKGROUND_MAX_BYTES,
+  CERTIFICATE_BACKGROUND_MAX_LABEL,
+} from "@/lib/upload-limits";
 
 type BuilderState = {
   layout: TemplateLayout;
@@ -307,15 +312,21 @@ export function TemplateBuilder({
     setBgUploading(true);
     setBgUploadError(null);
     try {
+      if (file.size > CERTIFICATE_BACKGROUND_MAX_BYTES) {
+        throw new Error(`Image must be ${CERTIFICATE_BACKGROUND_MAX_LABEL} or smaller.`);
+      }
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/uploads/certificate-background", {
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
+      const data = await readApiJson<{ url?: string; error?: string }>(res);
       if (!res.ok) {
         throw new Error(typeof data.error === "string" ? data.error : "Upload failed");
+      }
+      if (!data.url) {
+        throw new Error("Upload succeeded but no image URL was returned.");
       }
       const underlay =
         state.layout.background.type === "color"
@@ -327,7 +338,7 @@ export function TemplateBuilder({
           ...state.layout,
           background: {
             type: "image",
-            value: data.url as string,
+            value: data.url,
             underlayColor: parseCssColor(underlay, "#ffffff"),
           },
         },
@@ -547,7 +558,7 @@ export function TemplateBuilder({
               <div className="space-y-2 border-t border-border pt-3">
                 <Label>Background image</Label>
                 <p className="text-xs text-muted-foreground">
-                  Optional. Upload a JPG/PNG to use as the certificate background (covers the canvas).
+                  Optional. Upload JPG/PNG/WEBP/GIF up to {CERTIFICATE_BACKGROUND_MAX_LABEL} (covers the canvas).
                 </p>
                 <Input
                   type="file"
