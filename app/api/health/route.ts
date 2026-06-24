@@ -7,7 +7,7 @@ import { users } from "@/lib/db/schema";
 import { isNull, sql } from "drizzle-orm";
 import { useSecureCookies } from "@/lib/auth.config";
 import { getAppUrl } from "@/lib/app-url";
-import { getUploadsRootDir } from "@/lib/uploads";
+import { refreshUploadsRootDir } from "@/lib/uploads";
 import {
   isRazorpayConfigured,
   getRazorpayKeyId,
@@ -114,34 +114,20 @@ export async function GET() {
 
   const razorpayOk = isRazorpayConfigured();
 
-  let uploadsRoot = "";
-  let uploadsConfigError: string | null = null;
-  try {
-    uploadsRoot = getUploadsRootDir();
-  } catch (err) {
-    uploadsConfigError = err instanceof Error ? err.message : "Invalid UPLOADS_DIR";
-    warnings.push(uploadsConfigError);
-  }
-
+  const uploadsDiag = await refreshUploadsRootDir();
+  warnings.push(...uploadsDiag.warnings);
+  const uploadsRoot = uploadsDiag.rootDir;
   let uploadsWritable = false;
-  let uploadsError: string | null = uploadsConfigError;
+  let uploadsError: string | null = null;
   try {
-    if (!uploadsConfigError) {
-      await mkdir(uploadsRoot, { recursive: true });
-      await access(uploadsRoot, constants.W_OK);
-      uploadsWritable = true;
-    }
+    await mkdir(uploadsRoot, { recursive: true });
+    await access(uploadsRoot, constants.W_OK);
+    uploadsWritable = true;
   } catch (err) {
     uploadsError = err instanceof Error ? err.message : "Uploads directory not writable";
-    if (!process.env.UPLOADS_DIR?.trim()) {
-      warnings.push(
-        "UPLOADS_DIR not set — uploads use ./uploads next to server.js (outside public/). Set UPLOADS_DIR to override."
-      );
-    } else {
-      warnings.push(
-        `Uploads directory not writable: ${uploadsRoot}. Create the uploads folder and check permissions (chmod 755).`
-      );
-    }
+    warnings.push(
+      `Uploads directory not writable: ${uploadsRoot}. Create the folder and check permissions (chmod 755).`
+    );
   }
 
   let emailOk = false;
@@ -200,7 +186,10 @@ export async function GET() {
     },
     uploads: {
       rootDir: uploadsRoot,
-      configured: !!process.env.UPLOADS_DIR?.trim(),
+      configured: uploadsDiag.configuredEnv,
+      normalized: uploadsDiag.normalizedEnv,
+      fallbackUsed: uploadsDiag.fallbackUsed,
+      cwd: uploadsDiag.cwd,
       writable: uploadsWritable,
       error: uploadsError,
       publicUrlExample: `${appUrl}/uploads/course-thumbnails/example.jpg`,

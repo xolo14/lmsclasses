@@ -1,5 +1,6 @@
-import { mkdir, writeFile } from "fs/promises";
+import { access, mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { constants } from "fs";
 
 export type UploadCategory =
   | "course-thumbnails"
@@ -25,36 +26,136 @@ const ALLOWED_CATEGORIES = new Set<UploadCategory>([
   "record-classes",
 ]);
 
-/**
- * Filesystem root for uploads (outside public/ so redeploys don't wipe user files).
- * Local dev: {project}/uploads
- * Hostinger default: {nodejs}/uploads  e.g. /home/u123456789/domains/lmsclasses.com/nodejs/uploads
- * Override with UPLOADS_DIR if needed.
- */
-function validateUploadsDir(configured: string): string {
-  const trimmed = configured.trim();
-  if (!trimmed) {
-    throw new Error("UPLOADS_DIR is empty");
-  }
-  if (/\/USER(\/|$)/i.test(trimmed) || trimmed.includes("USER/domains")) {
-    throw new Error(
-      "UPLOADS_DIR still contains the placeholder USER. Replace it with your real Hostinger path, e.g. /home/u123456789/domains/lmsclasses.com/nodejs/uploads"
-    );
-  }
-  if (/^\/HOME(\/|$)/i.test(trimmed)) {
-    throw new Error(
-      "UPLOADS_DIR starts with /HOME — use lowercase /home/... on Linux (e.g. /home/u123456789/domains/lmsclasses.com/nodejs/uploads)"
-    );
-  }
-  return path.resolve(trimmed);
+export type UploadsDirDiagnostics = {
+  rootDir: string;
+  configuredEnv: string | null;
+  normalizedEnv: string | null;
+  fallbackUsed: boolean;
+  warnings: string[];
+  cwd: string;
+};
+
+let cachedDiagnostics: UploadsDirDiagnostics | null = null;
+
+function defaultUploadsRoot(): string {
+  return path.join(process.cwd(), "uploads");
 }
 
-export function getUploadsRootDir(): string {
-  const configured = process.env.UPLOADS_DIR?.trim();
-  if (configured) {
-    return validateUploadsDir(configured);
+/** Fix common Hostinger copy-paste mistakes in UPLOADS_DIR. */
+function normalizeUploadsDirInput(configured: string): string {
+  let value = configured.trim();
+  if (!value) return value;
+  value = value.replace(/^\/HOME\b/i, "/home");
+  return value;
+}
+
+function hasPlaceholderSegment(configured: string): boolean {
+  return /\/USER(\/|$)/i.test(configured) || /\bUSER\/domains\b/i.test(configured);
+}
+
+async function isWritableDir(dir: string): Promise<boolean> {
+  try {
+    await mkdir(dir, { recursive: true });
+    await access(dir, constants.W_OK);
+    return true;
+  } catch {
+    return false;
   }
-  return path.join(process.cwd(), "uploads");
+}
+
+function resolveUploadsDir(): UploadsDirDiagnostics {
+  const cwd = process.cwd();
+  const fallback = defaultUploadsRoot();
+  const configuredEnv = process.env.UPLOADS_DIR?.trim() || null;
+  const warnings: string[] = [];
+
+  if (!configuredEnv) {
+    return {
+      rootDir: fallback,
+      configuredEnv: null,
+      normalizedEnv: null,
+      fallbackUsed: true,
+      warnings: ["UPLOADS_DIR not set — using ./uploads next to server.js"],
+      cwd,
+    };
+  }
+
+  const normalizedEnv = normalizeUploadsDirInput(configuredEnv);
+
+  if (configuredEnv !== normalizedEnv) {
+    warnings.push(`UPLOADS_DIR normalized from "${configuredEnv}" to "${normalizedEnv}" (/HOME → /home).`);
+  }
+
+  if (hasPlaceholderSegment(normalizedEnv)) {
+    warnings.push(
+      'UPLOADS_DIR still contains placeholder "USER". Remove UPLOADS_DIR from hPanel or set your real path, e.g. /home/u123456789/domains/lmsclasses.com/nodejs/uploads. Using ./uploads next to server.js instead.'
+    );
+    return {
+      rootDir: fallback,
+      configuredEnv,
+      normalizedEnv,
+      fallbackUsed: true,
+      warnings,
+      cwd,
+    };
+  }
+
+  const resolved = path.resolve(normalizedEnv);
+  return {
+    rootDir: resolved,
+    configuredEnv,
+    normalizedEnv,
+    fallbackUsed: false,
+    warnings,
+    cwd,
+  };
+}
+
+/** Never throws — picks uploads root from env (with fixes) or ./uploads. */
+export function getUploadsRootDir(): string {
+  if (!cachedDiagnostics) {
+    cachedDiagnostics = resolveUploadsDir();
+  }
+  return cachedDiagnostics.rootDir;
+}
+
+export function getUploadsDirDiagnostics(): UploadsDirDiagnostics {
+  if (!cachedDiagnostics) {
+    cachedDiagnostics = resolveUploadsDir();
+  }
+  return cachedDiagnostics;
+}
+
+/** Re-resolve and verify writability; may switch to ./uploads fallback. */
+export async function refreshUploadsRootDir(): Promise<UploadsDirDiagnostics> {
+  cachedDiagnostics = null;
+  const base = resolveUploadsDir();
+  const warnings = [...base.warnings];
+
+  if (await isWritableDir(base.rootDir)) {
+    cachedDiagnostics = { ...base, warnings };
+    return cachedDiagnostics;
+  }
+
+  const fallback = defaultUploadsRoot();
+  if (base.rootDir !== fallback) {
+    warnings.push(
+      `Configured uploads path is not writable: ${base.rootDir}. Using fallback: ${fallback}`
+    );
+    if (await isWritableDir(fallback)) {
+      cachedDiagnostics = {
+        ...base,
+        rootDir: fallback,
+        fallbackUsed: true,
+        warnings,
+      };
+      return cachedDiagnostics;
+    }
+  }
+
+  warnings.push(`Uploads directory is not writable: ${base.fallbackUsed ? fallback : base.rootDir}`);
+  cachedDiagnostics = { ...base, warnings };
+  return cachedDiagnostics;
 }
 
 export function getUploadCategoryDir(category: UploadCategory): string {
@@ -88,6 +189,7 @@ export async function saveUploadFile(
   filename: string,
   data: Buffer
 ): Promise<{ diskPath: string; url: string }> {
+  await refreshUploadsRootDir();
   const dir = getUploadCategoryDir(category);
   try {
     await mkdir(dir, { recursive: true });
@@ -95,9 +197,13 @@ export async function saveUploadFile(
     await writeFile(diskPath, data);
     return { diskPath, url: getUploadPublicUrl(category, filename) };
   } catch (err) {
+    const diag = getUploadsDirDiagnostics();
     const msg = err instanceof Error ? err.message : "Upload failed";
     throw new Error(
-      `Cannot save file to ${dir}: ${msg}. Check UPLOADS_DIR in .env (use /home/your-user/domains/lmsclasses.com/nodejs/uploads, not /HOME/USER/...).`
+      `Cannot save file to ${dir}: ${msg}. ` +
+        (diag.configuredEnv
+          ? `UPLOADS_DIR="${diag.configuredEnv}" — remove it from hPanel or fix to /home/u123456789/domains/lmsclasses.com/nodejs/uploads (lowercase home, real username).`
+          : `Using ${diag.rootDir} (cwd: ${diag.cwd}).`)
     );
   }
 }

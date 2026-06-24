@@ -56,11 +56,13 @@ Hostinger Node.js start command:
 Required: set all environment variables in hPanel (DATABASE_URL, AUTH_SECRET, NEXTAUTH_URL, etc.)
 Do NOT upload .env.local with secrets to public folders — use Hostinger env settings.
 
-Uploads (course images, HR logos, resumes) — stored outside public/:
-  Default path: {nodejs}/uploads/  (sibling to public/, survives redeploys better)
-  Optional override in hPanel:
-    UPLOADS_DIR=/home/USER/domains/lmsclasses.com/nodejs/uploads
-  Subfolders created automatically: course-thumbnails, hr-logos, resumes
+Uploads (course images, certificates, logos) — stored outside public/:
+  Default: ./uploads next to server.js (no env var needed — RECOMMENDED)
+  Optional override in hPanel (use YOUR real username, lowercase /home/):
+    UPLOADS_DIR=/home/u123456789/domains/lmsclasses.com/nodejs/uploads
+  Do NOT copy literally — replace u123456789 with your Hostinger username.
+  If UPLOADS_DIR is wrong, the app falls back to ./uploads automatically.
+  Subfolders created automatically: certificate-backgrounds, certificates, org-logos, etc.
   Served by the app at https://your-domain/uploads/...
 
 Razorpay (live payments — NOT mock):
