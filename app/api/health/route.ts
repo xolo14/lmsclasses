@@ -8,6 +8,7 @@ import { isNull, sql } from "drizzle-orm";
 import { useSecureCookies } from "@/lib/auth.config";
 import { getAppUrl } from "@/lib/app-url";
 import { refreshUploadsRootDir } from "@/lib/uploads";
+import { getInteraktConfigSummary } from "@/lib/interakt";
 import {
   isRazorpayConfigured,
   getRazorpayKeyId,
@@ -139,6 +140,13 @@ export async function GET() {
     warnings.push("No email provider configured (set SMTP or RESEND env vars).");
   }
 
+  const interakt = getInteraktConfigSummary();
+  if (!interakt.configured) {
+    warnings.push(
+      "Interakt WhatsApp not configured — set INTERAKT_API_KEY and INTERAKT_TEMPLATE_NAME for live class WhatsApp alerts."
+    );
+  }
+
   const coreOk = dbConnected && secretSet && razorpayOk;
 
   let nextBuildId: string | null = null;
@@ -193,6 +201,13 @@ export async function GET() {
       writable: uploadsWritable,
       error: uploadsError,
       publicUrlExample: `${appUrl}/uploads/course-thumbnails/example.jpg`,
+    },
+    interakt: {
+      configured: interakt.configured,
+      templateName: interakt.templateName,
+      countryCode: interakt.countryCode,
+      languageCode: interakt.languageCode,
+      hasApiKey: interakt.hasApiKey,
     },
   });
 }

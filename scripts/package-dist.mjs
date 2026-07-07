@@ -65,6 +65,14 @@ Uploads (course images, certificates, logos) — stored outside public/:
   Subfolders created automatically: certificate-backgrounds, certificates, org-logos, etc.
   Served by the app at https://your-domain/uploads/...
 
+Interakt WhatsApp (live class meeting links):
+  INTERAKT_API_KEY=secret from https://app.interakt.ai/settings/developer-setting
+  INTERAKT_TEMPLATE_NAME=live_class_link
+  INTERAKT_COUNTRY_CODE=+91
+  INTERAKT_TEMPLATE_LANGUAGE=en
+  Template body uses {{1}}-{{5}}, button URL https://{{6}} — see .env.example
+  Test: Super Admin → Settings → WhatsApp (Interakt)
+
 Razorpay (live payments — NOT mock):
   RAZORPAY_KEY_ID=rzp_test_... or rzp_live_...
   RAZORPAY_KEY_SECRET=your_secret
