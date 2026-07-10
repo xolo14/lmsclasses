@@ -8,7 +8,7 @@ import { isNull, sql } from "drizzle-orm";
 import { useSecureCookies } from "@/lib/auth.config";
 import { getAppUrl } from "@/lib/app-url";
 import { refreshUploadsRootDir } from "@/lib/uploads";
-import { getInteraktConfigSummary } from "@/lib/interakt";
+import { getMetaWhatsAppConfigSummary } from "@/lib/meta-whatsapp";
 import {
   isRazorpayConfigured,
   getRazorpayKeyId,
@@ -140,10 +140,10 @@ export async function GET() {
     warnings.push("No email provider configured (set SMTP or RESEND env vars).");
   }
 
-  const interakt = getInteraktConfigSummary();
-  if (!interakt.configured) {
+  const whatsapp = getMetaWhatsAppConfigSummary();
+  if (!whatsapp.configured) {
     warnings.push(
-      "Interakt WhatsApp not configured — set INTERAKT_API_KEY and INTERAKT_TEMPLATE_NAME for live class WhatsApp alerts."
+      "Meta WhatsApp not configured — set META_WHATSAPP_TOKEN and META_WHATSAPP_PHONE_NUMBER_ID for live class WhatsApp alerts."
     );
   }
 
@@ -202,12 +202,15 @@ export async function GET() {
       error: uploadsError,
       publicUrlExample: `${appUrl}/uploads/course-thumbnails/example.jpg`,
     },
-    interakt: {
-      configured: interakt.configured,
-      templateName: interakt.templateName,
-      countryCode: interakt.countryCode,
-      languageCode: interakt.languageCode,
-      hasApiKey: interakt.hasApiKey,
+    whatsapp: {
+      provider: "meta",
+      configured: whatsapp.configured,
+      templateName: whatsapp.templateName,
+      languageCode: whatsapp.languageCode,
+      countryCode: whatsapp.countryCode,
+      hasToken: whatsapp.hasToken,
+      phoneNumberIdSet: whatsapp.phoneNumberIdSet,
+      apiVersion: whatsapp.apiVersion,
     },
   });
 }

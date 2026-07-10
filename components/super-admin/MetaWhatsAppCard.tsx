@@ -9,12 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink, MessageCircle } from "lucide-react";
 
-type InteraktStatus = {
+type WhatsAppStatus = {
   configured: boolean;
   templateName: string;
-  countryCode: string;
   languageCode: string;
-  hasApiKey: boolean;
+  countryCode: string;
+  hasToken: boolean;
+  phoneNumberIdSet: boolean;
+  apiVersion: string;
   message?: string;
   triggers?: string[];
 };
@@ -22,34 +24,33 @@ type InteraktStatus = {
 type TestResult = {
   ok: boolean;
   configured: boolean;
-  track: { ok: boolean; error?: string };
-  send: { ok: boolean; error?: string };
+  send: { ok: boolean; error?: string; messageId?: string };
   hint?: string;
 };
 
-export function InteraktWhatsAppCard() {
+export function MetaWhatsAppCard() {
   const [phone, setPhone] = useState("");
   const [studentName, setStudentName] = useState("Test Student");
   const [testResult, setTestResult] = useState<TestResult | null>(null);
 
-  const { data, isLoading, refetch } = useQuery<InteraktStatus>({
-    queryKey: ["interakt-status"],
+  const { data, isLoading, refetch } = useQuery<WhatsAppStatus>({
+    queryKey: ["whatsapp-status"],
     queryFn: async () => {
-      const res = await fetch("/api/super-admin/interakt-status");
-      if (!res.ok) throw new Error("Could not load Interakt status");
+      const res = await fetch("/api/super-admin/whatsapp-status");
+      if (!res.ok) throw new Error("Could not load WhatsApp status");
       return res.json();
     },
   });
 
   const testSend = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/super-admin/interakt-status", {
+      const res = await fetch("/api/super-admin/whatsapp-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, studentName: studentName || undefined }),
       });
       const json = (await res.json()) as TestResult & { error?: string };
-      if (!res.ok && !json.track) {
+      if (!res.ok && !json.send) {
         throw new Error(json.error ?? "Test send failed");
       }
       return json;
@@ -63,10 +64,10 @@ export function InteraktWhatsAppCard() {
         <div className="space-y-1">
           <CardTitle className="text-lg flex items-center gap-2">
             <MessageCircle className="h-5 w-5 text-emerald-500" />
-            WhatsApp (Interakt)
+            WhatsApp (Meta Cloud API)
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Sends live class meeting links to enrolled students via WhatsApp templates.
+            Sends live class meeting links to enrolled students via Meta WhatsApp templates.
           </p>
         </div>
         {!isLoading && (
@@ -82,52 +83,62 @@ export function InteraktWhatsAppCard() {
           <>
             <div className="grid gap-2 text-sm sm:grid-cols-2">
               <div>
-                <span className="text-muted-foreground">API key:</span>{" "}
-                {data?.hasApiKey ? "Set on server" : "Missing"}
+                <span className="text-muted-foreground">Access token:</span>{" "}
+                {data?.hasToken ? "Set on server" : "Missing"}
+              </div>
+              <div>
+                <span className="text-muted-foreground">Phone number ID:</span>{" "}
+                {data?.phoneNumberIdSet ? "Set on server" : "Missing"}
               </div>
               <div>
                 <span className="text-muted-foreground">Template:</span>{" "}
                 <code className="text-xs">{data?.templateName ?? "—"}</code>
               </div>
               <div>
-                <span className="text-muted-foreground">Country:</span> {data?.countryCode ?? "—"}
+                <span className="text-muted-foreground">Language:</span> {data?.languageCode ?? "—"}
               </div>
               <div>
-                <span className="text-muted-foreground">Language:</span> {data?.languageCode ?? "—"}
+                <span className="text-muted-foreground">Default country:</span>{" "}
+                {data?.countryCode ?? "—"}
+              </div>
+              <div>
+                <span className="text-muted-foreground">API version:</span> {data?.apiVersion ?? "—"}
               </div>
             </div>
 
             {!data?.configured && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3 text-sm">
-                <p className="font-medium text-amber-200">Setup on Interakt + Hostinger</p>
+                <p className="font-medium text-amber-200">Setup on Meta + Hostinger</p>
                 <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
                   <li>
-                    Connect your WhatsApp Business number in{" "}
+                    Open{" "}
                     <a
-                      href="https://app.interakt.ai"
+                      href="https://developers.facebook.com/apps"
                       target="_blank"
                       rel="noreferrer"
                       className="text-primary underline inline-flex items-center gap-1"
                     >
-                      Interakt dashboard <ExternalLink className="h-3 w-3" />
-                    </a>
+                      Meta Developer App <ExternalLink className="h-3 w-3" />
+                    </a>{" "}
+                    → WhatsApp → API Setup
                   </li>
                   <li>
-                    Create template <code className="text-xs">live_class_link</code> (English, Marketing)
-                    with body variables {"{{1}}"}–{"{{5}}"} and a dynamic URL button{" "}
-                    <code className="text-xs">https://{"{{6}}"}</code> — see{" "}
-                    <code className="text-xs">.env.example</code> for exact copy
+                    Copy <strong>Temporary/Permanent access token</strong> and{" "}
+                    <strong>Phone number ID</strong>
                   </li>
                   <li>
-                    Copy <strong>Secret Key</strong> from Settings → Developer Settings
+                    Create/approve template <code className="text-xs">live_class_link</code> with body
+                    variables {"{{1}}"}–{"{{5}}"} and a dynamic URL button{" "}
+                    <code className="text-xs">https://{"{{1}}"}</code>
                   </li>
                   <li>
                     In Hostinger hPanel → Node.js → Environment variables, set:
                     <pre className="mt-2 overflow-x-auto rounded bg-muted/50 p-2 text-xs">
-{`INTERAKT_API_KEY=your-secret-key
-INTERAKT_TEMPLATE_NAME=live_class_link
-INTERAKT_COUNTRY_CODE=+91
-INTERAKT_TEMPLATE_LANGUAGE=en`}
+{`META_WHATSAPP_TOKEN=EAAxxxx...
+META_WHATSAPP_PHONE_NUMBER_ID=123456789012345
+META_WHATSAPP_TEMPLATE_NAME=live_class_link
+META_WHATSAPP_TEMPLATE_LANGUAGE=en
+META_WHATSAPP_COUNTRY_CODE=+91`}
                     </pre>
                   </li>
                   <li>Restart the Node app, then refresh this page</li>
@@ -150,18 +161,18 @@ INTERAKT_TEMPLATE_LANGUAGE=en`}
               <p className="text-sm font-medium">Send test WhatsApp</p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="interakt-test-phone">Phone (10 digits or +91…)</Label>
+                  <Label htmlFor="meta-wa-test-phone">Phone (10 digits or +91…)</Label>
                   <Input
-                    id="interakt-test-phone"
+                    id="meta-wa-test-phone"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="9876543210"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="interakt-test-name">Student name (greeting)</Label>
+                  <Label htmlFor="meta-wa-test-name">Student name (greeting)</Label>
                   <Input
-                    id="interakt-test-name"
+                    id="meta-wa-test-name"
                     value={studentName}
                     onChange={(e) => setStudentName(e.target.value)}
                   />
@@ -187,11 +198,13 @@ INTERAKT_TEMPLATE_LANGUAGE=en`}
                   <p className={testResult.ok ? "text-emerald-400" : "text-destructive"}>
                     {testResult.ok ? "Test message sent — check WhatsApp." : "Test failed."}
                   </p>
-                  {!testResult.track.ok && (
-                    <p className="text-muted-foreground">Track: {testResult.track.error}</p>
-                  )}
                   {!testResult.send.ok && (
                     <p className="text-muted-foreground">Send: {testResult.send.error}</p>
+                  )}
+                  {testResult.send.ok && testResult.send.messageId && (
+                    <p className="text-muted-foreground text-xs">
+                      Message ID: {testResult.send.messageId}
+                    </p>
                   )}
                   {testResult.hint && (
                     <p className="text-muted-foreground text-xs">{testResult.hint}</p>

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { InteraktWhatsAppCard } from "@/components/super-admin/InteraktWhatsAppCard";
+import { MetaWhatsAppCard } from "@/components/super-admin/MetaWhatsAppCard";
 
 type ProfileInput = z.infer<typeof profileSchema>;
 type PasswordInput = z.infer<typeof changePasswordSchema>;
@@ -268,7 +268,7 @@ export function SettingsPage() {
 
       {role === "super_admin" && (
         <>
-          <InteraktWhatsAppCard />
+          <MetaWhatsAppCard />
           <Card>
           <CardHeader>
             <CardTitle className="text-lg">Landing Hero Card Settings</CardTitle>

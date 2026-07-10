@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth } from "@/lib/api-auth";
-import { getInteraktConfigSummary, testInteraktDelivery } from "@/lib/interakt";
+import { getMetaWhatsAppConfigSummary, testMetaWhatsAppDelivery } from "@/lib/meta-whatsapp";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,12 +15,12 @@ export async function GET() {
   const { error } = await requireAuth(["super_admin"]);
   if (error) return error;
 
-  const config = getInteraktConfigSummary();
+  const config = getMetaWhatsAppConfigSummary();
   return NextResponse.json({
     ...config,
     message: config.configured
-      ? "Interakt env vars are set. POST to this endpoint with { phone } to send a test WhatsApp."
-      : "Set INTERAKT_API_KEY and INTERAKT_TEMPLATE_NAME on the server.",
+      ? "Meta WhatsApp env vars are set. POST with { phone } to send a test message."
+      : "Set META_WHATSAPP_TOKEN and META_WHATSAPP_PHONE_NUMBER_ID on the server.",
     triggers: [
       "WhatsApp sends when a live class is created with a meeting link",
       "WhatsApp re-sends when a live class meeting link is updated",
@@ -42,19 +42,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await testInteraktDelivery({
+  const result = await testMetaWhatsAppDelivery({
     phone: parsed.data.phone,
     studentName: parsed.data.studentName,
   });
 
-  const ok = result.track.ok && result.send.ok;
+  const ok = result.send.ok;
   return NextResponse.json(
     {
       ok,
       ...result,
       hint: ok
         ? "Check the phone for the WhatsApp template message."
-        : "If track fails with 'Customer matching query does not exist', contact registration may still be required in Interakt.",
+        : "Confirm the template name/language match Meta Business Manager, and the token has whatsapp_business_messaging permission.",
     },
     { status: ok ? 200 : 502 }
   );

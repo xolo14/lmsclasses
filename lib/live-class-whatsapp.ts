@@ -2,9 +2,9 @@ import { and, eq, isNull, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, studentCourses, liveCourses, batches } from "@/lib/db/schema";
 import {
-  isInteraktConfigured,
+  isMetaWhatsAppConfigured,
   sendLiveClassMeetingLinkWhatsApp,
-} from "@/lib/interakt";
+} from "@/lib/meta-whatsapp";
 
 export type LiveClassWhatsAppNotifyResult = {
   configured: boolean;
@@ -23,7 +23,7 @@ export async function notifyStudentsLiveClassMeetingLink(opts: {
   meetingLink: string;
 }): Promise<LiveClassWhatsAppNotifyResult> {
   const result: LiveClassWhatsAppNotifyResult = {
-    configured: isInteraktConfigured(),
+    configured: isMetaWhatsAppConfigured(),
     sent: 0,
     failed: 0,
     skippedNoPhone: 0,
@@ -31,7 +31,9 @@ export async function notifyStudentsLiveClassMeetingLink(opts: {
   };
 
   if (!result.configured) {
-    result.errors.push("Interakt is not configured (INTERAKT_API_KEY / INTERAKT_TEMPLATE_NAME)");
+    result.errors.push(
+      "Meta WhatsApp is not configured (META_WHATSAPP_TOKEN / META_WHATSAPP_PHONE_NUMBER_ID)"
+    );
     return result;
   }
 
@@ -107,15 +109,15 @@ export async function notifyStudentsLiveClassMeetingLink(opts: {
     } else {
       result.failed += 1;
       result.errors.push(`${student.name} (${phone}): ${sendResult.error}`);
-      console.error("[interakt] live class WhatsApp failed:", sendResult.error, {
+      console.error("[meta-whatsapp] live class WhatsApp failed:", sendResult.error, {
         student: student.name,
         phone,
         liveClassId: opts.liveClassId,
       });
     }
 
-    // Stay under Interakt rate limit (~40/min on basic plans)
-    await new Promise((r) => setTimeout(r, 200));
+    // Stay under Meta Cloud API rate limits
+    await new Promise((r) => setTimeout(r, 150));
   }
 
   return result;
