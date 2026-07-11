@@ -38,6 +38,7 @@ export async function notifyStudentsLiveClassMeetingLink(opts: {
   }
 
   if (!opts.meetingLink?.trim()) {
+    result.errors.push("Meeting link is required to send WhatsApp notifications");
     return result;
   }
 

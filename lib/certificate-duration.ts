@@ -26,7 +26,7 @@ export function getEnrollmentStartDate(enrolledAt: Date | null | undefined): Dat
   return enrolledAt ? new Date(enrolledAt) : new Date();
 }
 
-/** True when enrolledAt + course duration has passed (or no duration is set). */
+/** True when enrolledAt + course duration has passed. False if duration is missing/unparseable. */
 export function isEnrollmentDurationComplete(
   enrolledAt: Date | null | undefined,
   duration: string | null | undefined,

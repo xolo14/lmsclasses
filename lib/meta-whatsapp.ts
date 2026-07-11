@@ -25,7 +25,7 @@ export function getMetaWhatsAppTemplateName(): string {
 }
 
 export function getMetaWhatsAppTemplateLanguage(): string {
-  return process.env.META_WHATSAPP_TEMPLATE_LANGUAGE?.trim() || "en";
+  return process.env.META_WHATSAPP_TEMPLATE_LANGUAGE?.trim() || "en_US";
 }
 
 export function getMetaWhatsAppApiVersion(): string {
@@ -60,18 +60,23 @@ export function parsePhoneForMeta(raw: string | null | undefined): string | null
   if (!raw?.trim()) return null;
 
   const defaultCc = getMetaWhatsAppDefaultCountryDigits();
-  let digits = raw.replace(/\D/g, "");
+  const digits = raw.replace(/\D/g, "");
 
   if (digits.length === 10) {
     return `${defaultCc}${digits}`;
   }
-  if (digits.length === 12 && digits.startsWith("91")) {
-    return digits;
-  }
   if (digits.length === 11 && digits.startsWith("0")) {
     return `${defaultCc}${digits.slice(1)}`;
   }
+  // Already includes country code (e.g. 91XXXXXXXXXX or other CC + local)
   if (digits.length > 10) {
+    if (digits.startsWith(defaultCc) && digits.length === defaultCc.length + 10) {
+      return digits;
+    }
+    // Common India stored as 91 + 10 digits even if env CC differs
+    if (digits.length === 12 && digits.startsWith("91")) {
+      return digits;
+    }
     return digits;
   }
 
@@ -108,6 +113,19 @@ function meetingLinkButtonValue(meetingLink: string): string {
   return trimmed.replace(/^https?:\/\//i, "");
 }
 
+/**
+ * Meta rejects newlines/tabs and >4 consecutive spaces in template parameter text.
+ * Empty strings also fail — use a single space fallback.
+ */
+function sanitizeTemplateParam(value: string): string {
+  const cleaned = value
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/ {5,}/g, "    ")
+    .trim();
+  return cleaned || " ";
+}
+
 async function parseMetaResponse(res: Response): Promise<{
   ok: boolean;
   error?: string;
@@ -125,8 +143,21 @@ async function parseMetaResponse(res: Response): Promise<{
   if (!res.ok) {
     let errMsg = text || `Meta WhatsApp HTTP ${res.status}`;
     if (typeof data === "object" && data !== null && "error" in data) {
-      const err = (data as { error?: { message?: string; error_user_msg?: string } }).error;
-      errMsg = err?.error_user_msg || err?.message || errMsg;
+      const err = (
+        data as {
+          error?: {
+            message?: string;
+            error_user_msg?: string;
+            code?: number;
+            error_data?: { details?: string };
+          };
+        }
+      ).error;
+      const details = err?.error_data?.details;
+      errMsg =
+        [err?.error_user_msg || err?.message, details, err?.code != null ? `(code ${err.code})` : null]
+          .filter(Boolean)
+          .join(" — ") || errMsg;
     }
     return { ok: false, error: errMsg, status: res.status };
   }
@@ -168,7 +199,10 @@ export async function sendMetaTemplateMessage(opts: {
   const components: Array<Record<string, unknown>> = [
     {
       type: "body",
-      parameters: opts.bodyValues.map((text) => ({ type: "text", text })),
+      parameters: opts.bodyValues.map((text) => ({
+        type: "text",
+        text: sanitizeTemplateParam(text),
+      })),
     },
   ];
 
@@ -177,7 +211,7 @@ export async function sendMetaTemplateMessage(opts: {
       type: "button",
       sub_type: "url",
       index: "0",
-      parameters: [{ type: "text", text: opts.buttonUrlVariable }],
+      parameters: [{ type: "text", text: sanitizeTemplateParam(opts.buttonUrlVariable) }],
     });
   }
 
@@ -190,6 +224,7 @@ export async function sendMetaTemplateMessage(opts: {
       },
       body: JSON.stringify({
         messaging_product: "whatsapp",
+        recipient_type: "individual",
         to: opts.to,
         type: "template",
         template: {
@@ -202,7 +237,19 @@ export async function sendMetaTemplateMessage(opts: {
 
     const parsed = await parseMetaResponse(res);
     if (!parsed.ok) {
-      return { ok: false, error: parsed.error ?? "Send failed", status: parsed.status };
+      const err = parsed.error ?? "Send failed";
+      // Common Meta mismatch: template registered as en_US but env/default was en (or reverse)
+      if (
+        !opts.languageCode &&
+        /132001|does not exist in the translation/i.test(err)
+      ) {
+        const configured = getMetaWhatsAppTemplateLanguage();
+        const fallback = configured === "en" ? "en_US" : configured === "en_US" ? "en" : null;
+        if (fallback) {
+          return sendMetaTemplateMessage({ ...opts, languageCode: fallback });
+        }
+      }
+      return { ok: false, error: err, status: parsed.status };
     }
     return { ok: true, messageId: parsed.messageId };
   } catch (err) {

@@ -48,13 +48,23 @@ export async function POST(request: Request) {
   });
 
   const ok = result.send.ok;
+  const sendError = !result.send.ok ? result.send.error : "";
+  let hint = "Check the phone for the WhatsApp template message.";
+  if (!ok) {
+    if (/132001|does not exist in the translation/i.test(sendError)) {
+      hint =
+        "Template name/language mismatch. In Meta Business Manager → WhatsApp → Message templates, copy the exact template name and language (often en_US, not en). Set META_WHATSAPP_TEMPLATE_NAME and META_WHATSAPP_TEMPLATE_LANGUAGE on Hostinger to match, then restart Node.";
+    } else {
+      hint =
+        "Confirm the template is Approved, name/language match Meta Business Manager, and the token belongs to the same WhatsApp Business Account as the Phone number ID.";
+    }
+  }
+
   return NextResponse.json(
     {
       ok,
       ...result,
-      hint: ok
-        ? "Check the phone for the WhatsApp template message."
-        : "Confirm the template name/language match Meta Business Manager, and the token has whatsapp_business_messaging permission.",
+      hint,
     },
     { status: ok ? 200 : 502 }
   );

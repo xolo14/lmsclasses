@@ -69,9 +69,10 @@ Meta WhatsApp Cloud API (live class meeting links):
   META_WHATSAPP_TOKEN=permanent token from Meta Developer → WhatsApp → API Setup
   META_WHATSAPP_PHONE_NUMBER_ID=from the same API Setup page
   META_WHATSAPP_TEMPLATE_NAME=live_class_link
-  META_WHATSAPP_TEMPLATE_LANGUAGE=en
+  META_WHATSAPP_TEMPLATE_LANGUAGE=en_US
   META_WHATSAPP_COUNTRY_CODE=+91
   Template body {{1}}-{{5}}, button URL https://{{1}} — see .env.example
+  Language must match Meta exactly (often en_US). App retries en↔en_US on error 132001.
   Remove old INTERAKT_* vars if present
   Test: Super Admin → Settings → WhatsApp (Meta Cloud API)
 

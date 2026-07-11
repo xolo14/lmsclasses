@@ -427,6 +427,13 @@ export async function issueCertificate(
 
   const template = await assertTemplateAccess(input.templateId, actor);
 
+  if (template.courseId && template.courseId !== input.courseId) {
+    throw new Error("Template is linked to a different course");
+  }
+  if (template.courseType && template.courseType !== input.courseType) {
+    throw new Error("Template course type does not match");
+  }
+
   const existing = await findActiveCertificateForCourse(
     input.studentId,
     input.courseId,
@@ -478,11 +485,24 @@ export async function issueCertificate(
   let completionDate = formatIssueDate(new Date());
   if (input.enrollmentId) {
     const [enrollment] = await db
-      .select({ completedAt: studentCourses.completedAt })
+      .select({
+        completedAt: studentCourses.completedAt,
+        studentId: studentCourses.studentId,
+        liveCourseId: studentCourses.liveCourseId,
+        recordCourseId: studentCourses.recordCourseId,
+      })
       .from(studentCourses)
       .where(eq(studentCourses.id, input.enrollmentId))
       .limit(1);
-    if (enrollment?.completedAt) completionDate = formatIssueDate(enrollment.completedAt);
+    if (!enrollment || enrollment.studentId !== input.studentId) {
+      throw new Error("Enrollment does not belong to this student");
+    }
+    const enrollmentCourseId =
+      input.courseType === "live" ? enrollment.liveCourseId : enrollment.recordCourseId;
+    if (enrollmentCourseId !== input.courseId) {
+      throw new Error("Enrollment does not match this course");
+    }
+    if (enrollment.completedAt) completionDate = formatIssueDate(enrollment.completedAt);
   }
 
   const certificateNumber = await nextCertificateNumber();
@@ -1004,19 +1024,23 @@ export async function listEnrolledStudentsForCourse(
       : eq(studentCourses.recordCourseId, courseId),
   ];
   if (isOrgAdmin(actor.role) && actor.organisationId) {
-    conditions.push(eq(studentCourses.organisationId, actor.organisationId));
+    conditions.push(eq(users.organisationId, actor.organisationId));
   }
 
-  let templateOrgId: string | null | undefined;
   if (templateId) {
     const [template] = await db
       .select({ orgId: certificateTemplates.orgId })
       .from(certificateTemplates)
       .where(eq(certificateTemplates.id, templateId))
       .limit(1);
-    templateOrgId = template?.orgId;
-    if (isSuperAdmin(actor.role) && templateOrgId === null) {
-      conditions.push(isNull(users.organisationId));
+    if (isSuperAdmin(actor.role)) {
+      if (template?.orgId === null) {
+        // Global template: only direct (non-org) students
+        conditions.push(isNull(users.organisationId));
+      } else if (template?.orgId) {
+        // Org templates are issued by org admins only — super admin sees no eligible students
+        return [];
+      }
     }
   }
 

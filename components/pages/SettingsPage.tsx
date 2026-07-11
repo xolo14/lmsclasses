@@ -33,55 +33,14 @@ export function SettingsPage() {
     queryFn: () => fetch("/api/profile").then((r) => r.json()),
   });
 
-  const organisationLogoUrl = (profile as any)?.logoUrl as string | null | undefined;
-  const role = (profile as any)?.role as string | undefined;
+  const organisationLogoUrl = (profile as { logoUrl?: string | null } | undefined)?.logoUrl;
+  const role = (profile as { role?: string } | undefined)?.role;
 
   const [logoDraft, setLogoDraft] = useState<string | null | undefined>(undefined);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
 
-  // Super Admin Hero Card settings state
-  const [heroCardTitle, setHeroCardTitle] = useState("");
-  const [heroCardSubtitle, setHeroCardSubtitle] = useState("");
-  const [heroCardStudentCount, setHeroCardStudentCount] = useState("");
-  const [heroCardStudentLabel, setHeroCardStudentLabel] = useState("");
-  const [heroCardLiveBadge, setHeroCardLiveBadge] = useState("");
-  const [heroCardBtnText, setHeroCardBtnText] = useState("");
-
-  const { data: systemSettingsData } = useQuery({
-    queryKey: ["system-settings"],
-    queryFn: () => fetch("/api/system-settings").then((r) => r.json()),
-    enabled: role === "super_admin",
-  });
-
   useEffect(() => {
-    if (systemSettingsData) {
-      setHeroCardTitle(systemSettingsData.hero_card_title || "");
-      setHeroCardSubtitle(systemSettingsData.hero_card_subtitle || "");
-      setHeroCardStudentCount(systemSettingsData.hero_card_student_count || "");
-      setHeroCardStudentLabel(systemSettingsData.hero_card_student_label || "");
-      setHeroCardLiveBadge(systemSettingsData.hero_card_live_badge || "");
-      setHeroCardBtnText(systemSettingsData.hero_card_btn_text || "");
-    }
-  }, [systemSettingsData]);
-
-  const updateSystemSettings = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await fetch("/api/system-settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) await parseApiError(res);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["system-settings"] });
-    },
-  });
-
-  useEffect(() => {
-    // Reset draft when user/organisation changes
     setLogoDraft(undefined);
     setLogoError(null);
   }, [organisationLogoUrl]);
@@ -170,12 +129,13 @@ export function SettingsPage() {
     },
   });
 
-  const initials = profile?.name
-    ?.split(" ")
-    .map((n: string) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2) || "?";
+  const initials =
+    profile?.name
+      ?.split(" ")
+      .map((n: string) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "?";
 
   return (
     <div className="space-y-6 max-w-2xl w-full">
@@ -189,12 +149,20 @@ export function SettingsPage() {
           <div>
             <CardTitle>{profile?.name}</CardTitle>
             <p className="text-sm text-muted-foreground">{profile?.email}</p>
-            {profile?.lmsId && <p className="text-xs font-mono text-primary">LMS ID: {profile.lmsId}</p>}
-            {profile?.orgName && <p className="text-xs text-muted-foreground">{profile.orgName}</p>}
-            {profile?.collegeName && <p className="text-xs text-muted-foreground">{profile.collegeName}</p>}
+            {profile?.lmsId && (
+              <p className="text-xs font-mono text-primary">LMS ID: {profile.lmsId}</p>
+            )}
+            {profile?.orgName && (
+              <p className="text-xs text-muted-foreground">{profile.orgName}</p>
+            )}
+            {profile?.collegeName && (
+              <p className="text-xs text-muted-foreground">{profile.collegeName}</p>
+            )}
           </div>
         </CardHeader>
       </Card>
+
+      {role === "super_admin" && <MetaWhatsAppCard />}
 
       {role === "org_admin" && (
         <Card>
@@ -205,7 +173,6 @@ export function SettingsPage() {
             <div className="flex items-start gap-4">
               <div className="w-20 h-20 rounded-lg border border-border bg-muted/30 overflow-hidden flex items-center justify-center">
                 {logoPreview ? (
-                  // Use <img> since logoUrl might be a data URL
                   <img
                     src={logoPreview}
                     alt="Organisation logo"
@@ -217,7 +184,8 @@ export function SettingsPage() {
               </div>
               <div className="flex-1 space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Upload a logo for your organisation. It will be visible to students in this organisation.
+                  Upload a logo for your organisation. It will be visible to students in this
+                  organisation.
                 </p>
                 <Input
                   type="file"
@@ -259,105 +227,13 @@ export function SettingsPage() {
                 Remove
               </Button>
             </div>
-            {updateOrganisationLogo.isSuccess && !logoDraft && logoPreview === organisationLogoUrl && (
-              <p className="text-sm text-emerald-400">Logo saved successfully!</p>
-            )}
+            {updateOrganisationLogo.isSuccess &&
+              logoDraft === undefined &&
+              logoPreview === organisationLogoUrl && (
+                <p className="text-sm text-emerald-400">Logo saved successfully!</p>
+              )}
           </CardContent>
         </Card>
-      )}
-
-      {role === "super_admin" && (
-        <>
-          <MetaWhatsAppCard />
-          <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Landing Hero Card Settings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                updateSystemSettings.mutate({
-                  hero_card_title: heroCardTitle,
-                  hero_card_subtitle: heroCardSubtitle,
-                  hero_card_student_count: heroCardStudentCount,
-                  hero_card_student_label: heroCardStudentLabel,
-                  hero_card_live_badge: heroCardLiveBadge,
-                  hero_card_btn_text: heroCardBtnText,
-                });
-              }}
-              className="space-y-4"
-            >
-              <div className="space-y-2">
-                <Label>Card Title</Label>
-                <Input
-                  value={heroCardTitle}
-                  onChange={(e) => setHeroCardTitle(e.target.value)}
-                  placeholder="e.g. Full Stack Bootcamp"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Card Subtext / Duration</Label>
-                <Input
-                  value={heroCardSubtitle}
-                  onChange={(e) => setHeroCardSubtitle(e.target.value)}
-                  placeholder="e.g. 12 weeks · Live + Recorded"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Students Count Badge</Label>
-                <Input
-                  value={heroCardStudentCount}
-                  onChange={(e) => setHeroCardStudentCount(e.target.value)}
-                  placeholder="e.g. 500+"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Students Label</Label>
-                <Input
-                  value={heroCardStudentLabel}
-                  onChange={(e) => setHeroCardStudentLabel(e.target.value)}
-                  placeholder="e.g. Active Students"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Live Class Badge Text</Label>
-                <Input
-                  value={heroCardLiveBadge}
-                  onChange={(e) => setHeroCardLiveBadge(e.target.value)}
-                  placeholder="e.g. Live class starting soon"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Button Text</Label>
-                <Input
-                  value={heroCardBtnText}
-                  onChange={(e) => setHeroCardBtnText(e.target.value)}
-                  placeholder="e.g. Join Live Class"
-                  required
-                />
-              </div>
-
-              <Button type="submit" disabled={updateSystemSettings.isPending}>
-                {updateSystemSettings.isPending ? "Saving..." : "Save Settings"}
-              </Button>
-              {updateSystemSettings.isSuccess && (
-                <p className="text-sm text-emerald-400">Settings saved successfully!</p>
-              )}
-              {updateSystemSettings.isError && (
-                <p className="text-sm text-destructive">
-                  {(updateSystemSettings.error as Error).message}
-                </p>
-              )}
-            </form>
-          </CardContent>
-        </Card>
-        </>
       )}
 
       <Card>
@@ -365,19 +241,26 @@ export function SettingsPage() {
           <CardTitle className="text-lg">Edit Profile</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={profileForm.handleSubmit((d) => updateProfile.mutate(d))} className="space-y-4">
+          <form
+            onSubmit={profileForm.handleSubmit((d) => updateProfile.mutate(d))}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label>Name</Label>
               <Input {...profileForm.register("name")} />
               {profileForm.formState.errors.name && (
-                <p className="text-sm text-destructive">{profileForm.formState.errors.name.message}</p>
+                <p className="text-sm text-destructive">
+                  {profileForm.formState.errors.name.message}
+                </p>
               )}
             </div>
             <div className="space-y-2">
               <Label>Email</Label>
               <Input type="email" {...profileForm.register("email")} />
               {profileForm.formState.errors.email && (
-                <p className="text-sm text-destructive">{profileForm.formState.errors.email.message}</p>
+                <p className="text-sm text-destructive">
+                  {profileForm.formState.errors.email.message}
+                </p>
               )}
               <p className="text-xs text-muted-foreground">
                 After changing email, sign out and sign in again with the new address.
@@ -390,7 +273,7 @@ export function SettingsPage() {
             <Button type="submit" disabled={updateProfile.isPending}>
               {updateProfile.isPending ? "Saving..." : "Save Changes"}
             </Button>
-            {updateProfile.isSuccess && (
+            {updateProfile.isSuccess && !profileForm.formState.isDirty && (
               <p className="text-sm text-emerald-400">Profile updated!</p>
             )}
             {updateProfile.isError && (
@@ -405,10 +288,17 @@ export function SettingsPage() {
           <CardTitle className="text-lg">Change Password</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={passwordForm.handleSubmit((d) => changePassword.mutate(d))} className="space-y-4">
+          <form
+            onSubmit={passwordForm.handleSubmit((d) => changePassword.mutate(d))}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label>Current Password</Label>
-              <Input type="password" autoComplete="current-password" {...passwordForm.register("currentPassword")} />
+              <Input
+                type="password"
+                autoComplete="current-password"
+                {...passwordForm.register("currentPassword")}
+              />
               {passwordForm.formState.errors.currentPassword && (
                 <p className="text-sm text-destructive">
                   {passwordForm.formState.errors.currentPassword.message}
@@ -417,7 +307,11 @@ export function SettingsPage() {
             </div>
             <div className="space-y-2">
               <Label>New Password</Label>
-              <Input type="password" autoComplete="new-password" {...passwordForm.register("newPassword")} />
+              <Input
+                type="password"
+                autoComplete="new-password"
+                {...passwordForm.register("newPassword")}
+              />
               {passwordForm.formState.errors.newPassword && (
                 <p className="text-sm text-destructive">
                   {passwordForm.formState.errors.newPassword.message}
@@ -426,7 +320,11 @@ export function SettingsPage() {
             </div>
             <div className="space-y-2">
               <Label>Confirm Password</Label>
-              <Input type="password" autoComplete="new-password" {...passwordForm.register("confirmPassword")} />
+              <Input
+                type="password"
+                autoComplete="new-password"
+                {...passwordForm.register("confirmPassword")}
+              />
               {passwordForm.formState.errors.confirmPassword && (
                 <p className="text-sm text-destructive">
                   {passwordForm.formState.errors.confirmPassword.message}
