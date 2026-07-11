@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { Play, AlertCircle } from "lucide-react";
+import { Play, AlertCircle, Link2, Check } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
@@ -25,9 +26,15 @@ interface DemosPageProps {
   liveOnly?: boolean;
 }
 
+function getDemoShareUrl(courseId: string) {
+  if (typeof window === "undefined") return `/demo/${courseId}`;
+  return `${window.location.origin}/demo/${courseId}`;
+}
+
 export function DemosPage({ liveOnly = false }: DemosPageProps) {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
     queryKey: ["demos-courses", liveOnly ? "live" : "all"],
@@ -52,10 +59,8 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
     },
   });
 
-  // Filter courses that have a valid demoUrl
   const demoCourses = courses.filter((c) => c.demoUrl && c.demoUrl.trim().length > 0);
 
-  // Set the first course with a demo as selected by default when data loads
   useEffect(() => {
     if (demoCourses.length > 0 && !selectedCourse) {
       setSelectedCourse(demoCourses[0]);
@@ -70,35 +75,51 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
     setEmbed(resolveVideoEmbed(selectedCourse.demoUrl, true));
   }, [selectedCourse]);
 
+  const copyShareLink = async (courseId: string) => {
+    const url = getDemoShareUrl(courseId);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(courseId);
+      window.setTimeout(() => setCopiedId((id) => (id === courseId ? null : id)), 2000);
+    } catch {
+      window.prompt("Copy this demo link:", url);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
-        <div className="text-muted-foreground animate-pulse text-lg font-medium">Loading Course Demos...</div>
+        <div className="animate-pulse text-lg font-medium text-muted-foreground">
+          Loading Course Demos...
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Course Demos" description="Watch interactive course demo videos and walkthroughs." />
+      <PageHeader
+        title="Course Demos"
+        description="Watch interactive course demo videos and walkthroughs. Copy a share link to send to interested students."
+      />
 
       {demoCourses.length === 0 ? (
         <Card className="border-dashed border-border/60">
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4 text-muted-foreground">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
               <AlertCircle className="h-6 w-6" />
             </div>
-            <p className="text-lg font-semibold text-foreground mb-1">No Demos Available</p>
-            <p className="text-sm text-muted-foreground max-w-sm mb-6">
-              None of the courses have a demo video set. Add a &quot;Demo URL&quot; to a course to display it here.
+            <p className="mb-1 text-lg font-semibold text-foreground">No Demos Available</p>
+            <p className="mb-6 max-w-sm text-sm text-muted-foreground">
+              None of the courses have a demo video set. Add a &quot;Demo URL&quot; to a course to
+              display it here.
             </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Main Video Player section (Left side) */}
-          <div className="lg:col-span-3 space-y-4">
-            <div className="relative aspect-video w-full rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shadow-xl flex items-center justify-center">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+          <div className="space-y-4 lg:col-span-3">
+            <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-xl">
               {selectedCourse ? (
                 <EmbeddedVideoPlayer
                   embed={embed}
@@ -112,57 +133,109 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
             {selectedCourse && (
               <Card className="border border-border/40 shadow-sm">
                 <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-xl font-bold text-foreground">{selectedCourse.title}</h2>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="border-swiss-red/30 text-swiss-red bg-swiss-red/5/20 font-mono">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className="border-swiss-red/30 bg-swiss-red/5 font-mono text-swiss-red"
+                      >
                         {formatCurrency(selectedCourse.price)}
                       </Badge>
                       <Badge variant={selectedCourse.isActive ? "success" : "destructive"}>
                         {selectedCourse.isActive ? "Active" : "Inactive"}
                       </Badge>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={() => void copyShareLink(selectedCourse.id)}
+                      >
+                        {copiedId === selectedCourse.id ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Link2 className="h-3.5 w-3.5" />
+                            Copy share link
+                          </>
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground leading-relaxed">{selectedCourse.description}</p>
-                  <div className="pt-2 border-t border-border/40 text-xs text-muted-foreground flex justify-between items-center">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {selectedCourse.description}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 text-xs text-muted-foreground">
                     <span>Course Enrolment count: {selectedCourse.enrolledCount} enrolled</span>
+                    <span className="break-all font-mono text-[11px]">
+                      /demo/{selectedCourse.id}
+                    </span>
                   </div>
                 </CardContent>
               </Card>
             )}
           </div>
 
-          {/* Demos Sidebar list (Right side) */}
-          <div className="lg:col-span-1 space-y-4">
-            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Available Demos</h3>
-            <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+          <div className="space-y-4 lg:col-span-1">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Available Demos
+            </h3>
+            <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
               {demoCourses.map((course) => {
                 const isSelected = selectedCourse?.id === course.id;
                 return (
                   <Card
                     key={course.id}
-                    className={`cursor-pointer transition-all duration-200 border hover:border-swiss-red/40 shadow-sm ${
+                    className={`cursor-pointer border shadow-sm transition-all duration-200 hover:border-swiss-red/40 ${
                       isSelected
-                        ? "border-swiss-red bg-swiss-red/5/10 ring-1 ring-swiss-red"
+                        ? "border-swiss-red bg-swiss-red/5 ring-1 ring-swiss-red"
                         : "border-border/60 hover:bg-muted/30"
                     }`}
                     onClick={() => setSelectedCourse(course)}
                   >
-                    <CardContent className="p-4 flex gap-3 items-start">
+                    <CardContent className="flex items-start gap-3 p-4">
                       <div
-                        className={`h-9 w-9 rounded-lg shrink-0 flex items-center justify-center transition-colors ${
-                          isSelected ? "bg-swiss-red/5 text-swiss-red border border-swiss-red/30" : "bg-muted text-muted-foreground"
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                          isSelected
+                            ? "border border-swiss-red/30 bg-swiss-red/5 text-swiss-red"
+                            : "bg-muted text-muted-foreground"
                         }`}
                       >
                         <Play className={`h-4 w-4 ${isSelected ? "fill-swiss-red/20" : ""}`} />
                       </div>
-                      <div className="space-y-1 min-w-0">
-                        <p className="text-sm font-semibold text-foreground truncate">{course.title}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {course.title}
+                        </p>
+                        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                           {course.description}
                         </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void copyShareLink(course.id);
+                          }}
+                        >
+                          {copiedId === course.id ? (
+                            <>
+                              <Check className="mr-1 h-3 w-3" /> Copied
+                            </>
+                          ) : (
+                            <>
+                              <Link2 className="mr-1 h-3 w-3" /> Share
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>

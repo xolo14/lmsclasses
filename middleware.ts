@@ -28,6 +28,7 @@ export default auth((req) => {
   const isPublic =
     publicPaths.some((p) => pathname === p) ||
     pathname.startsWith("/courses") ||
+    pathname.startsWith("/demo") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/public") ||
     pathname.startsWith("/api/cron") ||
