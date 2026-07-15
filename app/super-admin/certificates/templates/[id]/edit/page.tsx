@@ -13,6 +13,7 @@ export default function EditTemplatePage() {
     layout: TemplateLayout;
     courseId?: string | null;
     courseType?: "live" | "record" | null;
+    batchId?: string | null;
     autoIssue: boolean;
     isDefault: boolean;
   } | null>(null);
@@ -27,6 +28,7 @@ export default function EditTemplatePage() {
             layout: data.layout,
             courseId: data.courseId,
             courseType: data.courseType,
+            batchId: data.batchId,
             autoIssue: data.autoIssue,
             isDefault: data.isDefault,
           });

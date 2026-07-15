@@ -52,7 +52,8 @@ export async function POST(request: Request) {
 
   const payment = await findPaymentByRazorpayOrderId(orderId);
   if (!payment) {
-    return NextResponse.json({ error: "Payment record not found" }, { status: 404 });
+    // Not an LMS org-slot payment (or already purged) — ACK so Razorpay stops retrying
+    return NextResponse.json({ received: true, ignored: "unknown_order" });
   }
 
   const result = await fulfillSlotPurchase(payment.id, {
@@ -64,5 +65,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true, alreadyProcessed: result.alreadyProcessed });
+  return NextResponse.json({
+    success: true,
+    alreadyProcessed: result.alreadyProcessed,
+    ignored: result.ignored,
+  });
 }

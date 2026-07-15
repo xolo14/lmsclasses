@@ -169,7 +169,9 @@ export function StudentCourseDetail({
                   </div>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Your certificate will appear here once you are eligible (based on course duration from your enrollment date).
+                    Your certificate will appear here once you are eligible: recorded /
+                    live without batch uses course duration from assign date; live with a
+                    batch uses the batch end date.
                   </p>
                 )}
               </div>

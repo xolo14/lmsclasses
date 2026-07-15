@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   certificateTemplates,
@@ -9,6 +9,7 @@ import {
   recordCourses,
   studentCourses,
   users,
+  batches,
 } from "@/lib/db/schema";
 import { logAction } from "@/lib/audit";
 import { getAppUrl } from "@/lib/app-url";
@@ -16,7 +17,9 @@ import { sendCertificateEmail } from "@/lib/email";
 import { saveCertificatePdf, readCertificatePdf } from "@/lib/certificate-storage";
 import {
   getDurationEligibleAt,
-  isEnrollmentDurationComplete,
+  getCertificateEligibleAt,
+  getCertificateAutoIssueTimestamp,
+  isCertificateAutoEligible,
 } from "@/lib/certificate-duration";
 import { generateCertificatePdf, type TokenData } from "@/lib/services/certificatePdf";
 import type { TemplateLayout } from "@/lib/types/certificate";
@@ -55,15 +58,103 @@ export const ORG_STUDENT_ORG_ADMIN_ONLY_MSG =
 
 type AutoIssueTemplate = typeof certificateTemplates.$inferSelect;
 
-/** Global auto-issue applies to direct students only; org students use their org template. */
+/**
+ * Course-level auto-issue template.
+ * Prefer default; if template.batchId is set, only match that enrollment batch.
+ * Templates without batchId apply to all enrollments of the course.
+ */
 function selectAutoIssueTemplate(
   templates: AutoIssueTemplate[],
-  studentOrgId: string | null
+  studentOrgId: string | null,
+  enrollmentBatchId: string | null
 ): AutoIssueTemplate | null {
-  if (studentOrgId) {
-    return templates.find((t) => t.orgId === studentOrgId) ?? null;
+  const scoped = studentOrgId
+    ? templates.filter((t) => t.orgId === studentOrgId)
+    : templates.filter((t) => t.orgId === null);
+  if (scoped.length === 0) return null;
+
+  const forEnrollment = scoped.filter((t) => {
+    if (!t.batchId) return true; // course-wide
+    return enrollmentBatchId != null && t.batchId === enrollmentBatchId;
+  });
+  if (forEnrollment.length === 0) return null;
+
+  // Prefer an exact batch-linked template over a course-wide one when both exist
+  const batchExact = enrollmentBatchId
+    ? forEnrollment.filter((t) => t.batchId === enrollmentBatchId)
+    : [];
+  const pool = batchExact.length > 0 ? batchExact : forEnrollment.filter((t) => !t.batchId);
+  const finalPool = pool.length > 0 ? pool : forEnrollment;
+  return finalPool.find((t) => t.isDefault) ?? finalPool[0] ?? null;
+}
+
+async function getBatchEndDate(batchId: string | null | undefined): Promise<Date | null> {
+  if (!batchId) return null;
+  const [batch] = await db
+    .select({ endDate: batches.endDate, deletedAt: batches.deletedAt })
+    .from(batches)
+    .where(eq(batches.id, batchId))
+    .limit(1);
+  if (!batch || batch.deletedAt) return null;
+  return batch.endDate ? new Date(batch.endDate) : null;
+}
+
+async function markEnrollmentCertificateIssued(enrollmentId: string, issuedAt: Date) {
+  const [row] = await db
+    .select({
+      completedAt: studentCourses.completedAt,
+      status: studentCourses.status,
+    })
+    .from(studentCourses)
+    .where(eq(studentCourses.id, enrollmentId))
+    .limit(1);
+  if (!row) return;
+
+  const nextStatus =
+    row.status === "active" || row.status === "paused" ? ("completed" as const) : row.status;
+
+  await db
+    .update(studentCourses)
+    .set({
+      certificate: true,
+      certificateIssuedAt: issuedAt,
+      completedAt: row.completedAt ?? issuedAt,
+      status: nextStatus,
+      updatedAt: new Date(),
+    })
+    .where(eq(studentCourses.id, enrollmentId));
+}
+
+async function assertBatchMatchesCourse(
+  batchId: string | null | undefined,
+  courseId: string | null | undefined,
+  courseType: "live" | "record" | null | undefined,
+  orgId: string | null
+) {
+  if (!batchId) return;
+  if (courseType !== "live") {
+    throw new Error("Batches only apply to live courses");
   }
-  return templates.find((t) => t.orgId === null) ?? null;
+  if (!courseId) throw new Error("Link a live course before selecting a batch");
+
+  const [batch] = await db
+    .select({
+      id: batches.id,
+      courseId: batches.courseId,
+      organisationId: batches.organisationId,
+      deletedAt: batches.deletedAt,
+    })
+    .from(batches)
+    .where(eq(batches.id, batchId))
+    .limit(1);
+
+  if (!batch || batch.deletedAt) throw new Error("Batch not found");
+  if (batch.courseId !== courseId) {
+    throw new Error("Selected batch does not belong to this course");
+  }
+  if (orgId && batch.organisationId && batch.organisationId !== orgId) {
+    throw new Error("Selected batch belongs to another organisation");
+  }
 }
 
 /** One active certificate per student per course (any template). */
@@ -148,6 +239,7 @@ function formatIssueDate(d: Date) {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Kolkata",
   });
 }
 
@@ -172,7 +264,8 @@ async function assertTemplateAccess(templateId: string, actor: CertActor) {
 async function unsetDefaultForCourse(
   orgId: string | null,
   courseId: string | null,
-  courseType: "live" | "record" | null
+  courseType: "live" | "record" | null,
+  batchId: string | null = null
 ) {
   if (!courseId || !courseType) return;
   const conditions = [
@@ -184,6 +277,11 @@ async function unsetDefaultForCourse(
     conditions.push(eq(certificateTemplates.orgId, orgId));
   } else {
     conditions.push(isNull(certificateTemplates.orgId));
+  }
+  if (batchId) {
+    conditions.push(eq(certificateTemplates.batchId, batchId));
+  } else {
+    conditions.push(isNull(certificateTemplates.batchId));
   }
   await db
     .update(certificateTemplates)
@@ -203,6 +301,7 @@ export async function createTemplate(
     name: string;
     courseId?: string;
     courseType?: "live" | "record";
+    batchId?: string | null;
     layout: TemplateLayout;
     autoIssue: boolean;
     isDefault: boolean;
@@ -216,8 +315,12 @@ export async function createTemplate(
     throw new Error("Link a course to this template to enable auto-issue");
   }
 
+  const batchId =
+    input.courseType === "live" ? input.batchId ?? null : null;
+  await assertBatchMatchesCourse(batchId, input.courseId, input.courseType, orgId);
+
   if (input.isDefault && input.courseId && input.courseType) {
-    await unsetDefaultForCourse(orgId, input.courseId, input.courseType);
+    await unsetDefaultForCourse(orgId, input.courseId, input.courseType, batchId);
   }
 
   const [template] = await db
@@ -227,6 +330,7 @@ export async function createTemplate(
       orgId,
       courseId: input.courseId ?? null,
       courseType: input.courseType ?? null,
+      batchId,
       name: input.name,
       layout: input.layout,
       autoIssue: input.autoIssue,
@@ -240,7 +344,7 @@ export async function createTemplate(
     action: "certificate_template.created",
     entity: "CertificateTemplate",
     entityId: template.id,
-    metadata: { name: input.name },
+    metadata: { name: input.name, batchId },
     ipAddress: actor.ipAddress,
   });
 
@@ -254,6 +358,7 @@ export async function updateTemplate(
     name: string;
     courseId: string | null;
     courseType: "live" | "record" | null;
+    batchId: string | null;
     layout: TemplateLayout;
     autoIssue: boolean;
     isDefault: boolean;
@@ -268,21 +373,36 @@ export async function updateTemplate(
   const nextAutoIssue = input.autoIssue ?? existing.autoIssue;
   const nextCourseId = input.courseId !== undefined ? input.courseId : existing.courseId;
   const nextCourseType = input.courseType !== undefined ? input.courseType : existing.courseType;
+  let nextBatchId = input.batchId !== undefined ? input.batchId : existing.batchId;
+  if (nextCourseType === "record") nextBatchId = null;
   if (nextAutoIssue && (!nextCourseId || !nextCourseType)) {
     throw new Error("Link a course to this template to enable auto-issue");
   }
 
-  if (input.isDefault && (input.courseId ?? existing.courseId)) {
-    await unsetDefaultForCourse(
-      existing.orgId,
-      input.courseId ?? existing.courseId,
-      input.courseType ?? existing.courseType
-    );
+  await assertBatchMatchesCourse(
+    nextBatchId,
+    nextCourseId,
+    nextCourseType,
+    existing.orgId
+  );
+
+  if (input.isDefault && nextCourseId && nextCourseType) {
+    await unsetDefaultForCourse(existing.orgId, nextCourseId, nextCourseType, nextBatchId);
   }
 
   await db
     .update(certificateTemplates)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.courseId !== undefined ? { courseId: input.courseId } : {}),
+      ...(input.courseType !== undefined ? { courseType: input.courseType } : {}),
+      batchId: nextBatchId,
+      ...(input.layout !== undefined ? { layout: input.layout } : {}),
+      ...(input.autoIssue !== undefined ? { autoIssue: input.autoIssue } : {}),
+      ...(input.isDefault !== undefined ? { isDefault: input.isDefault } : {}),
+      ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(certificateTemplates.id, templateId));
 
   await logAction({
@@ -329,8 +449,9 @@ export async function duplicateTemplate(actor: CertActor, templateId: string, ne
     name: newName,
     courseId: existing.courseId ?? undefined,
     courseType: existing.courseType ?? undefined,
+    batchId: existing.batchId,
     layout: cloneLayoutWithNewIds(existing.layout as TemplateLayout),
-    autoIssue: existing.autoIssue,
+    autoIssue: false, // avoid duplicate auto-issue on same batch until admin confirms
     isDefault: false,
   });
   await logAction({
@@ -381,6 +502,7 @@ export async function listTemplates(
       )`,
       orgName: organisations.name,
       creatorName: users.name,
+      batchName: batches.name,
       courseTitle: sql<string | null>`CASE
         WHEN ${certificateTemplates.courseType} = 'live' THEN (
           SELECT title FROM live_courses WHERE id = ${certificateTemplates.courseId}
@@ -394,6 +516,7 @@ export async function listTemplates(
     .from(certificateTemplates)
     .leftJoin(organisations, eq(certificateTemplates.orgId, organisations.id))
     .leftJoin(users, eq(certificateTemplates.createdBy, users.id))
+    .leftJoin(batches, eq(certificateTemplates.batchId, batches.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(certificateTemplates.updatedAt));
 
@@ -403,6 +526,7 @@ export async function listTemplates(
     orgName: r.orgName,
     creatorName: r.creatorName,
     courseTitle: r.courseTitle,
+    batchName: r.batchName,
     isGlobal: r.template.orgId === null,
     canEdit: isSuperAdmin(actor.role) || r.template.orgId === actor.organisationId,
   }));
@@ -421,6 +545,8 @@ export async function issueCertificate(
     courseId: string;
     courseType: "live" | "record";
     enrollmentId?: string;
+    /** When set (auto-issue), certificate is dated on the duration completion day. */
+    issuedAt?: Date;
   }
 ) {
   if (!canManageCerts(actor.role)) throw new Error("Unauthorized");
@@ -526,7 +652,10 @@ export async function issueCertificate(
     orgName = org?.name ?? null;
   }
 
-  let completionDate = formatIssueDate(new Date());
+  const issuedAt =
+    input.issuedAt && input.issuedAt.getTime() <= Date.now() ? input.issuedAt : new Date();
+
+  let completionDate = formatIssueDate(issuedAt);
   const [enrollmentRow] = await db
     .select({ completedAt: studentCourses.completedAt })
     .from(studentCourses)
@@ -534,6 +663,17 @@ export async function issueCertificate(
     .limit(1);
   if (enrollmentRow?.completedAt) {
     completionDate = formatIssueDate(enrollmentRow.completedAt);
+  } else if (input.issuedAt) {
+    completionDate = formatIssueDate(input.issuedAt);
+  } else {
+    const duration = await getCourseDuration(input.courseId, input.courseType);
+    const [enrollDates] = await db
+      .select({ enrolledAt: studentCourses.enrolledAt })
+      .from(studentCourses)
+      .where(eq(studentCourses.id, enrollmentId!))
+      .limit(1);
+    const eligibleAt = getDurationEligibleAt(enrollDates?.enrolledAt, duration);
+    if (eligibleAt) completionDate = formatIssueDate(eligibleAt);
   }
 
   // Final race-safe check before generating PDF/number
@@ -554,7 +694,6 @@ export async function issueCertificate(
   let diskPath = "";
   let url = "";
   const verificationToken = randomUUID();
-  const issuedAt = new Date();
   const verifyUrl = `${getAppUrl()}/verify/${verificationToken}`;
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -625,6 +764,8 @@ export async function issueCertificate(
   }
 
   if (!cert) throw new Error("Failed to issue certificate");
+
+  await markEnrollmentCertificateIssued(enrollmentId!, issuedAt);
 
   let emailError: string | undefined;
   if (student.email) {
@@ -792,6 +933,33 @@ export async function revokeCertificate(
       revokedBy: actor.userId,
     })
     .where(eq(issuedCertificates.id, certificateId));
+
+  if (cert.enrollmentId) {
+    await db
+      .update(studentCourses)
+      .set({
+        certificate: false,
+        certificateIssuedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(studentCourses.id, cert.enrollmentId));
+  } else {
+    await db
+      .update(studentCourses)
+      .set({
+        certificate: false,
+        certificateIssuedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(studentCourses.studentId, cert.studentId),
+          cert.courseType === "live"
+            ? eq(studentCourses.liveCourseId, cert.courseId)
+            : eq(studentCourses.recordCourseId, cert.courseId)
+        )
+      );
+  }
 
   await logAction({
     userId: actor.userId,
@@ -970,13 +1138,32 @@ export async function checkAndAutoIssueForEnrollment(enrollmentId: string) {
     .where(eq(studentCourses.id, enrollmentId))
     .limit(1);
   if (!enrollment || !enrollment.isActive) return false;
+  if (enrollment.status === "revoked" || enrollment.status === "expired") return false;
 
-  const courseId = enrollment.recordCourseId ?? enrollment.liveCourseId;
-  const courseType = enrollment.recordCourseId ? ("record" as const) : ("live" as const);
-  if (!courseId) return false;
+  const courseId = enrollment.liveCourseId ?? enrollment.recordCourseId;
+  const courseType = enrollment.liveCourseId
+    ? ("live" as const)
+    : enrollment.recordCourseId
+      ? ("record" as const)
+      : null;
+  if (!courseId || !courseType) return false;
 
   const duration = await getCourseDuration(courseId, courseType);
-  if (!isEnrollmentDurationComplete(enrollment.enrolledAt, duration)) return false;
+  const hasBatch = courseType === "live" && !!enrollment.batchId;
+  const batchEndDate = hasBatch ? await getBatchEndDate(enrollment.batchId) : null;
+
+  const eligibility = {
+    courseType,
+    enrolledAt: enrollment.enrolledAt,
+    courseDuration: duration,
+    hasBatch,
+    batchEndDate,
+  };
+
+  if (!isCertificateAutoEligible(eligibility)) return false;
+
+  const issueAt = getCertificateAutoIssueTimestamp(eligibility);
+  if (!issueAt) return false;
 
   const [student] = await db
     .select({ organisationId: users.organisationId })
@@ -997,7 +1184,11 @@ export async function checkAndAutoIssueForEnrollment(enrollmentId: string) {
       )
     );
 
-  const template = selectAutoIssueTemplate(templates, student.organisationId);
+  const template = selectAutoIssueTemplate(
+    templates,
+    student.organisationId,
+    enrollment.batchId
+  );
   if (!template) return false;
 
   const existing = await findActiveCertificateForCourse(
@@ -1021,6 +1212,7 @@ export async function checkAndAutoIssueForEnrollment(enrollmentId: string) {
       courseId,
       courseType,
       enrollmentId,
+      issuedAt: issueAt,
     });
     return true;
   } catch (err) {
@@ -1052,31 +1244,27 @@ export async function processPendingAutoIssuances(scopeOrgId?: string | null) {
     .where(and(...templateConditions));
 
   let issued = 0;
-  const durationCache = new Map<string, string | null>();
 
   for (const template of templates) {
     if (!template.courseId || !template.courseType) continue;
-    const cacheKey = `${template.courseType}:${template.courseId}`;
-    let duration = durationCache.get(cacheKey);
-    if (duration === undefined) {
-      duration = await getCourseDuration(template.courseId, template.courseType);
-      durationCache.set(cacheKey, duration);
+
+    const enrollmentConditions = [
+      eq(studentCourses.isActive, true),
+      template.courseType === "live"
+        ? eq(studentCourses.liveCourseId, template.courseId)
+        : eq(studentCourses.recordCourseId, template.courseId),
+    ];
+    // Optional: template limited to one batch
+    if (template.batchId) {
+      enrollmentConditions.push(eq(studentCourses.batchId, template.batchId));
     }
 
     const enrollments = await db
-      .select()
+      .select({ id: studentCourses.id })
       .from(studentCourses)
-      .where(
-        and(
-          eq(studentCourses.isActive, true),
-          template.courseType === "live"
-            ? eq(studentCourses.liveCourseId, template.courseId)
-            : eq(studentCourses.recordCourseId, template.courseId)
-        )
-      );
+      .where(and(...enrollmentConditions));
 
     for (const enrollment of enrollments) {
-      if (!isEnrollmentDurationComplete(enrollment.enrolledAt, duration)) continue;
       const ok = await checkAndAutoIssueForEnrollment(enrollment.id);
       if (ok) issued += 1;
     }
@@ -1120,10 +1308,16 @@ export async function listEnrolledStudentsForCourse(
 
   if (templateId) {
     const [template] = await db
-      .select({ orgId: certificateTemplates.orgId })
+      .select({
+        orgId: certificateTemplates.orgId,
+        batchId: certificateTemplates.batchId,
+      })
       .from(certificateTemplates)
       .where(eq(certificateTemplates.id, templateId))
       .limit(1);
+    if (template?.batchId) {
+      conditions.push(eq(studentCourses.batchId, template.batchId));
+    }
     if (isSuperAdmin(actor.role)) {
       if (template?.orgId === null) {
         // Global template: only direct (non-org) students
@@ -1143,6 +1337,7 @@ export async function listEnrolledStudentsForCourse(
       enrolledAt: studentCourses.enrolledAt,
       completionPercentage: studentCourses.completionPercentage,
       enrollmentId: studentCourses.id,
+      batchId: studentCourses.batchId,
     })
     .from(studentCourses)
     .innerJoin(users, eq(studentCourses.studentId, users.id))
@@ -1163,12 +1358,40 @@ export async function listEnrolledStudentsForCourse(
 
   const hasCert = new Set(existing.map((e) => e.studentId));
   const duration = await getCourseDuration(courseId, courseType);
-  const mapped = students.map((s) => ({
-    ...s,
-    alreadyHasCert: hasCert.has(s.id),
-    durationEligible: isEnrollmentDurationComplete(s.enrolledAt, duration),
-    eligibleAt: getDurationEligibleAt(s.enrolledAt, duration)?.toISOString() ?? null,
-  }));
+
+  const batchIds = [
+    ...new Set(
+      students.map((s) => s.batchId).filter((id): id is string => !!id)
+    ),
+  ];
+  const batchEndById = new Map<string, Date | null>();
+  if (courseType === "live" && batchIds.length > 0) {
+    const batchRows = await db
+      .select({ id: batches.id, endDate: batches.endDate })
+      .from(batches)
+      .where(inArray(batches.id, batchIds));
+    for (const b of batchRows) {
+      batchEndById.set(b.id, b.endDate ? new Date(b.endDate) : null);
+    }
+  }
+
+  const mapped = students.map((s) => {
+    const hasBatch = courseType === "live" && !!s.batchId;
+    const eligibility = {
+      courseType,
+      enrolledAt: s.enrolledAt,
+      courseDuration: duration,
+      hasBatch,
+      batchEndDate: hasBatch ? batchEndById.get(s.batchId!) ?? null : null,
+    };
+    const eligibleAt = getCertificateEligibleAt(eligibility);
+    return {
+      ...s,
+      alreadyHasCert: hasCert.has(s.id),
+      durationEligible: isCertificateAutoEligible(eligibility),
+      eligibleAt: eligibleAt?.toISOString() ?? null,
+    };
+  });
 
   if (options?.eligibleOnly) {
     return mapped.filter((s) => !s.alreadyHasCert);

@@ -188,7 +188,7 @@ function validateAccessTypeForCourse(
   return null;
 }
 
-async function findExistingEnrollment(studentId: string, course: ResolvedCourse) {
+async function findActiveEnrollment(studentId: string, course: ResolvedCourse) {
   const [row] = await db
     .select()
     .from(studentCourses)
@@ -199,6 +199,22 @@ async function findExistingEnrollment(studentId: string, course: ResolvedCourse)
           ? eq(studentCourses.liveCourseId, course.id)
           : eq(studentCourses.recordCourseId, course.id),
         or(eq(studentCourses.status, "active"), eq(studentCourses.status, "paused"))
+      )
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+async function findAnyEnrollment(studentId: string, course: ResolvedCourse) {
+  const [row] = await db
+    .select()
+    .from(studentCourses)
+    .where(
+      and(
+        eq(studentCourses.studentId, studentId),
+        course.type === "live"
+          ? eq(studentCourses.liveCourseId, course.id)
+          : eq(studentCourses.recordCourseId, course.id)
       )
     )
     .limit(1);
@@ -253,8 +269,8 @@ export async function assignCoursesToStudent(
       continue;
     }
 
-    const existing = await findExistingEnrollment(input.studentId, course);
-    if (existing) {
+    const active = await findActiveEnrollment(input.studentId, course);
+    if (active) {
       skipped.push(course.title);
       continue;
     }
@@ -291,7 +307,57 @@ export async function assignCoursesToStudent(
       }
     }
 
+    const prior = await findAnyEnrollment(input.studentId, course);
     try {
+      if (prior) {
+        await db
+          .update(studentCourses)
+          .set({
+            batchId: liveAccess ? input.batchId ?? null : null,
+            organisationId: orgId,
+            assignedBy: actor.userId,
+            accessType: input.accessType,
+            liveAccess,
+            liveAccessFrom: liveAccess ? liveFrom : null,
+            liveAccessUntil: liveAccess ? input.liveAccessUntil ?? null : null,
+            recordedAccess,
+            recordedAccessFrom: recordedAccess ? recordedFrom : null,
+            recordedAccessUntil: recordedAccess ? input.recordedAccessUntil ?? null : null,
+            slotConsumed,
+            isFree: input.isFree,
+            adminNotes: input.adminNotes ?? null,
+            status: "active",
+            isActive: true,
+            revokedAt: null,
+            revokeReason: null,
+            pausedAt: null,
+            pauseReason: null,
+            enrolledAt: now,
+            updatedAt: now,
+          })
+          .where(eq(studentCourses.id, prior.id));
+
+        await logAction({
+          userId: actor.userId,
+          role: actor.role as "super_admin",
+          action: "enrollment.reactivated",
+          entity: "Enrollment",
+          entityId: prior.id,
+          metadata: {
+            studentId: input.studentId,
+            courseId: course.id,
+            courseType: course.type,
+            accessType: input.accessType,
+          },
+          ipAddress: actor.ipAddress,
+        });
+
+        const { checkAndAutoIssueForEnrollment } = await import("@/lib/services/certificate-service");
+        void checkAndAutoIssueForEnrollment(prior.id);
+        enrolled.push(course.title);
+        continue;
+      }
+
       const [row] = await db
         .insert(studentCourses)
         .values({
@@ -376,7 +442,17 @@ export async function updateEnrollment(
   const isActive = status === "active";
 
   if (status === "revoked" && existing.slotConsumed && existing.organisationId) {
-    await freeOneSlot(existing.organisationId, course);
+    // CAS: free seat only if still marked slotConsumed
+    const freed = await db
+      .update(studentCourses)
+      .set({ slotConsumed: false, updatedAt: new Date() })
+      .where(
+        and(eq(studentCourses.id, enrollmentId), eq(studentCourses.slotConsumed, true))
+      )
+      .returning({ id: studentCourses.id });
+    if (freed.length > 0) {
+      await freeOneSlot(existing.organisationId, course);
+    }
   }
 
   await db
@@ -442,7 +518,7 @@ export async function getStudentEnrollmentsRich(
       and(
         eq(studentCourses.studentId, studentId),
         eq(studentCourses.isActive, true),
-        eq(studentCourses.status, "active")
+        or(eq(studentCourses.status, "active"), eq(studentCourses.status, "completed"))
       )
     )
     .orderBy(desc(studentCourses.enrolledAt));
@@ -586,8 +662,8 @@ export async function updateModuleProgress(input: {
       ...(certificateUnlocked && {
         completedAt: now,
         status: "completed" as const,
-        certificate: true,
-        certificateIssuedAt: now,
+        // Keep isActive true so completed courses remain visible/accessible
+        isActive: true,
       }),
       updatedAt: now,
     })

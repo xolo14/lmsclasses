@@ -208,7 +208,9 @@ export function IssueCertificateModal({
                 <>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm text-muted-foreground">
-                      {students.length} student(s) not yet issued
+                      {students.length} student(s) not yet issued. Auto-issue timing: recorded /
+                      live without batch = course duration from assign date; live with batch =
+                      batch end date. You can still issue manually anytime.
                     </p>
                     <Button type="button" size="sm" variant="outline" onClick={selectAll}>
                       Select all

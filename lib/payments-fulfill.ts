@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { payments, slots, coupons, organisations, liveCourses, recordCourses, users } from "@/lib/db/schema";
 import { logAction } from "@/lib/audit";
@@ -15,53 +15,87 @@ export async function fulfillSlotPurchase(
     role?: Role;
     ipAddress?: string | null;
   }
-): Promise<{ ok: true; alreadyProcessed?: boolean } | { ok: false; error: string }> {
-  const [payment] = await db
+): Promise<
+  | { ok: true; alreadyProcessed?: boolean; ignored?: boolean }
+  | { ok: false; error: string }
+> {
+  const [existing] = await db
     .select()
     .from(payments)
     .where(eq(payments.id, paymentId))
     .limit(1);
 
-  if (!payment) {
+  if (!existing) {
     return { ok: false, error: "Payment not found" };
   }
 
-  if (payment.status === "success") {
+  if (existing.status === "success") {
     return { ok: true, alreadyProcessed: true };
   }
 
-  if (!payment.organisationId || !payment.adminId) {
-    return { ok: false, error: "Not an organisation slot purchase" };
+  if (!existing.organisationId || !existing.adminId) {
+    // Public / non-slot payments share this table — do not treat as failure for webhooks
+    return { ok: true, ignored: true };
   }
 
-  const organisationId = payment.organisationId;
-
-  await db
+  // Atomic claim: only one concurrent fulfill wins
+  const claimed = await db
     .update(payments)
     .set({
       status: "success",
       razorpayOrderId: opts.razorpayOrderId,
       razorpayPaymentId: opts.razorpayPaymentId,
     })
-    .where(eq(payments.id, paymentId));
+    .where(and(eq(payments.id, paymentId), eq(payments.status, "pending")))
+    .returning();
+
+  const payment = claimed[0];
+  if (!payment) {
+    const [again] = await db
+      .select({ status: payments.status })
+      .from(payments)
+      .where(eq(payments.id, paymentId))
+      .limit(1);
+    if (again?.status === "success") {
+      return { ok: true, alreadyProcessed: true };
+    }
+    return { ok: false, error: "Payment is not pending" };
+  }
+
+  const organisationId = payment.organisationId!;
 
   if (payment.couponId) {
+    // Enforce maxUses at fulfill time when set
     await db
       .update(coupons)
       .set({
-        usesCount: sql`COALESCE(${coupons.usesCount}, 0) + 1`
+        usesCount: sql`COALESCE(${coupons.usesCount}, 0) + 1`,
       })
-      .where(eq(coupons.id, payment.couponId));
+      .where(
+        and(
+          eq(coupons.id, payment.couponId),
+          sql`(${coupons.maxUses} IS NULL OR COALESCE(${coupons.usesCount}, 0) < ${coupons.maxUses})`
+        )
+      );
   }
 
-  await db.insert(slots).values({
-    organisationId,
-    courseId: payment.liveCourseId ?? null,
-    recordCourseId: payment.recordCourseId ?? null,
-    totalSlots: payment.slotsCount,
-    usedSlots: 0,
-    paymentId: payment.id,
-  });
+  // Idempotent slots insert if a prior crash left payment=success without slots
+  const [existingSlot] = await db
+    .select({ id: slots.id })
+    .from(slots)
+    .where(eq(slots.paymentId, payment.id))
+    .limit(1);
+
+  if (!existingSlot) {
+    await db.insert(slots).values({
+      organisationId,
+      courseId: payment.liveCourseId ?? null,
+      recordCourseId: payment.recordCourseId ?? null,
+      totalSlots: payment.slotsCount,
+      usedSlots: 0,
+      paymentId: payment.id,
+    });
+  }
 
   if (opts.userId && opts.role) {
     await logAction({

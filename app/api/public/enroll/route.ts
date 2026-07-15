@@ -162,28 +162,9 @@ export async function POST(request: Request) {
         student = undefined;
       }
       console.error("[public/enroll] transaction failed:", txErr);
-      try {
-        const [paymentRow] = await db
-          .insert(payments)
-          .values({
-            organisationId: null,
-            liveCourseId: null,
-            recordCourseId: enrolledCourseId,
-            adminId: null,
-            amount,
-            slotsCount: 1,
-            razorpayOrderId: paymentData.razorpayOrderId,
-            razorpayPaymentId: paymentData.razorpayPaymentId,
-            status: "success",
-          })
-          .returning({ id: payments.id });
-        paymentId = paymentRow?.id;
-        paymentRecorded = true;
-      } catch (payErr) {
-        console.error("[public/enroll] payment record failed:", payErr);
-      }
+      // Do NOT insert a success payment without a durable enrollment — leaves dual truth
       return NextResponse.json(
-        { error: "Enrollment failed", paymentRecorded },
+        { error: "Enrollment failed", paymentRecorded: false },
         { status: 500 }
       );
     }

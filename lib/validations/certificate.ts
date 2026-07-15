@@ -83,15 +83,32 @@ export const createTemplateSchema = z.object({
   name: z.string().min(2).max(100),
   courseId: z.string().uuid().optional(),
   courseType: z.enum(["live", "record"]).optional(),
+  batchId: z.string().uuid().optional().nullable(),
   layout: templateLayoutSchema,
   autoIssue: z.boolean(),
   isDefault: z.boolean(),
+}).superRefine((val, ctx) => {
+  if (val.autoIssue && (!val.courseId || !val.courseType)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Link a course to enable auto-issue",
+      path: ["courseId"],
+    });
+  }
+  if (val.courseType === "record" && val.batchId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Recorded courses do not use batches",
+      path: ["batchId"],
+    });
+  }
 });
 
 export const updateTemplateSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   courseId: z.string().uuid().nullable().optional(),
   courseType: z.enum(["live", "record"]).nullable().optional(),
+  batchId: z.string().uuid().nullable().optional(),
   layout: templateLayoutSchema.optional(),
   autoIssue: z.boolean().optional(),
   isDefault: z.boolean().optional(),

@@ -53,6 +53,56 @@ export async function POST(request: Request) {
       return finishApiKeyRequest(ctx, ENDPOINT, ApiKeyErrors.notFound("Lead"), { requestBody: body });
     }
 
+    if (lead.paymentStatus === "completed") {
+      // Allow retry until student is created when auto-create is on
+      if (ctx.apiKey.autoCreateStudent && !lead.studentCreated) {
+        let studentResult: Awaited<ReturnType<typeof createStudentFromLead>> | null = null;
+        try {
+          studentResult = await createStudentFromLead(lead, {
+            ipAddress: ctx.ipAddress,
+            apiKey: ctx.apiKey,
+          });
+        } catch (err) {
+          console.error("[external/payment/confirm] student retry failed:", err);
+          return finishApiKeyRequest(
+            ctx,
+            ENDPOINT,
+            NextResponse.json(
+              {
+                error: "STUDENT_CREATE_FAILED",
+                message: err instanceof Error ? err.message : "Student creation failed",
+                leadId,
+                studentCreated: false,
+              },
+              { status: 500 }
+            ),
+            { requestBody: body, leadId }
+          );
+        }
+        const [finalLead] = await db.select().from(partnerLeads).where(eq(partnerLeads.id, leadId)).limit(1);
+        const response = NextResponse.json({
+          success: true,
+          message: "Payment was already confirmed. Student account created on retry.",
+          leadId,
+          studentCreated: true,
+          loginUrl: studentResult?.loginUrl ?? `${getAppUrl()}/login`,
+          studentUsername: finalLead?.studentUsername ?? studentResult?.username ?? null,
+          ...(studentResult?.lmsId ? { lmsId: studentResult.lmsId } : {}),
+        });
+        return finishApiKeyRequest(ctx, ENDPOINT, response, { requestBody: body, leadId });
+      }
+
+      return finishApiKeyRequest(
+        ctx,
+        ENDPOINT,
+        NextResponse.json(
+          { error: "PAYMENT_ALREADY_PROCESSED", message: `Payment already ${lead.paymentStatus}` },
+          { status: 409 }
+        ),
+        { requestBody: body, leadId }
+      );
+    }
+
     if (lead.paymentStatus !== "pending" && lead.paymentStatus !== "initiated") {
       return finishApiKeyRequest(
         ctx,
@@ -117,6 +167,14 @@ export async function POST(request: Request) {
           { requestBody: body, leadId }
         );
       }
+      if (lead.paymentOrderId && lead.paymentOrderId !== orderId) {
+        return finishApiKeyRequest(
+          ctx,
+          ENDPOINT,
+          ApiKeyErrors.paymentInvalid("Order does not match this lead's payment order"),
+          { requestBody: body, leadId }
+        );
+      }
       if (!verifyRazorpaySignature(orderId, payId, signature)) {
         return finishApiKeyRequest(
           ctx,
@@ -154,11 +212,32 @@ export async function POST(request: Request) {
     let studentCreated = updated!.studentCreated;
     let studentResult: Awaited<ReturnType<typeof createStudentFromLead>> | null = null;
     if (ctx.apiKey.autoCreateStudent && !studentCreated) {
-      studentResult = await createStudentFromLead(updated!, {
-        ipAddress: ctx.ipAddress,
-        apiKey: ctx.apiKey,
-      });
-      studentCreated = true;
+      try {
+        studentResult = await createStudentFromLead(updated!, {
+          ipAddress: ctx.ipAddress,
+          apiKey: ctx.apiKey,
+        });
+        studentCreated = true;
+      } catch (err) {
+        console.error("[external/payment/confirm] student create failed:", err);
+        // Payment stays completed — client can retry confirm to finish student creation
+        return finishApiKeyRequest(
+          ctx,
+          ENDPOINT,
+          NextResponse.json(
+            {
+              success: true,
+              message:
+                "Payment confirmed, but student account creation failed. Retry confirm to create the student.",
+              leadId,
+              studentCreated: false,
+              error: err instanceof Error ? err.message : "Student creation failed",
+            },
+            { status: 200 }
+          ),
+          { requestBody: body, leadId }
+        );
+      }
     }
 
     const [finalLead] = await db.select().from(partnerLeads).where(eq(partnerLeads.id, leadId)).limit(1);

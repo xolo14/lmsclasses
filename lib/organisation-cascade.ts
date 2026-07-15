@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   organisations,
@@ -73,6 +73,42 @@ export async function softDeleteOrganisationCascade(orgId: string, now = new Dat
       .where(and(inArray(classRecordings.batchId, batchIds), isNull(classRecordings.deletedAt)));
   }
 
+  const activeEnrollments = await db
+    .select({
+      id: studentCourses.id,
+      slotConsumed: studentCourses.slotConsumed,
+      organisationId: studentCourses.organisationId,
+      liveCourseId: studentCourses.liveCourseId,
+      recordCourseId: studentCourses.recordCourseId,
+    })
+    .from(studentCourses)
+    .where(
+      and(
+        eq(studentCourses.organisationId, orgId),
+        eq(studentCourses.isActive, true),
+        or(eq(studentCourses.status, "active"), eq(studentCourses.status, "paused"), eq(studentCourses.status, "completed"))
+      )
+    );
+
+  for (const e of activeEnrollments) {
+    if (e.slotConsumed && e.organisationId) {
+      const courseId = e.liveCourseId ?? e.recordCourseId;
+      if (courseId) {
+        const live = !!e.liveCourseId;
+        await db
+          .update(slots)
+          .set({ usedSlots: sql`GREATEST(COALESCE(${slots.usedSlots}, 0) - 1, 0)` })
+          .where(
+            and(
+              eq(slots.organisationId, e.organisationId),
+              live ? eq(slots.courseId, courseId) : eq(slots.recordCourseId, courseId),
+              sql`COALESCE(${slots.usedSlots}, 0) > 0`
+            )
+          );
+      }
+    }
+  }
+
   await db
     .update(studentCourses)
     .set({
@@ -80,9 +116,15 @@ export async function softDeleteOrganisationCascade(orgId: string, now = new Dat
       status: "revoked",
       revokedAt: now,
       revokeReason: ORG_DELETE_REVOKE_REASON,
+      slotConsumed: false,
       updatedAt: now,
     })
-    .where(and(eq(studentCourses.organisationId, orgId), eq(studentCourses.isActive, true)));
+    .where(
+      and(
+        eq(studentCourses.organisationId, orgId),
+        eq(studentCourses.isActive, true)
+      )
+    );
 
   await db
     .update(certificateTemplates)
@@ -90,59 +132,104 @@ export async function softDeleteOrganisationCascade(orgId: string, now = new Dat
     .where(eq(certificateTemplates.orgId, orgId));
 }
 
-/** Restore org and associated soft-deleted related rows. */
+/** Restore org and associated soft-deleted related rows from THIS cascade only. */
 export async function restoreOrganisationCascade(orgId: string) {
+  const [orgRow] = await db
+    .select({
+      adminId: organisations.adminId,
+      deletedAt: organisations.deletedAt,
+    })
+    .from(organisations)
+    .where(eq(organisations.id, orgId))
+    .limit(1);
+
+  const cascadeAt = orgRow?.deletedAt ?? new Date(0);
+
   await db
     .update(organisations)
     .set({ deletedAt: null, isActive: true, updatedAt: new Date() })
     .where(eq(organisations.id, orgId));
 
+  // Only users soft-deleted with/after this org delete
   await db
     .update(users)
     .set({ deletedAt: null, isActive: true, updatedAt: new Date() })
-    .where(eq(users.organisationId, orgId));
+    .where(
+      and(
+        eq(users.organisationId, orgId),
+        isNotNull(users.deletedAt),
+        gte(users.deletedAt, cascadeAt)
+      )
+    );
 
-  const [org] = await db
-    .select({ adminId: organisations.adminId })
-    .from(organisations)
-    .where(eq(organisations.id, orgId))
-    .limit(1);
-  if (org?.adminId) {
+  if (orgRow?.adminId) {
     await db
       .update(users)
       .set({ deletedAt: null, isActive: true, updatedAt: new Date() })
-      .where(eq(users.id, org.adminId));
+      .where(
+        and(
+          eq(users.id, orgRow.adminId),
+          isNotNull(users.deletedAt),
+          gte(users.deletedAt, cascadeAt)
+        )
+      );
   }
 
   await db
     .update(coupons)
     .set({ deletedAt: null, isActive: true, updatedAt: new Date() })
-    .where(eq(coupons.organisationId, orgId));
+    .where(
+      and(
+        eq(coupons.organisationId, orgId),
+        isNotNull(coupons.deletedAt),
+        gte(coupons.deletedAt, cascadeAt)
+      )
+    );
 
   const orgBatches = await db
     .select({ id: batches.id })
     .from(batches)
-    .where(eq(batches.organisationId, orgId));
+    .where(
+      and(
+        eq(batches.organisationId, orgId),
+        isNotNull(batches.deletedAt),
+        gte(batches.deletedAt, cascadeAt)
+      )
+    );
   const batchIds = orgBatches.map((b) => b.id);
 
   if (batchIds.length > 0) {
     await db.update(batches).set({ deletedAt: null }).where(inArray(batches.id, batchIds));
-    await db.update(liveClasses).set({ deletedAt: null }).where(inArray(liveClasses.batchId, batchIds));
+    await db
+      .update(liveClasses)
+      .set({ deletedAt: null })
+      .where(
+        and(
+          inArray(liveClasses.batchId, batchIds),
+          isNotNull(liveClasses.deletedAt),
+          gte(liveClasses.deletedAt, cascadeAt)
+        )
+      );
     await db
       .update(classRecordings)
       .set({ deletedAt: null })
-      .where(inArray(classRecordings.batchId, batchIds));
+      .where(
+        and(
+          inArray(classRecordings.batchId, batchIds),
+          isNotNull(classRecordings.deletedAt),
+          gte(classRecordings.deletedAt, cascadeAt)
+        )
+      );
   }
 
-  await db
-    .update(studentCourses)
-    .set({
-      isActive: true,
-      status: "active",
-      revokedAt: null,
-      revokeReason: null,
-      updatedAt: new Date(),
+  // Restore only enrollments revoked by this org delete; preserve completed if they had progress/cert
+  const toRestore = await db
+    .select({
+      id: studentCourses.id,
+      completedAt: studentCourses.completedAt,
+      certificate: studentCourses.certificate,
     })
+    .from(studentCourses)
     .where(
       and(
         eq(studentCourses.organisationId, orgId),
@@ -150,10 +237,31 @@ export async function restoreOrganisationCascade(orgId: string) {
       )
     );
 
+  for (const row of toRestore) {
+    const wasCompleted = !!row.completedAt || row.certificate;
+    await db
+      .update(studentCourses)
+      .set({
+        isActive: true,
+        status: wasCompleted ? "completed" : "active",
+        revokedAt: null,
+        revokeReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(studentCourses.id, row.id));
+  }
+
+  // Only re-activate templates deactivated during this cascade (updatedAt >= cascadeAt)
   await db
     .update(certificateTemplates)
     .set({ isActive: true, updatedAt: new Date() })
-    .where(eq(certificateTemplates.orgId, orgId));
+    .where(
+      and(
+        eq(certificateTemplates.orgId, orgId),
+        eq(certificateTemplates.isActive, false),
+        gte(certificateTemplates.updatedAt, cascadeAt)
+      )
+    );
 }
 
 /** Clear FKs and permanently delete users (students/managers/mentors/org admins). */
@@ -234,14 +342,12 @@ export async function hardDeleteUsers(userIds: string[]) {
     .set({ revokedBy: null })
     .where(inArray(issuedCertificates.revokedBy, userIds));
 
-  const orphanTemplates = await db
-    .select({ id: certificateTemplates.id })
-    .from(certificateTemplates)
-    .where(inArray(certificateTemplates.createdBy, userIds));
-  if (orphanTemplates.length > 0) {
-    const templateIds = orphanTemplates.map((t) => t.id);
-    await db.delete(issuedCertificates).where(inArray(issuedCertificates.templateId, templateIds));
-    await db.delete(certificateTemplates).where(inArray(certificateTemplates.id, templateIds));
+  // Reassign template authorship — do not delete org/global templates owned by purged users
+  if (superAdmin && !userIds.includes(superAdmin.id)) {
+    await db
+      .update(certificateTemplates)
+      .set({ createdBy: superAdmin.id, updatedAt: new Date() })
+      .where(inArray(certificateTemplates.createdBy, userIds));
   }
 
   await db.delete(users).where(inArray(users.id, userIds));
@@ -295,6 +401,10 @@ export async function hardDeleteOrganisations(orgIds: string[]) {
   await db.delete(coupons).where(inArray(coupons.organisationId, orgIds));
 
   if (batchIds.length > 0) {
+    await db
+      .update(certificateTemplates)
+      .set({ batchId: null, updatedAt: new Date() })
+      .where(inArray(certificateTemplates.batchId, batchIds));
     await db.delete(batches).where(inArray(batches.id, batchIds));
   }
 

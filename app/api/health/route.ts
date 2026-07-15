@@ -212,5 +212,9 @@ export async function GET() {
       phoneNumberIdSet: whatsapp.phoneNumberIdSet,
       apiVersion: whatsapp.apiVersion,
     },
+    cron: {
+      secretSet: !!process.env.CRON_SECRET?.trim(),
+      certificateAutoIssuePath: "/api/cron/certificate-auto-issue",
+    },
   });
 }

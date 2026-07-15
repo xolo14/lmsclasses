@@ -44,6 +44,12 @@ export function trashCutoffDate(): Date {
 async function hardDeleteBatches(batchIds: string[]) {
   if (batchIds.length === 0) return;
 
+  // Templates may reference batch_id
+  await db
+    .update(certificateTemplates)
+    .set({ batchId: null, updatedAt: new Date() })
+    .where(inArray(certificateTemplates.batchId, batchIds));
+
   const classRows = await db
     .select({ id: liveClasses.id })
     .from(liveClasses)
@@ -56,6 +62,8 @@ async function hardDeleteBatches(batchIds: string[]) {
 
   await db.delete(classRecordings).where(inArray(classRecordings.batchId, batchIds));
   await db.delete(liveClasses).where(inArray(liveClasses.batchId, batchIds));
+  // Keep batchEndDate eligibility stable: freeze by leaving a snapshot is hard;
+  // clear batchId but auto-issue ignores soft-deleted batch end dates already.
   await db
     .update(studentCourses)
     .set({ batchId: null })
@@ -71,6 +79,10 @@ async function hardDeleteLiveClasses(classIds: string[]) {
 
 async function hardDeleteLiveCourses(courseIds: string[]) {
   if (courseIds.length === 0) return;
+
+  // Certs before enrollments (enrollment_id FK)
+  await db.delete(issuedCertificates).where(inArray(issuedCertificates.courseId, courseIds));
+  await db.delete(certificateTemplates).where(inArray(certificateTemplates.courseId, courseIds));
 
   const courseBatches = await db
     .select({ id: batches.id })
@@ -89,14 +101,15 @@ async function hardDeleteLiveCourses(courseIds: string[]) {
   await db.delete(studentCourses).where(inArray(studentCourses.liveCourseId, courseIds));
   await db.delete(slots).where(inArray(slots.courseId, courseIds));
   await db.update(payments).set({ liveCourseId: null }).where(inArray(payments.liveCourseId, courseIds));
-  await db.delete(issuedCertificates).where(inArray(issuedCertificates.courseId, courseIds));
-  await db.delete(certificateTemplates).where(inArray(certificateTemplates.courseId, courseIds));
 
   await db.delete(liveCourses).where(inArray(liveCourses.id, courseIds));
 }
 
 async function hardDeleteRecordCourses(courseIds: string[]) {
   if (courseIds.length === 0) return;
+
+  await db.delete(issuedCertificates).where(inArray(issuedCertificates.courseId, courseIds));
+  await db.delete(certificateTemplates).where(inArray(certificateTemplates.courseId, courseIds));
 
   await db.delete(courseRecordings).where(inArray(courseRecordings.recordCourseId, courseIds));
   await db.delete(studentCourses).where(inArray(studentCourses.recordCourseId, courseIds));
@@ -106,8 +119,6 @@ async function hardDeleteRecordCourses(courseIds: string[]) {
     .set({ recordCourseId: null })
     .where(inArray(payments.recordCourseId, courseIds));
   await db.update(apiKeys).set({ courseId: null }).where(inArray(apiKeys.courseId, courseIds));
-  await db.delete(issuedCertificates).where(inArray(issuedCertificates.courseId, courseIds));
-  await db.delete(certificateTemplates).where(inArray(certificateTemplates.courseId, courseIds));
 
   await db.delete(recordCourses).where(inArray(recordCourses.id, courseIds));
 }

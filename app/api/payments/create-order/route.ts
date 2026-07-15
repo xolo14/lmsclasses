@@ -145,23 +145,32 @@ export async function POST(request: Request) {
       couponId = coupon.id;
     }
 
-    // BUG FIX: idempotency — reuse pending order within 60s for same org+course+amount
+    const amountKey = finalAmount.toFixed(2);
+
+    // Idempotency — reuse pending only for same org+course+amount+slots+coupon within 60s
+    // Never reuse zero-amount rows across different slot counts
     const sixtySecondsAgo = new Date(Date.now() - 60_000);
+    const pendingConditions = [
+      eq(payments.organisationId, organisationId),
+      courseType === "record"
+        ? eq(payments.recordCourseId, courseId)
+        : eq(payments.liveCourseId, courseId),
+      eq(payments.status, "pending"),
+      eq(payments.amount, amountKey),
+      eq(payments.slotsCount, slotsCount),
+      gte(payments.createdAt, sixtySecondsAgo),
+      isNull(payments.razorpayPaymentId),
+    ];
+    if (couponId) {
+      pendingConditions.push(eq(payments.couponId, couponId));
+    } else {
+      pendingConditions.push(isNull(payments.couponId));
+    }
+
     const [recentPending] = await db
       .select()
       .from(payments)
-      .where(
-        and(
-          eq(payments.organisationId, organisationId),
-          courseType === "record"
-            ? eq(payments.recordCourseId, courseId)
-            : eq(payments.liveCourseId, courseId),
-          eq(payments.status, "pending"),
-          eq(payments.amount, finalAmount.toString()),
-          gte(payments.createdAt, sixtySecondsAgo),
-          isNull(payments.razorpayPaymentId)
-        )
-      )
+      .where(and(...pendingConditions))
       .limit(1);
 
     let payment = recentPending ?? null;
@@ -173,10 +182,10 @@ export async function POST(request: Request) {
           liveCourseId: courseType === "live" ? courseId : null,
           recordCourseId: courseType === "record" ? courseId : null,
           adminId: session!.user.id,
-          amount: finalAmount.toString(),
+          amount: amountKey,
           slotsCount,
           couponId,
-          discountAmount: discountAmount > 0 ? discountAmount.toString() : null,
+          discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
           status: "pending",
         })
         .returning();

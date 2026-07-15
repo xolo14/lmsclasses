@@ -1181,46 +1181,46 @@ export async function DELETEStudent(request: Request, id: string) {
         liveCourseId: studentCourses.liveCourseId,
         recordCourseId: studentCourses.recordCourseId,
         organisationId: studentCourses.organisationId,
+        slotConsumed: studentCourses.slotConsumed,
       })
       .from(studentCourses)
       .where(and(eq(studentCourses.studentId, id), eq(studentCourses.isActive, true)));
 
     for (const enrollment of activeEnrollments) {
-      if (enrollment.organisationId && enrollment.liveCourseId) {
-        const orgSlots = await db
-          .select()
-          .from(slots)
+      if (!enrollment.slotConsumed || !enrollment.organisationId) continue;
+
+      const claimed = await db
+        .update(studentCourses)
+        .set({ slotConsumed: false, updatedAt: new Date() })
+        .where(
+          and(eq(studentCourses.id, enrollment.id), eq(studentCourses.slotConsumed, true))
+        )
+        .returning({ id: studentCourses.id });
+      if (claimed.length === 0) continue;
+
+      if (enrollment.liveCourseId) {
+        await db
+          .update(slots)
+          .set({ usedSlots: sql`GREATEST(COALESCE(${slots.usedSlots}, 0) - 1, 0)` })
           .where(
             and(
               eq(slots.organisationId, enrollment.organisationId),
-              eq(slots.courseId, enrollment.liveCourseId)
+              eq(slots.courseId, enrollment.liveCourseId),
+              sql`COALESCE(${slots.usedSlots}, 0) > 0`
             )
           );
-        const slotToDecrement = orgSlots.find((s) => (s.usedSlots ?? 0) > 0);
-        if (slotToDecrement) {
-          await db
-            .update(slots)
-            .set({ usedSlots: (slotToDecrement.usedSlots ?? 0) - 1 })
-            .where(eq(slots.id, slotToDecrement.id));
-        }
       }
-      if (enrollment.organisationId && enrollment.recordCourseId) {
-        const orgSlots = await db
-          .select()
-          .from(slots)
+      if (enrollment.recordCourseId) {
+        await db
+          .update(slots)
+          .set({ usedSlots: sql`GREATEST(COALESCE(${slots.usedSlots}, 0) - 1, 0)` })
           .where(
             and(
               eq(slots.organisationId, enrollment.organisationId),
-              eq(slots.recordCourseId, enrollment.recordCourseId)
+              eq(slots.recordCourseId, enrollment.recordCourseId),
+              sql`COALESCE(${slots.usedSlots}, 0) > 0`
             )
           );
-        const slotToDecrement = orgSlots.find((s) => (s.usedSlots ?? 0) > 0);
-        if (slotToDecrement) {
-          await db
-            .update(slots)
-            .set({ usedSlots: (slotToDecrement.usedSlots ?? 0) - 1 })
-            .where(eq(slots.id, slotToDecrement.id));
-        }
       }
     }
 

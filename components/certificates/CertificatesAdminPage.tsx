@@ -26,6 +26,8 @@ type TemplateRow = {
   courseId: string | null;
   courseType: string | null;
   courseTitle?: string | null;
+  batchId?: string | null;
+  batchName?: string | null;
   orgName: string | null;
   autoIssue: boolean;
   isDefault: boolean;
@@ -111,6 +113,11 @@ export function CertificatesAdminPage({ portal }: { portal: "super-admin" | "org
           : row.original.courseId
             ? `${row.original.courseType}`
             : "General",
+    },
+    {
+      accessorKey: "batchName",
+      header: "Batch",
+      cell: ({ row }) => row.original.batchName ?? "—",
     },
     {
       accessorKey: "orgName",

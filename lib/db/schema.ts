@@ -354,7 +354,7 @@ export const studentCourses = pgTable("student_courses", {
   completionPercentage: integer("completion_percentage").notNull().default(0),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 
-  slotConsumed: boolean("slot_consumed").notNull().default(true),
+  slotConsumed: boolean("slot_consumed").notNull().default(false),
   paymentId: text("payment_id"),
   isFree: boolean("is_free").notNull().default(false),
 
@@ -799,6 +799,8 @@ export const certificateTemplates = pgTable(
     orgId: uuid("org_id").references(() => organisations.id),
     courseId: uuid("course_id"),
     courseType: courseTypeEnum("course_type"),
+    /** Live auto-issue is scoped to this batch when set; null = whole course. Timing uses each student's batch/assign rules. */
+    batchId: uuid("batch_id").references(() => batches.id),
     name: text("name").notNull(),
     isDefault: boolean("is_default").notNull().default(false),
     layout: jsonb("layout").notNull().$type<import("@/lib/types/certificate").TemplateLayout>(),
@@ -810,6 +812,7 @@ export const certificateTemplates = pgTable(
   (t) => ({
     idxOrg: index("idx_cert_tmpl_org").on(t.orgId),
     idxCourse: index("idx_cert_tmpl_course").on(t.courseId),
+    idxBatch: index("idx_cert_tmpl_batch").on(t.batchId),
     idxCreatedBy: index("idx_cert_tmpl_creator").on(t.createdBy),
   })
 );

@@ -22,27 +22,103 @@ export function parseCourseDurationMs(duration: string | null | undefined): numb
   return null;
 }
 
-export function getEnrollmentStartDate(enrolledAt: Date | null | undefined): Date {
-  return enrolledAt ? new Date(enrolledAt) : new Date();
+/** Product timezone for “issue on the day of …” (IST). */
+export const CERT_CALENDAR_TZ = "Asia/Kolkata";
+
+/** Calendar day key YYYY-MM-DD in the product timezone. */
+export function toDateKey(d: Date, timeZone = CERT_CALENDAR_TZ): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 }
 
-/** True when enrolledAt + course duration has passed. False if duration is missing/unparseable. */
-export function isEnrollmentDurationComplete(
-  enrolledAt: Date | null | undefined,
-  duration: string | null | undefined,
-  now = new Date()
-): boolean {
-  const ms = parseCourseDurationMs(duration);
-  if (ms === null) return false;
-  const start = getEnrollmentStartDate(enrolledAt);
-  return now.getTime() >= start.getTime() + ms;
+/** @deprecated use toDateKey — kept for callers that meant UTC */
+export function toUtcDateKey(d: Date): string {
+  return toDateKey(d, "UTC");
+}
+
+export function getEnrollmentStartDate(enrolledAt: Date | null | undefined): Date | null {
+  if (!enrolledAt) return null;
+  return new Date(enrolledAt);
 }
 
 export function getDurationEligibleAt(
   enrolledAt: Date | null | undefined,
   duration: string | null | undefined
 ): Date | null {
+  const start = getEnrollmentStartDate(enrolledAt);
+  if (!start) return null;
   const ms = parseCourseDurationMs(duration);
   if (ms === null) return null;
-  return new Date(getEnrollmentStartDate(enrolledAt).getTime() + ms);
+  return new Date(start.getTime() + ms);
+}
+
+export type CertificateEligibilityInput = {
+  courseType: "live" | "record";
+  enrolledAt: Date | null | undefined;
+  courseDuration: string | null | undefined;
+  /** Set when live enrollment has a batch assigned. */
+  hasBatch?: boolean;
+  /** batch.endDate — required for live+batch auto-issue. */
+  batchEndDate?: Date | null;
+};
+
+/**
+ * Recorded / live without batch: enrolledAt + course duration.
+ * Live with batch: batch end date only (no duration fallback).
+ */
+export function getCertificateEligibleAt(input: CertificateEligibilityInput): Date | null {
+  if (input.courseType === "live" && input.hasBatch) {
+    if (!input.batchEndDate) return null; // batch assigned but no end date → wait
+    return new Date(input.batchEndDate);
+  }
+  return getDurationEligibleAt(input.enrolledAt, input.courseDuration);
+}
+
+export function isCertificateAutoEligible(
+  input: CertificateEligibilityInput,
+  now = new Date()
+): boolean {
+  const eligibleAt = getCertificateEligibleAt(input);
+  if (!eligibleAt) return false;
+  // Instant comparison — do not issue before the full duration / batch end elapses
+  return now.getTime() >= eligibleAt.getTime();
+}
+
+/** Issue timestamp = completion-day instant (not cron run time). */
+export function getCertificateAutoIssueTimestamp(
+  input: CertificateEligibilityInput,
+  now = new Date()
+): Date | null {
+  const eligibleAt = getCertificateEligibleAt(input);
+  if (!eligibleAt) return null;
+  if (now.getTime() < eligibleAt.getTime()) return null;
+  return eligibleAt;
+}
+
+/** @deprecated use isCertificateAutoEligible */
+export function isEnrollmentDurationComplete(
+  enrolledAt: Date | null | undefined,
+  duration: string | null | undefined,
+  now = new Date()
+): boolean {
+  return isCertificateAutoEligible(
+    { courseType: "record", enrolledAt, courseDuration: duration },
+    now
+  );
+}
+
+/** @deprecated use getCertificateAutoIssueTimestamp */
+export function getAutoIssueTimestamp(
+  enrolledAt: Date | null | undefined,
+  duration: string | null | undefined,
+  now = new Date()
+): Date | null {
+  return getCertificateAutoIssueTimestamp(
+    { courseType: "record", enrolledAt, courseDuration: duration },
+    now
+  );
 }

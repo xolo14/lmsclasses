@@ -30,6 +30,7 @@ type BuilderState = {
   name: string;
   courseId: string;
   courseType: "" | "live" | "record";
+  batchId: string;
   autoIssue: boolean;
   isDefault: boolean;
 };
@@ -183,6 +184,7 @@ export function TemplateBuilder({
     layout: TemplateLayout;
     courseId?: string | null;
     courseType?: "live" | "record" | null;
+    batchId?: string | null;
     autoIssue: boolean;
     isDefault: boolean;
   };
@@ -204,11 +206,13 @@ export function TemplateBuilder({
     name: initial?.name ?? "",
     courseId: initial?.courseId ?? "",
     courseType: initial?.courseType ?? "",
+    batchId: initial?.batchId ?? "",
     autoIssue: initial?.autoIssue ?? false,
     isDefault: initial?.isDefault ?? false,
   });
 
   const [courses, setCourses] = useState<CourseOption[]>([]);
+  const [batchOptions, setBatchOptions] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bgUploading, setBgUploading] = useState(false);
@@ -238,6 +242,27 @@ export function TemplateBuilder({
     void loadCourses();
   }, [loadCourses]);
 
+  useEffect(() => {
+    if (state.courseType !== "live" || !state.courseId) {
+      setBatchOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void fetch(`/api/batches?courseId=${encodeURIComponent(state.courseId)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const rows = Array.isArray(data) ? data : [];
+        setBatchOptions(rows.map((b: { id: string; name: string }) => ({ id: b.id, name: b.name })));
+      })
+      .catch(() => {
+        if (!cancelled) setBatchOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.courseId, state.courseType]);
+
   const selected = state.layout.elements.find((el) => el.id === state.selectedId);
 
   const scale = 0.55;
@@ -248,6 +273,10 @@ export function TemplateBuilder({
       setError("Template name must be at least 2 characters.");
       return;
     }
+    if (state.autoIssue && (!state.courseId || !state.courseType)) {
+      setError("Link a course to enable auto-issue.");
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload = {
@@ -255,6 +284,7 @@ export function TemplateBuilder({
       layout: state.layout,
       courseId: state.courseId || undefined,
       courseType: state.courseType || undefined,
+      batchId: state.courseType === "live" ? state.batchId || null : null,
       autoIssue: state.autoIssue,
       isDefault: state.isDefault,
     };
@@ -400,10 +430,12 @@ export function TemplateBuilder({
                 if (v === "none") {
                   dispatch({ type: "SET_FIELD", field: "courseId", value: "" });
                   dispatch({ type: "SET_FIELD", field: "courseType", value: "" });
+                  dispatch({ type: "SET_FIELD", field: "batchId", value: "" });
                 } else {
                   const [type, id] = v.split(":");
                   dispatch({ type: "SET_FIELD", field: "courseId", value: id });
                   dispatch({ type: "SET_FIELD", field: "courseType", value: type });
+                  dispatch({ type: "SET_FIELD", field: "batchId", value: "" });
                 }
               }}
               onOpenChange={(open) => open && courses.length === 0 && void loadCourses()}
@@ -419,21 +451,66 @@ export function TemplateBuilder({
               </SelectContent>
             </Select>
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          {state.courseType === "live" && state.courseId && (
+            <div className="space-y-2">
+              <Label>Limit to batch (optional)</Label>
+              <Select
+                value={state.batchId || "none"}
+                onValueChange={(v) =>
+                  dispatch({ type: "SET_FIELD", field: "batchId", value: v === "none" ? "" : v })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All batches for this course" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">All batches / no batch filter</SelectItem>
+                  {batchOptions.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Leave empty to auto-issue for the whole course. Timing still depends on each
+                student: no batch → duration from assign date; with batch → batch end date.
+              </p>
+            </div>
+          )}
+          <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
+              className="mt-1"
               checked={state.autoIssue}
               onChange={(e) => dispatch({ type: "SET_FIELD", field: "autoIssue", value: e.target.checked })}
             />
-            Auto-issue after course duration from enrollment date
+            <span>
+              <span className="font-medium">Auto-create &amp; issue certificates</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">
+                <strong>Recorded:</strong> on the day course duration ends from assign date
+                (course must have a parseable duration, e.g. &quot;8 weeks&quot;).
+                <br />
+                <strong>Live (no batch):</strong> same — duration from assign date.
+                <br />
+                <strong>Live (with batch):</strong> on the batch <em>end date</em> only —
+                set an end date on the batch or certificates will not auto-issue.
+              </span>
+            </span>
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
+              className="mt-1"
               checked={state.isDefault}
               onChange={(e) => dispatch({ type: "SET_FIELD", field: "isDefault", value: e.target.checked })}
             />
-            Default for course
+            <span>
+              <span className="font-medium">Default template for this course</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">
+                Preferred when multiple auto-issue templates exist for the same course.
+              </span>
+            </span>
           </label>
           <div className="space-y-2 border-t border-border pt-3">
             <Label>Add elements</Label>

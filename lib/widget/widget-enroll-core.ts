@@ -235,6 +235,16 @@ export async function processWidgetPaymentCallback(
 
   const failureStatus = data.status;
   if (failureStatus === "failed" || failureStatus === "cancelled") {
+    // Never downgrade a completed payment (out-of-order client callbacks)
+    if (lead.paymentStatus === "completed") {
+      const redirectPath = ctx.apiKey.redirectOnSuccess ?? "/login";
+      return widgetJson(ctx, request, {
+        success: true,
+        redirectUrl: resolveRedirectUrl(redirectPath),
+        message: "Enrollment already confirmed.",
+      });
+    }
+
     await db
       .update(widgetLeads)
       .set({
@@ -242,7 +252,13 @@ export async function processWidgetPaymentCallback(
         failureReason: data.error_description ?? failureStatus,
         updatedAt: new Date(),
       })
-      .where(eq(widgetLeads.id, lead.id));
+      .where(
+        and(
+          eq(widgetLeads.id, lead.id),
+          // Only allow initiated → failed/cancelled
+          eq(widgetLeads.paymentStatus, "initiated")
+        )
+      );
 
     await logWidgetEvent({
       apiKey: ctx.apiKey,
@@ -295,6 +311,19 @@ export async function processWidgetPaymentCallback(
     );
   }
 
+  // Bind confirm to the order that was created for this lead
+  if (lead.razorpayOrderId && lead.razorpayOrderId !== orderId) {
+    return widgetJson(
+      ctx,
+      request,
+      {
+        error: "PAYMENT_INVALID",
+        message: "Order does not match this lead's payment order",
+      },
+      400
+    );
+  }
+
   const [course] = await db
     .select({ price: recordCourses.price })
     .from(recordCourses)
@@ -327,9 +356,9 @@ export async function processWidgetPaymentCallback(
     .where(eq(widgetLeads.id, lead.id))
     .limit(1);
 
-  let studentCreated = false;
+  let studentCreated = !!updatedLead?.convertedToStudent;
   let conversionError: string | null = null;
-  if (ctx.apiKey.autoCreateStudent) {
+  if (ctx.apiKey.autoCreateStudent && !studentCreated) {
     try {
       await createStudentFromWidgetLead(updatedLead!, {
         ipAddress: ctx.ipAddress,
