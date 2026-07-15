@@ -26,6 +26,9 @@ export async function POST(
 ) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.user.role !== "super_admin" && session.user.role !== "org_admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const { id } = await context.params;
   try {
     await resendCertificateEmail(await getActor(session), id);
@@ -41,6 +44,9 @@ export async function PATCH(
 ) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.user.role !== "super_admin" && session.user.role !== "org_admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const { id } = await context.params;
   const body = await request.json();
   const parsed = revokeCertificateSchema.safeParse(body);

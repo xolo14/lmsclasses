@@ -29,6 +29,7 @@ import { sendOrgAdminWelcomeEmail,
 } from "@/lib/email";
 import { notifyStudentsLiveClassMeetingLink } from "@/lib/live-class-whatsapp";
 import { generatePassword, generateLmsId } from "@/lib/razorpay";
+import { softDeleteOrganisationCascade } from "@/lib/organisation-cascade";
 
 /** Remove a partially created student if enrollment or slot steps fail (HTTP driver has no transactions). */
 async function rollbackNewStudent(studentId: string) {
@@ -267,18 +268,7 @@ export async function DELETEOrganisation(request: Request, id: string) {
     return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
   }
 
-  const now = new Date();
-  await db
-    .update(organisations)
-    .set({ isActive: false, deletedAt: now, updatedAt: now })
-    .where(eq(organisations.id, id));
-
-  if (existing.adminId) {
-    await db
-      .update(users)
-      .set({ isActive: false, deletedAt: now, updatedAt: now })
-      .where(eq(users.id, existing.adminId));
-  }
+  await softDeleteOrganisationCascade(id);
 
   await logAction({
     userId: session!.user.id,

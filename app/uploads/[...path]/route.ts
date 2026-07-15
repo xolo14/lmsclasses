@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
-import { resolveUploadDiskPath } from "@/lib/uploads";
+import { resolveUploadDiskPath, refreshUploadsRootDir } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
@@ -21,6 +21,14 @@ export async function GET(
   context: { params: Promise<{ path: string[] }> }
 ) {
   const { path: segments } = await context.params;
+  const category = segments?.[0];
+  // Private categories — only via authenticated API routes (e.g. certificate download)
+  if (category === "certificates" || category === "resumes") {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
+  // Align read root with write path (may have fallen back to ./uploads)
+  await refreshUploadsRootDir();
   const diskPath = resolveUploadDiskPath(segments ?? []);
   if (!diskPath) {
     return new NextResponse("Not found", { status: 404 });

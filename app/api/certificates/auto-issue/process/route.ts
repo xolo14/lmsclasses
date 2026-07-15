@@ -13,12 +13,14 @@ export async function POST() {
   if (session.user.role !== "super_admin" && session.user.role !== "org_admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (session.user.role === "org_admin") {
-    await resolveOrganisationId(session);
-  }
 
   try {
-    const result = await processPendingAutoIssuances();
+    const scopeOrgId =
+      session.user.role === "org_admin" ? await resolveOrganisationId(session) : null;
+    if (session.user.role === "org_admin" && !scopeOrgId) {
+      return NextResponse.json({ error: "Organisation not found" }, { status: 400 });
+    }
+    const result = await processPendingAutoIssuances(scopeOrgId);
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

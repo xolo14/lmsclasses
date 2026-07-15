@@ -17,9 +17,14 @@ type Course = {
   description: string;
   price: string;
   demoUrl?: string | null;
+  demoVideoUrl?: string | null;
   isActive: boolean;
   enrolledCount: number;
 };
+
+function courseDemoUrl(c: Pick<Course, "demoUrl" | "demoVideoUrl">) {
+  return (c.demoVideoUrl || c.demoUrl || "").trim();
+}
 
 interface DemosPageProps {
   /** Org admin: live courses only. Super admin: all course types. */
@@ -59,7 +64,9 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
     },
   });
 
-  const demoCourses = courses.filter((c) => c.demoUrl && c.demoUrl.trim().length > 0);
+  const demoCourses = courses
+    .map((c) => ({ ...c, demoUrl: courseDemoUrl(c) || null }))
+    .filter((c) => c.demoUrl);
 
   useEffect(() => {
     if (demoCourses.length > 0 && !selectedCourse) {

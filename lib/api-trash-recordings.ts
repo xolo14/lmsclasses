@@ -31,7 +31,11 @@ export async function GETTrash() {
   const { error } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
-  await purgeExpiredTrash();
+  try {
+    await purgeExpiredTrash();
+  } catch (err) {
+    console.error("[trash] purgeExpiredTrash failed:", err);
+  }
 
   const [orgs, liveCourseRows, recordCourseRows, batchRows, liveRows, recordingRows, students, managers, mentors, couponRows] =
     await Promise.all([
@@ -129,6 +133,9 @@ export async function POSTTrashRestore(request: Request) {
     await db.update(studentCourses).set({ isActive: true }).where(eq(studentCourses.studentId, id));
   } else if (entityType === "manager" || entityType === "mentor") {
     await db.update(users).set({ deletedAt: null, isActive: true }).where(eq(users.id, id));
+  } else if (entityType === "organisation") {
+    const { restoreOrganisationCascade } = await import("@/lib/organisation-cascade");
+    await restoreOrganisationCascade(id);
   } else if (entityType in TRASH_TABLES) {
     const key = entityType as keyof typeof TRASH_TABLES;
     const { table, id: idCol } = TRASH_TABLES[key];
@@ -138,20 +145,6 @@ export async function POSTTrashRestore(request: Request) {
     }
     if (entityType === "record_course") {
       await db.update(recordCourses).set({ isActive: true }).where(eq(recordCourses.id, id));
-    }
-    if (entityType === "organisation") {
-      await db.update(organisations).set({ isActive: true }).where(eq(organisations.id, id));
-      const [org] = await db
-        .select({ adminId: organisations.adminId })
-        .from(organisations)
-        .where(eq(organisations.id, id))
-        .limit(1);
-      if (org?.adminId) {
-        await db
-          .update(users)
-          .set({ deletedAt: null, isActive: true })
-          .where(eq(users.id, org.adminId));
-      }
     }
     if (entityType === "coupon") {
       await db.update(coupons).set({ isActive: true }).where(eq(coupons.id, id));
@@ -176,7 +169,13 @@ export async function DELETETrashClearAll(request: Request) {
   const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
-  await clearAllTrashImmediate();
+  try {
+    await clearAllTrashImmediate();
+  } catch (err) {
+    console.error("[trash] clearAllTrashImmediate failed:", err);
+    const message = err instanceof Error ? err.message : "Failed to clear trash";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 
   await logAction({
     userId: session!.user.id,

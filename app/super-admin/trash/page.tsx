@@ -28,31 +28,53 @@ type TrashItem = {
 export default function TrashPage() {
   const queryClient = useQueryClient();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<{ items: TrashItem[]; retentionDays: number }>({
     queryKey: ["trash"],
-    queryFn: () => fetch("/api/trash").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/trash");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `Failed to load trash (${res.status})`);
+      }
+      return res.json();
+    },
   });
 
   const restore = useMutation({
-    mutationFn: (item: TrashItem) =>
-      fetch("/api/trash", {
+    mutationFn: async (item: TrashItem) => {
+      const res = await fetch("/api/trash", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entityType: item.entityType, id: item.id }),
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trash"] }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `Restore failed (${res.status})`);
+      }
+    },
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+    },
+    onError: (err) => setActionError(err instanceof Error ? err.message : "Restore failed"),
   });
 
   const clearTrash = useMutation({
-    mutationFn: () =>
-      fetch("/api/trash", {
-        method: "DELETE",
-      }),
+    mutationFn: async () => {
+      const res = await fetch("/api/trash", { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `Clear trash failed (${res.status})`);
+      }
+    },
     onSuccess: () => {
+      setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["trash"] });
       setIsConfirmOpen(false);
     },
+    onError: (err) => setActionError(err instanceof Error ? err.message : "Clear trash failed"),
   });
 
   const columns: ColumnDef<TrashItem>[] = [
@@ -114,6 +136,13 @@ export default function TrashPage() {
           </Button>
         </div>
       </div>
+
+      {actionError && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
+
       <DataTable
         columns={columns}
         data={data?.items ?? []}

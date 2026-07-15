@@ -76,6 +76,19 @@ export async function POST(request: Request) {
       );
     }
 
+    // Manual/offline confirm is only allowed when the API key is explicitly set to "manual"
+    // (not "any"), so a compromised key with default "any" cannot mark unpaid leads as paid.
+    if (gateway === "manual" && allowedGateway !== "manual") {
+      return finishApiKeyRequest(
+        ctx,
+        ENDPOINT,
+        ApiKeyErrors.permissionDenied(
+          "manual payment confirm requires allowedPaymentGateway=manual on this API key"
+        ),
+        { requestBody: body, leadId }
+      );
+    }
+
     const expectedPaise = lead.courseFee
       ? Math.round(parseFloat(lead.courseFee) * 100)
       : null;
@@ -112,6 +125,13 @@ export async function POST(request: Request) {
           { requestBody: body, leadId }
         );
       }
+    } else if (gateway !== "manual") {
+      return finishApiKeyRequest(
+        ctx,
+        ENDPOINT,
+        ApiKeyErrors.validationFailed({ paymentGateway: "Unsupported payment gateway" }),
+        { requestBody: body, leadId }
+      );
     }
 
     const now = new Date();

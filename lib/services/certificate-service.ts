@@ -467,6 +467,50 @@ export async function issueCertificate(
     }
   }
 
+  let enrollmentId = input.enrollmentId;
+  if (enrollmentId) {
+    const [enrollment] = await db
+      .select({
+        completedAt: studentCourses.completedAt,
+        studentId: studentCourses.studentId,
+        liveCourseId: studentCourses.liveCourseId,
+        recordCourseId: studentCourses.recordCourseId,
+        isActive: studentCourses.isActive,
+      })
+      .from(studentCourses)
+      .where(eq(studentCourses.id, enrollmentId))
+      .limit(1);
+    if (!enrollment || enrollment.studentId !== input.studentId) {
+      throw new Error("Enrollment does not belong to this student");
+    }
+    const enrollmentCourseId =
+      input.courseType === "live" ? enrollment.liveCourseId : enrollment.recordCourseId;
+    if (enrollmentCourseId !== input.courseId) {
+      throw new Error("Enrollment does not match this course");
+    }
+    if (!enrollment.isActive) {
+      throw new Error("Enrollment is not active");
+    }
+  } else {
+    const [enrollment] = await db
+      .select({ id: studentCourses.id, completedAt: studentCourses.completedAt })
+      .from(studentCourses)
+      .where(
+        and(
+          eq(studentCourses.studentId, input.studentId),
+          eq(studentCourses.isActive, true),
+          input.courseType === "live"
+            ? eq(studentCourses.liveCourseId, input.courseId)
+            : eq(studentCourses.recordCourseId, input.courseId)
+        )
+      )
+      .limit(1);
+    if (!enrollment) {
+      throw new Error("Student is not enrolled in this course");
+    }
+    enrollmentId = enrollment.id;
+  }
+
   const lmsId = student.lmsId?.trim() || shortStudentId(input.studentId);
 
   const { name: courseName, domain } = await getCourseName(input.courseId, input.courseType);
@@ -483,71 +527,104 @@ export async function issueCertificate(
   }
 
   let completionDate = formatIssueDate(new Date());
-  if (input.enrollmentId) {
-    const [enrollment] = await db
-      .select({
-        completedAt: studentCourses.completedAt,
-        studentId: studentCourses.studentId,
-        liveCourseId: studentCourses.liveCourseId,
-        recordCourseId: studentCourses.recordCourseId,
-      })
-      .from(studentCourses)
-      .where(eq(studentCourses.id, input.enrollmentId))
-      .limit(1);
-    if (!enrollment || enrollment.studentId !== input.studentId) {
-      throw new Error("Enrollment does not belong to this student");
-    }
-    const enrollmentCourseId =
-      input.courseType === "live" ? enrollment.liveCourseId : enrollment.recordCourseId;
-    if (enrollmentCourseId !== input.courseId) {
-      throw new Error("Enrollment does not match this course");
-    }
-    if (enrollment.completedAt) completionDate = formatIssueDate(enrollment.completedAt);
+  const [enrollmentRow] = await db
+    .select({ completedAt: studentCourses.completedAt })
+    .from(studentCourses)
+    .where(eq(studentCourses.id, enrollmentId))
+    .limit(1);
+  if (enrollmentRow?.completedAt) {
+    completionDate = formatIssueDate(enrollmentRow.completedAt);
   }
 
-  const certificateNumber = await nextCertificateNumber();
+  // Final race-safe check before generating PDF/number
+  const raced = await findActiveCertificateForCourse(
+    input.studentId,
+    input.courseId,
+    input.courseType
+  );
+  if (raced) {
+    throw new CertificateConflictError(
+      `Certificate already issued for this course: ${raced.certificateNumber}`
+    );
+  }
+
+  let cert: typeof issuedCertificates.$inferSelect | undefined;
+  let certificateNumber = "";
+  let pdfBuffer: Buffer = Buffer.alloc(0);
+  let diskPath = "";
+  let url = "";
   const verificationToken = randomUUID();
   const issuedAt = new Date();
   const verifyUrl = `${getAppUrl()}/verify/${verificationToken}`;
 
-  const tokenData: TokenData = {
-    studentName: student.name,
-    lmsId,
-    studentId: lmsId,
-    courseName,
-    domain,
-    orgName: orgName ?? "LMS Classes",
-    certificateNumber,
-    issueDate: formatIssueDate(issuedAt),
-    completionDate,
-    verifyUrl,
-  };
-
-  const pdfBuffer = await generateCertificatePdf(template.layout as TemplateLayout, tokenData);
-  const { diskPath, url } = await saveCertificatePdf(certificateNumber, pdfBuffer);
-
-  const [cert] = await db
-    .insert(issuedCertificates)
-    .values({
+  for (let attempt = 0; attempt < 5; attempt++) {
+    certificateNumber = await nextCertificateNumber();
+    const tokenData: TokenData = {
+      studentName: student.name,
+      lmsId,
+      studentId: lmsId,
+      courseName,
+      domain,
+      orgName: orgName ?? "LMS Classes",
       certificateNumber,
-      templateId: input.templateId,
-      studentId: input.studentId,
-      courseId: input.courseId,
-      courseType: input.courseType,
-      orgId,
-      enrollmentId: input.enrollmentId ?? null,
-      studentNameSnapshot: student.name,
-      courseNameSnapshot: courseName,
-      orgNameSnapshot: orgName,
-      issuedByNameSnapshot: actor.name,
-      domainSnapshot: domain,
-      pdfUrl: url,
-      pdfStoragePath: diskPath,
-      pdfData: null,
-      verificationToken,
-      issuedAt,
-    })
-    .returning();
+      issueDate: formatIssueDate(issuedAt),
+      completionDate,
+      verifyUrl,
+    };
+
+    pdfBuffer = await generateCertificatePdf(template.layout as TemplateLayout, tokenData);
+    ({ diskPath, url } = await saveCertificatePdf(certificateNumber, pdfBuffer));
+
+    try {
+      const [inserted] = await db
+        .insert(issuedCertificates)
+        .values({
+          certificateNumber,
+          templateId: input.templateId,
+          studentId: input.studentId,
+          courseId: input.courseId,
+          courseType: input.courseType,
+          orgId,
+          enrollmentId: enrollmentId,
+          studentNameSnapshot: student.name,
+          courseNameSnapshot: courseName,
+          orgNameSnapshot: orgName,
+          issuedByNameSnapshot: actor.name,
+          domainSnapshot: domain,
+          pdfUrl: url,
+          pdfStoragePath: diskPath,
+          pdfData: null,
+          verificationToken,
+          issuedAt,
+        })
+        .returning();
+      cert = inserted;
+      break;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isUnique =
+        /unique|duplicate|23505/i.test(msg) ||
+        (typeof err === "object" &&
+          err !== null &&
+          "code" in err &&
+          (err as { code?: string }).code === "23505");
+      if (!isUnique || attempt === 4) throw err;
+
+      const again = await findActiveCertificateForCourse(
+        input.studentId,
+        input.courseId,
+        input.courseType
+      );
+      if (again) {
+        throw new CertificateConflictError(
+          `Certificate already issued for this course: ${again.certificateNumber}`
+        );
+      }
+      // certificate_number collision — retry with next number
+    }
+  }
+
+  if (!cert) throw new Error("Failed to issue certificate");
 
   let emailError: string | undefined;
   if (student.email) {
@@ -647,6 +724,8 @@ export async function bulkIssueCertificates(
 }
 
 export async function resendCertificateEmail(actor: CertActor, certificateId: string) {
+  if (!canManageCerts(actor.role)) throw new Error("Unauthorized");
+
   const cert = await getCertificateForActor(actor, certificateId);
   if (!cert.emailSentTo && !cert.studentId) throw new Error("No email on file");
 
@@ -695,9 +774,13 @@ export async function revokeCertificate(
   certificateId: string,
   reason: string
 ) {
+  if (!canManageCerts(actor.role)) throw new Error("Unauthorized");
+
   const cert = await getCertificateForActor(actor, certificateId);
-  if (!isSuperAdmin(actor.role) && cert.orgId !== actor.organisationId) {
-    throw new Error("Forbidden");
+  if (isOrgAdmin(actor.role)) {
+    if (!actor.organisationId || cert.orgId !== actor.organisationId) {
+      throw new Error("Forbidden");
+    }
   }
 
   await db
@@ -729,13 +812,18 @@ async function getCertificateForActor(actor: CertActor, certificateId: string) {
     .limit(1);
   if (!cert) throw new Error("Certificate not found");
 
-  if (actor.role === "student" && cert.studentId !== actor.userId) {
-    throw new Error("Forbidden");
+  if (isSuperAdmin(actor.role)) return cert;
+  if (actor.role === "student") {
+    if (cert.studentId !== actor.userId) throw new Error("Forbidden");
+    return cert;
   }
-  if (isOrgAdmin(actor.role) && cert.orgId !== actor.organisationId) {
-    throw new Error("Forbidden");
+  if (isOrgAdmin(actor.role)) {
+    if (!actor.organisationId || cert.orgId !== actor.organisationId) {
+      throw new Error("Forbidden");
+    }
+    return cert;
   }
-  return cert;
+  throw new Error("Forbidden");
 }
 
 export async function listIssuedCertificates(
@@ -947,18 +1035,21 @@ export async function triggerAutoIssuance(enrollmentId: string) {
   await checkAndAutoIssueForEnrollment(enrollmentId);
 }
 
-export async function processPendingAutoIssuances() {
+export async function processPendingAutoIssuances(scopeOrgId?: string | null) {
+  const templateConditions = [
+    eq(certificateTemplates.autoIssue, true),
+    eq(certificateTemplates.isActive, true),
+    sql`${certificateTemplates.courseId} IS NOT NULL`,
+    sql`${certificateTemplates.courseType} IS NOT NULL`,
+  ];
+  if (scopeOrgId) {
+    templateConditions.push(eq(certificateTemplates.orgId, scopeOrgId));
+  }
+
   const templates = await db
     .select()
     .from(certificateTemplates)
-    .where(
-      and(
-        eq(certificateTemplates.autoIssue, true),
-        eq(certificateTemplates.isActive, true),
-        sql`${certificateTemplates.courseId} IS NOT NULL`,
-        sql`${certificateTemplates.courseType} IS NOT NULL`
-      )
-    );
+    .where(and(...templateConditions));
 
   let issued = 0;
   const durationCache = new Map<string, string | null>();
