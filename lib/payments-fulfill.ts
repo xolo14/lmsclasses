@@ -16,7 +16,7 @@ export async function fulfillSlotPurchase(
     ipAddress?: string | null;
   }
 ): Promise<
-  | { ok: true; alreadyProcessed?: boolean; ignored?: boolean }
+  | { ok: true; alreadyProcessed?: boolean; ignored?: boolean; needsManualReview?: boolean }
   | { ok: false; error: string }
 > {
   const [existing] = await db
@@ -87,12 +87,27 @@ export async function fulfillSlotPurchase(
         .returning({ id: coupons.id });
 
       if (incremented.length === 0) {
-        // Revert the payment claim so we don't credit slots for an exhausted coupon
-        await db
-          .update(payments)
-          .set({ status: "pending", razorpayPaymentId: null })
-          .where(and(eq(payments.id, paymentId), eq(payments.status, "success")));
-        return { ok: false, error: "Coupon usage limit reached" };
+        // Money already captured at Razorpay — keep payment success, skip slot credit,
+        // and ACK webhooks so we don't retry-storm. Ops must review manually.
+        console.error(
+          `[FulfillPayment] coupon exhausted after capture; payment=${paymentId} needs_manual_review`
+        );
+        await logAction({
+          action: "PAYMENT_NEEDS_MANUAL_REVIEW",
+          entity: "Payment",
+          entityId: paymentId,
+          metadata: {
+            reason: "coupon_max_uses_exhausted",
+            razorpayOrderId: opts.razorpayOrderId,
+            razorpayPaymentId: opts.razorpayPaymentId,
+          },
+          ipAddress: opts.ipAddress ?? undefined,
+        });
+        return {
+          ok: true,
+          needsManualReview: true,
+          alreadyProcessed: false,
+        };
       }
     } else {
       await db

@@ -194,7 +194,7 @@ export function BulkImportModal({
       if (!val) resetModalState();
       onOpenChange(val);
     }}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-6 overflow-hidden">
+      <DialogContent className="max-w-2xl max-h-[min(85dvh,85vh)] flex flex-col p-6 overflow-hidden">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

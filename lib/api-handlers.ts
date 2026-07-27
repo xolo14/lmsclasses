@@ -695,8 +695,12 @@ export async function GETStudents(request: Request) {
 
   const conditions = [eq(users.role, "student"), isNull(users.deletedAt)];
 
-  if (session!.user.role === "org_admin" && session!.user.organisationId) {
-    conditions.push(eq(users.organisationId, session!.user.organisationId));
+  if (session!.user.role === "org_admin") {
+    const resolvedOrg = await resolveOrganisationId(session!);
+    if (!resolvedOrg) {
+      return NextResponse.json({ error: "Organisation not found for admin" }, { status: 403 });
+    }
+    conditions.push(eq(users.organisationId, resolvedOrg));
   } else if (orgId === "direct") {
     conditions.push(isNull(users.organisationId));
   } else if (orgId) {
@@ -1109,13 +1113,24 @@ export async function PATCHStudent(request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager", "org_admin"]);
   if (error) return error;
 
+  const actorOrgId =
+    session!.user.role === "org_admin" ? await resolveOrganisationId(session!) : null;
+  if (session!.user.role === "org_admin" && !actorOrgId) {
+    return NextResponse.json({ error: "Organisation not found for admin" }, { status: 403 });
+  }
+
   const body = await request.json();
 
   if (body.restore === true) {
+    const restoreWhere =
+      session!.user.role === "org_admin"
+        ? and(eq(users.id, id), eq(users.role, "student"), eq(users.organisationId, actorOrgId!))
+        : and(eq(users.id, id), eq(users.role, "student"));
+
     const [student] = await db
       .update(users)
       .set({ deletedAt: null, isActive: true, updatedAt: new Date() })
-      .where(eq(users.id, id))
+      .where(restoreWhere)
       .returning();
 
     if (!student) {
@@ -1125,7 +1140,11 @@ export async function PATCHStudent(request: Request, id: string) {
     await db
       .update(studentCourses)
       .set({ isActive: true })
-      .where(eq(studentCourses.studentId, id));
+      .where(
+        session!.user.role === "org_admin"
+          ? and(eq(studentCourses.studentId, id), eq(studentCourses.organisationId, actorOrgId!))
+          : eq(studentCourses.studentId, id)
+      );
 
     await logAction({
       userId: session!.user.id,
@@ -1148,10 +1167,15 @@ export async function PATCHStudent(request: Request, id: string) {
   if (collegeName !== undefined) updates.collegeName = collegeName;
   if (isActive !== undefined) updates.isActive = isActive;
 
+  const updateWhere =
+    session!.user.role === "org_admin"
+      ? and(eq(users.id, id), eq(users.role, "student"), eq(users.organisationId, actorOrgId!))
+      : and(eq(users.id, id), eq(users.role, "student"));
+
   const [student] = await db
     .update(users)
     .set(updates)
-    .where(and(eq(users.id, id), eq(users.role, "student")))
+    .where(updateWhere)
     .returning();
 
   if (!student) {
@@ -1175,6 +1199,26 @@ export async function DELETEStudent(request: Request, id: string) {
   if (error) return error;
 
   if (session!.user.role === "org_admin") {
+    const actorOrgId = await resolveOrganisationId(session!);
+    if (!actorOrgId) {
+      return NextResponse.json({ error: "Organisation not found for admin" }, { status: 403 });
+    }
+
+    const [owned] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.id, id),
+          eq(users.role, "student"),
+          eq(users.organisationId, actorOrgId)
+        )
+      )
+      .limit(1);
+    if (!owned) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+
     const activeEnrollments = await db
       .select({
         id: studentCourses.id,
@@ -1184,10 +1228,17 @@ export async function DELETEStudent(request: Request, id: string) {
         slotConsumed: studentCourses.slotConsumed,
       })
       .from(studentCourses)
-      .where(and(eq(studentCourses.studentId, id), eq(studentCourses.isActive, true)));
+      .where(
+        and(
+          eq(studentCourses.studentId, id),
+          eq(studentCourses.isActive, true),
+          eq(studentCourses.organisationId, actorOrgId)
+        )
+      );
 
     for (const enrollment of activeEnrollments) {
       if (!enrollment.slotConsumed || !enrollment.organisationId) continue;
+      if (enrollment.organisationId !== actorOrgId) continue;
 
       const claimed = await db
         .update(studentCourses)
@@ -1227,12 +1278,12 @@ export async function DELETEStudent(request: Request, id: string) {
     await db
       .update(studentCourses)
       .set({ isActive: false })
-      .where(eq(studentCourses.studentId, id));
+      .where(and(eq(studentCourses.studentId, id), eq(studentCourses.organisationId, actorOrgId)));
 
     await db
       .update(users)
       .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(users.id, id));
+      .where(and(eq(users.id, id), eq(users.organisationId, actorOrgId)));
   } else {
     await db
       .update(studentCourses)
@@ -2127,12 +2178,38 @@ export async function GETStudentLiveClasses(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const [enrollment] = await db
+    .select({
+      id: studentCourses.id,
+      batchId: studentCourses.batchId,
+    })
+    .from(studentCourses)
+    .where(
+      and(
+        eq(studentCourses.studentId, studentId),
+        eq(studentCourses.liveCourseId, courseId),
+        eq(studentCourses.isActive, true)
+      )
+    )
+    .limit(1);
+
+  if (!enrollment) {
+    return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 });
+  }
+
   await autoCompletePastLiveClasses({ courseId });
 
   const conditions = [
     eq(liveClasses.courseId, courseId),
     isNull(liveClasses.deletedAt),
   ];
+
+  // Students only see their batch classes (+ course-wide classes with no batch)
+  if (enrollment.batchId) {
+    conditions.push(
+      or(eq(liveClasses.batchId, enrollment.batchId), isNull(liveClasses.batchId))!
+    );
+  }
 
   if (tab === "completed" || tab === "recordings") {
     conditions.push(eq(liveClasses.status, "completed"));

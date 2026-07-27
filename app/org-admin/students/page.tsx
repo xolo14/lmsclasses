@@ -181,7 +181,7 @@ export default function OrgAdminStudentsPage() {
       )}
 
       <Dialog open={!!selectedCourse} onOpenChange={(open) => !open && setSelectedCourse(null)}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[min(90dvh,90vh)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">{selectedCourse?.title} Details</DialogTitle>
             <DialogDescription>

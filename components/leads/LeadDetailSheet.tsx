@@ -137,7 +137,7 @@ export function LeadDetailSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-xl max-h-[min(90dvh,90vh)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">{lead.fullName}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -197,7 +197,7 @@ export function LeadDetailSheet({
 
         {message && <p className="text-sm font-medium text-primary mt-2">{message}</p>}
 
-        <DialogFooter className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-end gap-2 mt-4 pt-4 border-t">
+        <DialogFooter className="sm:flex-wrap">
           <Button
             variant="outline"
             onClick={() => saveStatus.mutate()}
@@ -243,7 +243,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-3 gap-4 p-3 items-center">
       <dt className="text-muted-foreground font-medium col-span-1">{label}</dt>
-      <dd className="text-right col-span-2 break-all sm:break-normal font-medium text-foreground">
+      <dd className="min-w-0 text-right col-span-2 break-words font-medium text-foreground">
         {value}
       </dd>
     </div>

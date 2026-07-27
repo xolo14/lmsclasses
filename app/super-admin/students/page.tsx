@@ -252,15 +252,12 @@ export default function StudentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <PageHeader title="Students" />
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setAssignOpen(true)}>
-            Assign Course
-          </Button>
-          <Button onClick={() => setAddOpen(true)}>+ Add Student</Button>
-        </div>
-      </div>
+      <PageHeader title="Students">
+        <Button variant="outline" onClick={() => setAssignOpen(true)}>
+          Assign Course
+        </Button>
+        <Button onClick={() => setAddOpen(true)}>+ Add Student</Button>
+      </PageHeader>
 
       <SelectStudentForAssignModal
         open={assignOpen}

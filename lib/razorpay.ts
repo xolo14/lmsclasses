@@ -9,8 +9,19 @@ function assertRazorpayEnv(): void {
   }
 }
 
+function timingSafeEqualString(a: string, b: string): boolean {
+  try {
+    const ba = Buffer.from(a, "utf8");
+    const bb = Buffer.from(b, "utf8");
+    if (ba.length !== bb.length) return false;
+    return crypto.timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
+
 /** Bump when payment/env behavior changes — visible at /api/health */
-export const PAYMENTS_DEPLOY_VERSION = "razorpay-v4-public";
+export const PAYMENTS_DEPLOY_VERSION = "razorpay-v5-audit";
 
 export function getRazorpayKeyId(): string | null {
   const id =
@@ -54,7 +65,7 @@ export function verifyRazorpaySignature(
   signature: string
 ): boolean {
   const secret = getRazorpayKeySecret();
-  if (!secret) return false;
+  if (!secret || !signature) return false;
 
   const body = `${orderId}|${paymentId}`;
   const expected = crypto
@@ -62,7 +73,7 @@ export function verifyRazorpaySignature(
     .update(body)
     .digest("hex");
 
-  return expected === signature;
+  return timingSafeEqualString(expected, signature);
 }
 
 /** Alias used by public enrollment and payment verification flows */
@@ -166,7 +177,39 @@ export function verifyRazorpayWebhookSignature(
     .update(rawBody)
     .digest("hex");
 
-  return expected === signature;
+  return timingSafeEqualString(expected, signature);
+}
+
+export type FetchedRazorpayOrder = {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  notes: Record<string, string>;
+};
+
+/** Fetch order from Razorpay — source of truth for amount + notes.courseId. */
+export async function fetchRazorpayOrder(orderId: string): Promise<FetchedRazorpayOrder> {
+  assertRazorpayEnv();
+  const razorpay = getRazorpayInstance();
+  if (!razorpay) {
+    throw new Error("Razorpay is not configured");
+  }
+
+  const order = await razorpay.orders.fetch(orderId);
+  const rawNotes = (order.notes ?? {}) as Record<string, unknown>;
+  const notes: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawNotes)) {
+    if (v != null) notes[k] = String(v);
+  }
+
+  return {
+    id: String(order.id),
+    amount: Number(order.amount),
+    currency: String(order.currency ?? "INR"),
+    status: String(order.status ?? ""),
+    notes,
+  };
 }
 
 export function generatePassword(length = 8): string {

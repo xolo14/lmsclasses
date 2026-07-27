@@ -192,7 +192,10 @@ export function TemplateBuilder({
 }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; ox: number; oy: number } | null>(null);
+  const scaleRef = useRef(0.55);
+  const [scale, setScale] = useState(0.55);
 
   const [state, dispatch] = useReducer(reducer, {
     layout: initial?.layout ?? {
@@ -265,7 +268,20 @@ export function TemplateBuilder({
 
   const selected = state.layout.elements.find((el) => el.id === state.selectedId);
 
-  const scale = 0.55;
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const update = () => {
+      const available = Math.max(120, el.clientWidth - 32);
+      const next = Math.min(1, available / state.layout.width);
+      scaleRef.current = next;
+      setScale(next);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [state.layout.width]);
 
   const onSave = async () => {
     const trimmedName = state.name.trim();
@@ -318,10 +334,11 @@ export function TemplateBuilder({
     dispatch({ type: "SELECT", id: el.id });
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
+    const s = scaleRef.current || 1;
     dragRef.current = {
       id: el.id,
-      ox: (e.clientX - rect.left) / scale - el.x,
-      oy: (e.clientY - rect.top) / scale - el.y,
+      ox: (e.clientX - rect.left) / s - el.x,
+      oy: (e.clientY - rect.top) / s - el.y,
     };
   };
 
@@ -329,8 +346,9 @@ export function TemplateBuilder({
     if (!dragRef.current) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const x = Math.max(0, (e.clientX - rect.left) / scale - dragRef.current.ox);
-    const y = Math.max(0, (e.clientY - rect.top) / scale - dragRef.current.oy);
+    const s = scaleRef.current || 1;
+    const x = Math.max(0, (e.clientX - rect.left) / s - dragRef.current.ox);
+    const y = Math.max(0, (e.clientY - rect.top) / s - dragRef.current.oy);
     dispatch({ type: "MOVE", id: dragRef.current.id, x, y });
   };
 
@@ -671,7 +689,8 @@ export function TemplateBuilder({
         </div>
 
         <div
-          className="overflow-auto rounded-lg border border-border bg-muted/30 p-4"
+          ref={viewportRef}
+          className="min-w-0 overflow-auto rounded-lg border border-border bg-muted/30 p-4"
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
           onMouseLeave={onMouseUp}

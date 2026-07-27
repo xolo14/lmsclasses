@@ -50,7 +50,7 @@ export function RegistrationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={() => {}}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto border-swiss-black/10 bg-swiss-white text-swiss-black sm:max-w-lg">
+      <DialogContent className="max-h-[min(90dvh,90vh)] overflow-y-auto border-swiss-black/10 bg-swiss-white text-swiss-black sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Complete Your Enrollment 🎉</DialogTitle>
           <DialogDescription className="text-swiss-muted">

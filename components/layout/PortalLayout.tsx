@@ -44,7 +44,7 @@ export function PortalLayout({
     : sidebar;
 
   return (
-    <div className="flex h-screen min-h-[100dvh] overflow-hidden bg-swiss-cream text-swiss-black">
+    <div className="flex h-[100dvh] overflow-hidden bg-swiss-cream text-swiss-black">
       <div
         className={cn(
           "fixed inset-y-0 left-0 z-50 h-full w-[min(100vw-1rem,16rem)] shrink-0 shadow-xl lg:relative lg:z-auto lg:w-64 lg:shadow-none",
@@ -64,6 +64,7 @@ export function PortalLayout({
         <TopBar
           userName={userName}
           userRole={userRole}
+          brandLogoUrl={brandLogoUrl}
           onMenuClick={() => setSidebarOpen((o) => !o)}
         />
         <main className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-swiss-cream">
@@ -79,7 +80,7 @@ export function PortalLayout({
               aria-hidden
             />
           ) : null}
-          <div className="relative z-10 p-4 sm:p-6">{children}</div>
+          <div className="relative z-10 p-4 sm:p-6 safe-bottom">{children}</div>
         </main>
       </div>
     </div>

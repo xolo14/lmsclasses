@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { partnerLeads } from "@/lib/db/schema";
 import { requireApiKey, finishApiKeyRequest } from "@/lib/api-key-auth";
@@ -193,7 +193,7 @@ export async function POST(request: Request) {
     }
 
     const now = new Date();
-    await db
+    const claimed = await db
       .update(partnerLeads)
       .set({
         paymentStatus: "completed",
@@ -205,7 +205,30 @@ export async function POST(request: Request) {
         paymentConfirmedAt: now,
         updatedAt: now,
       })
-      .where(eq(partnerLeads.id, leadId));
+      .where(
+        and(
+          eq(partnerLeads.id, leadId),
+          inArray(partnerLeads.paymentStatus, ["pending", "initiated"])
+        )
+      )
+      .returning({ id: partnerLeads.id });
+
+    if (claimed.length === 0) {
+      const [again] = await db.select().from(partnerLeads).where(eq(partnerLeads.id, leadId)).limit(1);
+      if (again?.paymentStatus === "completed") {
+        // Another concurrent confirm won — retry student create path below if needed
+      } else {
+        return finishApiKeyRequest(
+          ctx,
+          ENDPOINT,
+          NextResponse.json(
+            { error: "PAYMENT_ALREADY_PROCESSED", message: `Payment already ${again?.paymentStatus ?? "unknown"}` },
+            { status: 409 }
+          ),
+          { requestBody: body, leadId }
+        );
+      }
+    }
 
     const [updated] = await db.select().from(partnerLeads).where(eq(partnerLeads.id, leadId)).limit(1);
 

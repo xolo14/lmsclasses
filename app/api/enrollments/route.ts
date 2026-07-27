@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { listEnrollmentsForAdmin } from "@/lib/enrollment-service";
 import type { EnrollmentAccessType, EnrollmentStatus } from "@/lib/db/schema";
 
@@ -19,7 +19,11 @@ export async function GET(request: Request) {
 
   let orgId = searchParams.get("orgId") ?? undefined;
   if (session!.user.role === "org_admin") {
-    orgId = session!.user.organisationId ?? orgId;
+    const resolved = await resolveOrganisationId(session!);
+    if (!resolved) {
+      return NextResponse.json({ error: "Organisation not found for admin" }, { status: 403 });
+    }
+    orgId = resolved;
   }
 
   const rows = await listEnrollmentsForAdmin({

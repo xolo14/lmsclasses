@@ -152,7 +152,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
   if (generated) {
     return (
       <Dialog open={open} onOpenChange={() => { setGenerated(null); onOpenChange(false); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[min(90dvh,90vh)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>API Key Generated — {generated.name}</DialogTitle>
             <DialogDescription className="text-destructive font-medium">
@@ -230,7 +230,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[min(90dvh,90vh)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Generate Partner Widget Key</DialogTitle>
           <DialogDescription>

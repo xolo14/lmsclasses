@@ -58,7 +58,7 @@ export function sanitizeLogBody(body: unknown): Record<string, unknown> | null {
   if (!body || typeof body !== "object") return null;
   const copy = { ...(body as Record<string, unknown>) };
   for (const key of Object.keys(copy)) {
-    if (/password|secret|key|token|signature/i.test(key)) {
+    if (/password|secret|key|token|signature|phone|email|mobile/i.test(key)) {
       copy[key] = "[REDACTED]";
     }
   }

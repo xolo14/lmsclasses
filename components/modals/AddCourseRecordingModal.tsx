@@ -116,7 +116,7 @@ export function AddCourseRecordingModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[min(90dvh,90vh)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{existingRecording ? "Edit Recording" : "Add Recording"}</DialogTitle>
         </DialogHeader>

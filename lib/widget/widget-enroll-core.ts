@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { recordCourses, widgetLeads } from "@/lib/db/schema";
 import type { WidgetAuthContext } from "@/lib/widget/widget-auth";
@@ -334,15 +334,57 @@ export async function processWidgetPaymentCallback(
     );
   }
 
-  await db
-    .update(widgetLeads)
-    .set({
-      paymentStatus: "completed",
-      razorpayPaymentId: payId,
-      razorpayOrderId: orderId,
-      updatedAt: new Date(),
-    })
-    .where(eq(widgetLeads.id, lead.id));
+  // CAS: claim completed only once
+  if (lead.paymentStatus !== "completed") {
+    const claimed = await db
+      .update(widgetLeads)
+      .set({
+        paymentStatus: "completed",
+        razorpayPaymentId: payId,
+        razorpayOrderId: orderId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(widgetLeads.id, lead.id),
+          inArray(widgetLeads.paymentStatus, ["initiated", "failed", "cancelled"])
+        )
+      )
+      .returning({ id: widgetLeads.id });
+
+    if (claimed.length === 0) {
+      const [again] = await db
+        .select()
+        .from(widgetLeads)
+        .where(eq(widgetLeads.id, lead.id))
+        .limit(1);
+      if (again?.paymentStatus === "completed" && again.convertedToStudent) {
+        const redirectPath = ctx.apiKey.redirectOnSuccess ?? "/login";
+        return widgetJson(ctx, request, {
+          success: true,
+          redirectUrl: resolveRedirectUrl(redirectPath),
+          message: "Enrollment already confirmed.",
+        });
+      }
+      if (again?.paymentStatus !== "completed") {
+        return widgetJson(
+          ctx,
+          request,
+          { error: "PAYMENT_INVALID", message: "Payment could not be confirmed for this lead" },
+          409
+        );
+      }
+    }
+  } else {
+    await db
+      .update(widgetLeads)
+      .set({
+        razorpayPaymentId: payId,
+        razorpayOrderId: orderId,
+        updatedAt: new Date(),
+      })
+      .where(eq(widgetLeads.id, lead.id));
+  }
 
   const [updatedLead] = await db
     .select()

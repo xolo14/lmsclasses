@@ -243,7 +243,7 @@ export async function assignCoursesToStudent(
   }
 
   const orgId = student.organisationId;
-  if (!orgId && !input.isFree && actor.role === "org_admin") {
+  if (!orgId && actor.role === "org_admin") {
     return { enrolled: [], skipped: [], errors: ["Student has no organisation"] };
   }
 
@@ -252,6 +252,8 @@ export async function assignCoursesToStudent(
   }
 
   const isPlatformStaff = actor.role === "super_admin" || actor.role === "manager";
+  // Only platform staff may assign without consuming slots
+  const treatAsFree = Boolean(input.isFree) && isPlatformStaff;
   const now = new Date();
   const liveFrom = input.liveAccessFrom ?? now;
   const recordedFrom = input.recordedAccessFrom ?? now;
@@ -286,7 +288,7 @@ export async function assignCoursesToStudent(
     // does not double-consume (or free) seats that were already held.
     const prior = await findAnyEnrollment(input.studentId, course);
     const alreadyHeldSlot = prior?.slotConsumed === true;
-    const wantsSlot = !input.isFree && !!orgId;
+    const wantsSlot = !treatAsFree && !!orgId;
 
     let slotConsumed = false;
     let slotNewlyConsumed = false;
@@ -440,6 +442,13 @@ export async function updateEnrollment(
     .where(eq(studentCourses.id, enrollmentId))
     .limit(1);
   if (!existing) return { success: false, error: "Enrollment not found" };
+
+  if (
+    actor.role === "org_admin" &&
+    (!actor.organisationId || existing.organisationId !== actor.organisationId)
+  ) {
+    return { success: false, error: "Enrollment not found" };
+  }
 
   const courseId = existing.liveCourseId ?? existing.recordCourseId;
   if (!courseId) return { success: false, error: "Invalid enrollment" };

@@ -144,17 +144,19 @@ export function DataTable<TData, TValue>({
           <div className="flex gap-2 justify-center sm:justify-end">
             <Button
               variant="outline"
-              size="sm"
+              className="h-11 w-11 p-0"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
+              aria-label="Previous page"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"
-              size="sm"
+              className="h-11 w-11 p-0"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
+              aria-label="Next page"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

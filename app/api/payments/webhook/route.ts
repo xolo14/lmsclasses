@@ -69,5 +69,6 @@ export async function POST(request: Request) {
     success: true,
     alreadyProcessed: result.alreadyProcessed,
     ignored: result.ignored,
+    needsManualReview: result.needsManualReview,
   });
 }

@@ -308,6 +308,8 @@ export const payments = pgTable("payments", {
   index("pay_org_id_idx").on(table.organisationId),
   // PERF: Super admin payments page — "show all payments sorted by date"
   index("pay_created_at_idx").on(table.createdAt),
+  // Prevent payment-id replay across enrollments (NULLs allowed multiple times in PG)
+  uniqueIndex("pay_razorpay_payment_id_uq").on(table.razorpayPaymentId),
 ]);
 
 export const slots = pgTable("slots", {

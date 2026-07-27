@@ -149,7 +149,7 @@ export default function OrgAdminRecordStudentsPage() {
       )}
 
       <Dialog open={!!selectedCourse} onOpenChange={(open) => !open && setSelectedCourse(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[min(90dvh,90vh)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">{selectedCourse?.title} — Students</DialogTitle>
             <DialogDescription>

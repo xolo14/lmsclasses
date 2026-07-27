@@ -4,7 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { recordCourses, payments, studentCourses, users } from "@/lib/db/schema";
 import { PublicEnrollmentSchema } from "@/lib/validations/public-enrollment";
-import { verifySignature } from "@/lib/razorpay";
+import { verifySignature, fetchRazorpayOrder } from "@/lib/razorpay";
 import { logAction, getClientIp } from "@/lib/audit";
 import { sendWelcomeEmail } from "@/lib/email";
 import { generatePaymentInvoice } from "@/lib/invoice";
@@ -65,7 +65,6 @@ async function rollbackEnrolledStudent(studentId: string) {
 export async function POST(request: Request) {
   let paymentRecorded = false;
   let razorpayPaymentId: string | undefined;
-  let courseId: string | undefined;
   let amount = "0";
 
   try {
@@ -75,9 +74,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { courseId: cId, paymentData, studentData } = parsed.data;
-    const enrolledCourseId = cId;
-    courseId = enrolledCourseId;
+    const { courseId: enrolledCourseId, paymentData, studentData } = parsed.data;
     razorpayPaymentId = paymentData.razorpayPaymentId;
 
     const valid = verifySignature(
@@ -89,17 +86,58 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Payment verification failed" }, { status: 400 });
     }
 
+    // Source of truth: Razorpay order notes + paid amount (not client courseId alone)
+    let order: Awaited<ReturnType<typeof fetchRazorpayOrder>>;
+    try {
+      order = await fetchRazorpayOrder(paymentData.razorpayOrderId);
+    } catch (fetchErr) {
+      console.error("[public/enroll] order fetch failed:", fetchErr);
+      return NextResponse.json({ error: "Could not verify payment order" }, { status: 400 });
+    }
+
+    const orderCourseId = order.notes.courseId?.trim();
+    if (!orderCourseId || orderCourseId !== enrolledCourseId) {
+      return NextResponse.json(
+        { error: "Payment order does not match the selected course" },
+        { status: 400 }
+      );
+    }
+
+    const [existingPayment] = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(eq(payments.razorpayPaymentId, paymentData.razorpayPaymentId))
+      .limit(1);
+    if (existingPayment) {
+      return NextResponse.json(
+        { error: "This payment has already been used for an enrollment" },
+        { status: 409 }
+      );
+    }
+
     const [course] = await db
       .select()
       .from(recordCourses)
       .where(
-        and(eq(recordCourses.id, enrolledCourseId), eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt))
+        and(
+          eq(recordCourses.id, enrolledCourseId),
+          eq(recordCourses.isActive, true),
+          isNull(recordCourses.deletedAt)
+        )
       )
       .limit(1);
     if (!course) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
-    amount = course.price;
+
+    const expectedPaise = Math.round(parseFloat(String(course.price)) * 100);
+    if (!Number.isFinite(expectedPaise) || order.amount !== expectedPaise) {
+      return NextResponse.json(
+        { error: "Payment amount does not match course price" },
+        { status: 400 }
+      );
+    }
+    amount = (order.amount / 100).toFixed(2);
 
     const email = studentData.email.trim().toLowerCase();
     const [existing] = await db
@@ -161,8 +199,14 @@ export async function POST(request: Request) {
         await rollbackEnrolledStudent(student.id);
         student = undefined;
       }
+      const msg = txErr instanceof Error ? txErr.message : String(txErr);
+      if (/pay_razorpay_payment_id|unique|duplicate/i.test(msg) && /razorpay/i.test(msg)) {
+        return NextResponse.json(
+          { error: "This payment has already been used for an enrollment" },
+          { status: 409 }
+        );
+      }
       console.error("[public/enroll] transaction failed:", txErr);
-      // Do NOT insert a success payment without a durable enrollment — leaves dual truth
       return NextResponse.json(
         { error: "Enrollment failed", paymentRecorded: false },
         { status: 500 }
@@ -185,9 +229,7 @@ export async function POST(request: Request) {
     });
 
     try {
-      let invoice:
-        | Awaited<ReturnType<typeof generatePaymentInvoice>>
-        | null = null;
+      let invoice: Awaited<ReturnType<typeof generatePaymentInvoice>> | null = null;
       if (paymentId) {
         try {
           invoice = await generatePaymentInvoice(paymentId, {

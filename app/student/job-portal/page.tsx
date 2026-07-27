@@ -117,7 +117,7 @@ export default function StudentJobPortalPage() {
       )}
 
       <Dialog open={!!selectedJobId} onOpenChange={(open) => !open && setSelectedJobId(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[min(90dvh,90vh)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Apply for Job</DialogTitle>
             <DialogDescription>

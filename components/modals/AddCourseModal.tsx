@@ -178,7 +178,7 @@ export function AddCourseModal({ open, onOpenChange, type, course }: AddCourseMo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[min(90dvh,90vh)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{course ? "Edit Course" : `Add ${type === "live" ? "Live" : "Record"} Course`}</DialogTitle>
         </DialogHeader>

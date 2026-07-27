@@ -15,11 +15,21 @@ import { isTestKey } from "@/lib/api-key-service";
 const FOLLOW_UP_DELAY_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 function repaySecret(): string {
-  return (
-    process.env.WIDGET_REPAY_SECRET?.trim() ||
-    process.env.NEXTAUTH_SECRET?.trim() ||
-    "lms-widget-repay-dev"
-  );
+  const secret =
+    process.env.WIDGET_REPAY_SECRET?.trim() || process.env.NEXTAUTH_SECRET?.trim() || "";
+  if (secret) {
+    if (process.env.NODE_ENV === "production" && secret === "lms-widget-repay-dev") {
+      throw new Error("Insecure repay secret is not allowed in production");
+    }
+    return secret;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "WIDGET_REPAY_SECRET or NEXTAUTH_SECRET must be set — repay links are disabled without a secret"
+    );
+  }
+  // Local/dev only — never used when NODE_ENV=production
+  return "lms-widget-repay-dev";
 }
 
 export function signRepayToken(leadId: string): string {
@@ -323,7 +333,16 @@ export async function confirmRepayPayment(
     }
   }
 
-  await db
+  // Bind to the order created for this lead (same hardening as widget callback)
+  if (lead.razorpayOrderId && lead.razorpayOrderId !== input.razorpay_order_id) {
+    throw new Error("Order does not match this lead's payment order");
+  }
+  if (!lead.amountAttempted || lead.amountAttempted <= 0) {
+    throw new Error("Lead has no locked payment amount");
+  }
+
+  // CAS: only claim once from initiated/failed/cancelled → completed
+  const claimed = await db
     .update(widgetLeads)
     .set({
       paymentStatus: "completed",
@@ -331,7 +350,29 @@ export async function confirmRepayPayment(
       razorpayOrderId: input.razorpay_order_id,
       updatedAt: new Date(),
     })
-    .where(eq(widgetLeads.id, leadId));
+    .where(
+      and(
+        eq(widgetLeads.id, leadId),
+        inArray(widgetLeads.paymentStatus, ["initiated", "failed", "cancelled"])
+      )
+    )
+    .returning({ id: widgetLeads.id });
+
+  if (claimed.length === 0) {
+    const [again] = await db.select().from(widgetLeads).where(eq(widgetLeads.id, leadId)).limit(1);
+    if (again?.paymentStatus === "completed" && again.convertedToStudent) {
+      return {
+        success: true,
+        message: "Already enrolled",
+        loginUrl: resolveRedirectUrl(apiKey?.redirectOnSuccess),
+      };
+    }
+    if (again?.paymentStatus === "completed") {
+      // Already paid — fall through to convert if needed
+    } else {
+      throw new Error("Payment could not be confirmed for this lead");
+    }
+  }
 
   const [updated] = await db.select().from(widgetLeads).where(eq(widgetLeads.id, leadId)).limit(1);
 
@@ -341,6 +382,19 @@ export async function confirmRepayPayment(
       result = await createStudentFromWidgetLead(updated!, { apiKey: apiKey ?? undefined });
     } catch (err) {
       console.error("[widget/repay] student creation failed:", err);
+      await db
+        .update(widgetLeads)
+        .set({
+          adminNotes: `Auto-convert failed after repay: ${err instanceof Error ? err.message : "unknown"}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(widgetLeads.id, leadId));
+      // Do not pretend enrollment succeeded — payment is recorded for ops recovery
+      throw new Error(
+        err instanceof Error
+          ? `Payment recorded but enrollment failed: ${err.message}`
+          : "Payment recorded but enrollment failed"
+      );
     }
   }
 

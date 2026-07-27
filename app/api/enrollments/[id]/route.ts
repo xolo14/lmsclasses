@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { studentCourses, users, liveCourses, recordCourses, organisations } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { updateEnrollment } from "@/lib/enrollment-service";
 import { updateEnrollmentSchema } from "@/lib/validations/enrollment";
 import { getClientIp } from "@/lib/audit";
-import { resolveOrganisationId } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,9 +14,20 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAuth(["super_admin", "org_admin", "manager"]);
+  const { error, session } = await requireAuth(["super_admin", "org_admin", "manager"]);
   if (error) return error;
   const { id } = await params;
+
+  const actorOrgId =
+    session!.user.role === "org_admin" ? await resolveOrganisationId(session!) : null;
+  if (session!.user.role === "org_admin" && !actorOrgId) {
+    return NextResponse.json({ error: "Organisation not found for admin" }, { status: 403 });
+  }
+
+  const where =
+    session!.user.role === "org_admin"
+      ? and(eq(studentCourses.id, id), eq(studentCourses.organisationId, actorOrgId!))
+      : eq(studentCourses.id, id);
 
   const [row] = await db
     .select({
@@ -33,7 +43,7 @@ export async function GET(
     .leftJoin(organisations, eq(studentCourses.organisationId, organisations.id))
     .leftJoin(liveCourses, eq(studentCourses.liveCourseId, liveCourses.id))
     .leftJoin(recordCourses, eq(studentCourses.recordCourseId, recordCourses.id))
-    .where(eq(studentCourses.id, id))
+    .where(where)
     .limit(1);
 
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -60,8 +70,11 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
   }
 
-  const orgId =
+  let orgId =
     session!.user.role === "org_admin" ? await resolveOrganisationId(session!) : session!.user.organisationId;
+  if (session!.user.role === "org_admin" && !orgId) {
+    return NextResponse.json({ error: "Organisation not found for admin" }, { status: 403 });
+  }
 
   const result = await updateEnrollment(id, parsed.data, {
     userId: session!.user.id,
@@ -87,8 +100,11 @@ export async function DELETE(
   const body = await request.json().catch(() => ({}));
   const reason = typeof body.reason === "string" ? body.reason : "Revoked by admin";
 
-  const orgId =
+  let orgId =
     session!.user.role === "org_admin" ? await resolveOrganisationId(session!) : session!.user.organisationId;
+  if (session!.user.role === "org_admin" && !orgId) {
+    return NextResponse.json({ error: "Organisation not found for admin" }, { status: 403 });
+  }
 
   const result = await updateEnrollment(
     id,

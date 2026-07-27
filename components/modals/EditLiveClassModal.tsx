@@ -106,7 +106,7 @@ export function EditLiveClassModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md max-h-[min(90dvh,90vh)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Live Class</DialogTitle>
         </DialogHeader>
