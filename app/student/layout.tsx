@@ -53,6 +53,7 @@ export default async function StudentLayout({
       }
       userName={session.user.name}
       userRole={session.user.role}
+      brandLogoUrl={orgSettings?.logoUrl}
     >
       {children}
     </PortalLayout>

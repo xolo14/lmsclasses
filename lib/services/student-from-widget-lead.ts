@@ -56,6 +56,7 @@ export async function createStudentFromWidgetLead(
       .set({
         convertedToStudent: true,
         status: "converted",
+        paymentStatus: "completed",
         updatedAt: new Date(),
       })
       .where(eq(widgetLeads.id, lead.id));

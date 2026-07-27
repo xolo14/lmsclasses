@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { recordCourses, widgetLeads } from "@/lib/db/schema";
+import { widgetLeads } from "@/lib/db/schema";
 import { resolveWidgetApiKey, widgetJson } from "@/lib/widget/widget-auth";
 import { logWidgetEvent } from "@/lib/widget/widget-events";
 import { widgetOptionsResponse } from "@/lib/widget/widget-cors";
@@ -52,6 +52,16 @@ export async function POST(request: Request) {
 
   const failureStatus = data.status;
   if (failureStatus === "failed" || failureStatus === "cancelled") {
+    // Never downgrade a completed payment (out-of-order client callbacks)
+    if (lead.paymentStatus === "completed") {
+      const redirectPath = ctx.apiKey.redirectOnSuccess ?? "/login";
+      return widgetJson(ctx, request, {
+        success: true,
+        redirectUrl: resolveRedirectUrl(redirectPath),
+        message: "Enrollment already confirmed.",
+      });
+    }
+
     await db
       .update(widgetLeads)
       .set({
@@ -59,7 +69,13 @@ export async function POST(request: Request) {
         failureReason: data.error_description ?? failureStatus,
         updatedAt: new Date(),
       })
-      .where(eq(widgetLeads.id, lead.id));
+      .where(
+        and(
+          eq(widgetLeads.id, lead.id),
+          // Only allow initiated → failed/cancelled
+          eq(widgetLeads.paymentStatus, "initiated")
+        )
+      );
 
     await logWidgetEvent({
       apiKey: ctx.apiKey,
@@ -112,18 +128,25 @@ export async function POST(request: Request) {
     );
   }
 
-  const [course] = await db
-    .select({ price: recordCourses.price })
-    .from(recordCourses)
-    .where(eq(recordCourses.id, lead.courseId))
-    .limit(1);
-
-  const expectedPaise = course ? Math.round(parseFloat(course.price) * 100) : lead.amountAttempted;
-  if (expectedPaise && lead.amountAttempted && expectedPaise !== lead.amountAttempted) {
+  // Bind confirm to the order that was created for this lead
+  if (lead.razorpayOrderId && lead.razorpayOrderId !== orderId) {
     return widgetJson(
       ctx,
       request,
-      { error: "PAYMENT_INVALID", message: "Amount mismatch" },
+      {
+        error: "PAYMENT_INVALID",
+        message: "Order does not match this lead's payment order",
+      },
+      400
+    );
+  }
+
+  // Validate against the locked amount at order time — not the mutable course price
+  if (!lead.amountAttempted || lead.amountAttempted <= 0) {
+    return widgetJson(
+      ctx,
+      request,
+      { error: "PAYMENT_INVALID", message: "Lead has no locked payment amount" },
       400
     );
   }

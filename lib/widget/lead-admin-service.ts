@@ -164,6 +164,17 @@ export async function updateWidgetLeadStatus(
   const [lead] = await db.select().from(widgetLeads).where(eq(widgetLeads.id, leadId)).limit(1);
   if (!lead) throw new Error("Lead not found");
 
+  if (input.status === "converted" && !lead.convertedToStudent) {
+    throw new Error("Use Convert manually to mark a lead as converted");
+  }
+  if (
+    lead.convertedToStudent &&
+    input.status !== undefined &&
+    input.status !== "converted"
+  ) {
+    throw new Error("Converted leads must remain status=converted");
+  }
+
   const [updated] = await db
     .update(widgetLeads)
     .set({

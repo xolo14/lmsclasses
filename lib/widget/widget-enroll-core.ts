@@ -324,18 +324,12 @@ export async function processWidgetPaymentCallback(
     );
   }
 
-  const [course] = await db
-    .select({ price: recordCourses.price })
-    .from(recordCourses)
-    .where(eq(recordCourses.id, lead.courseId))
-    .limit(1);
-
-  const expectedPaise = course ? Math.round(parseFloat(course.price) * 100) : lead.amountAttempted;
-  if (expectedPaise && lead.amountAttempted && expectedPaise !== lead.amountAttempted) {
+  // Validate against the locked amount at order time — not the mutable course price
+  if (!lead.amountAttempted || lead.amountAttempted <= 0) {
     return widgetJson(
       ctx,
       request,
-      { error: "PAYMENT_INVALID", message: "Amount mismatch" },
+      { error: "PAYMENT_INVALID", message: "Lead has no locked payment amount" },
       400
     );
   }

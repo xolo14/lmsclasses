@@ -170,22 +170,34 @@ export function SettingsPage() {
             <CardTitle className="text-lg">Organisation Logo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="w-20 h-20 rounded-lg border border-border bg-muted/30 overflow-hidden flex items-center justify-center">
+            <div className="space-y-3">
+              <div
+                className="relative h-36 w-full overflow-hidden rounded-lg border border-border bg-muted/30"
+                style={
+                  logoPreview
+                    ? {
+                        backgroundImage: `url(${JSON.stringify(logoPreview).slice(1, -1)})`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                        backgroundRepeat: "no-repeat",
+                      }
+                    : undefined
+                }
+              >
                 {logoPreview ? (
-                  <img
-                    src={logoPreview}
-                    alt="Organisation logo"
-                    className="w-full h-full object-contain"
-                  />
+                  <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/40 to-transparent p-3">
+                    <span className="text-xs font-medium text-white">Background preview</span>
+                  </div>
                 ) : (
-                  <span className="text-xs text-muted-foreground">No logo</span>
+                  <div className="flex h-full items-center justify-center">
+                    <span className="text-xs text-muted-foreground">No logo</span>
+                  </div>
                 )}
               </div>
-              <div className="flex-1 space-y-2">
+              <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Upload a logo for your organisation. It will be visible to students in this
-                  organisation.
+                  Upload a logo for your organisation. It is used as the portal background for
+                  students and org admins (not shown as a small image icon).
                 </p>
                 <Input
                   type="file"

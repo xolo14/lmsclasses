@@ -10,9 +10,17 @@ interface PortalLayoutProps {
   sidebar: React.ReactNode;
   userName: string;
   userRole: string;
+  /** Organisation logo shown as a subtle main-area background (not an inline image). */
+  brandLogoUrl?: string | null;
 }
 
-export function PortalLayout({ children, sidebar, userName, userRole }: PortalLayoutProps) {
+export function PortalLayout({
+  children,
+  sidebar,
+  userName,
+  userRole,
+  brandLogoUrl,
+}: PortalLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
 
@@ -58,8 +66,20 @@ export function PortalLayout({ children, sidebar, userName, userRole }: PortalLa
           userRole={userRole}
           onMenuClick={() => setSidebarOpen((o) => !o)}
         />
-        <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 bg-swiss-cream">
-          {children}
+        <main className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-swiss-cream">
+          {brandLogoUrl ? (
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.07]"
+              style={{
+                backgroundImage: `url(${JSON.stringify(brandLogoUrl).slice(1, -1)})`,
+                backgroundSize: "min(28rem, 55%)",
+                backgroundPosition: "center",
+                backgroundRepeat: "no-repeat",
+              }}
+              aria-hidden
+            />
+          ) : null}
+          <div className="relative z-10 p-4 sm:p-6">{children}</div>
         </main>
       </div>
     </div>

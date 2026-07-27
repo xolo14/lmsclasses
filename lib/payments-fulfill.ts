@@ -65,18 +65,43 @@ export async function fulfillSlotPurchase(
   const organisationId = payment.organisationId!;
 
   if (payment.couponId) {
-    // Enforce maxUses at fulfill time when set
-    await db
-      .update(coupons)
-      .set({
-        usesCount: sql`COALESCE(${coupons.usesCount}, 0) + 1`,
-      })
-      .where(
-        and(
-          eq(coupons.id, payment.couponId),
-          sql`(${coupons.maxUses} IS NULL OR COALESCE(${coupons.usesCount}, 0) < ${coupons.maxUses})`
+    // Hard-enforce maxUses: CAS increment must succeed when a limit is set
+    const [coupon] = await db
+      .select({ id: coupons.id, maxUses: coupons.maxUses, usesCount: coupons.usesCount })
+      .from(coupons)
+      .where(eq(coupons.id, payment.couponId))
+      .limit(1);
+
+    if (coupon?.maxUses != null) {
+      const incremented = await db
+        .update(coupons)
+        .set({
+          usesCount: sql`COALESCE(${coupons.usesCount}, 0) + 1`,
+        })
+        .where(
+          and(
+            eq(coupons.id, payment.couponId),
+            sql`COALESCE(${coupons.usesCount}, 0) < ${coupons.maxUses}`
+          )
         )
-      );
+        .returning({ id: coupons.id });
+
+      if (incremented.length === 0) {
+        // Revert the payment claim so we don't credit slots for an exhausted coupon
+        await db
+          .update(payments)
+          .set({ status: "pending", razorpayPaymentId: null })
+          .where(and(eq(payments.id, paymentId), eq(payments.status, "success")));
+        return { ok: false, error: "Coupon usage limit reached" };
+      }
+    } else {
+      await db
+        .update(coupons)
+        .set({
+          usesCount: sql`COALESCE(${coupons.usesCount}, 0) + 1`,
+        })
+        .where(eq(coupons.id, payment.couponId));
+    }
   }
 
   // Idempotent slots insert if a prior crash left payment=success without slots

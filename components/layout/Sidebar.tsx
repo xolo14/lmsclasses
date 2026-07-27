@@ -56,18 +56,37 @@ export function Sidebar({ items, title, collapsed, onNavigate, brandLogoUrl }: S
       <div className="flex min-h-16 items-center border-b border-swiss-black/10 border-t-4 border-t-swiss-red px-3 py-3">
         {!collapsed ? (
           <div className="w-full space-y-2">
-            <AppLogo size="sm" />
             {brandLogoUrl ? (
-              <img
-                src={brandLogoUrl}
-                alt={`${title} organisation logo`}
-                className="h-8 w-8 rounded-sm object-contain border border-swiss-black/10 bg-swiss-cream"
+              <div
+                className="h-10 w-full max-w-[10rem]"
+                style={{
+                  backgroundImage: `url(${JSON.stringify(brandLogoUrl).slice(1, -1)})`,
+                  backgroundSize: "contain",
+                  backgroundPosition: "left center",
+                  backgroundRepeat: "no-repeat",
+                }}
+                role="img"
+                aria-label={`${title} organisation logo`}
               />
-            ) : null}
+            ) : (
+              <AppLogo size="sm" />
+            )}
             <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-swiss-muted leading-tight">
               {title}
             </p>
           </div>
+        ) : brandLogoUrl ? (
+          <div
+            className="mx-auto h-9 w-9"
+            style={{
+              backgroundImage: `url(${JSON.stringify(brandLogoUrl).slice(1, -1)})`,
+              backgroundSize: "contain",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+            }}
+            role="img"
+            aria-label={`${title} organisation logo`}
+          />
         ) : (
           <AppLogo size="sm" className="mx-auto" />
         )}

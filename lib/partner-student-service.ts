@@ -58,6 +58,7 @@ export async function createStudentFromLead(
         studentCreated: true,
         studentUsername: username,
         status: "enrolled",
+        paymentStatus: "completed",
         updatedAt: new Date(),
       })
       .where(eq(partnerLeads.id, lead.id));

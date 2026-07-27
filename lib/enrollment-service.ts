@@ -282,32 +282,50 @@ export async function assignCoursesToStudent(
       continue;
     }
 
+    // Resolve prior enrollment BEFORE touching slot counters so reactivation
+    // does not double-consume (or free) seats that were already held.
+    const prior = await findAnyEnrollment(input.studentId, course);
+    const alreadyHeldSlot = prior?.slotConsumed === true;
+    const wantsSlot = !input.isFree && !!orgId;
+
     let slotConsumed = false;
-    if (!input.isFree && orgId) {
-      const { remaining, slotRows } = await getSlotSummary(orgId, course);
-      if (!isPlatformStaff && remaining <= 0) {
-        errors.push(`${course.title}: no slots available`);
-        continue;
-      }
-      if (slotRows.length > 0) {
-        const ok = await consumeOneSlot(slotRows);
-        if (!ok && !isPlatformStaff) {
-          errors.push(`${course.title}: failed to consume slot`);
+    let slotNewlyConsumed = false;
+
+    if (wantsSlot) {
+      if (alreadyHeldSlot) {
+        // Reuse the seat already counted in slots.usedSlots
+        slotConsumed = true;
+      } else {
+        const { remaining, slotRows } = await getSlotSummary(orgId!, course);
+        if (!isPlatformStaff && remaining <= 0) {
+          errors.push(`${course.title}: no slots available`);
           continue;
         }
-        slotConsumed = ok;
-      } else if (isPlatformStaff && course.type === "live") {
-        await db.insert(slots).values({
-          organisationId: orgId,
-          courseId: course.id,
-          totalSlots: 50,
-          usedSlots: 1,
-        });
-        slotConsumed = true;
+        if (slotRows.length > 0) {
+          const ok = await consumeOneSlot(slotRows);
+          if (!ok && !isPlatformStaff) {
+            errors.push(`${course.title}: failed to consume slot`);
+            continue;
+          }
+          slotConsumed = ok;
+          slotNewlyConsumed = ok;
+        } else if (isPlatformStaff && course.type === "live") {
+          await db.insert(slots).values({
+            organisationId: orgId!,
+            courseId: course.id,
+            totalSlots: 50,
+            usedSlots: 1,
+          });
+          slotConsumed = true;
+          slotNewlyConsumed = true;
+        }
       }
+    } else if (alreadyHeldSlot && orgId) {
+      // Switching to free (or no-org) — release the previously held seat
+      await freeOneSlot(orgId, course);
+      slotConsumed = false;
     }
 
-    const prior = await findAnyEnrollment(input.studentId, course);
     try {
       if (prior) {
         await db
@@ -403,7 +421,7 @@ export async function assignCoursesToStudent(
 
       enrolled.push(course.title);
     } catch (err) {
-      if (slotConsumed && orgId) await freeOneSlot(orgId, course);
+      if (slotNewlyConsumed && orgId) await freeOneSlot(orgId, course);
       errors.push(`${course.title}: ${err instanceof Error ? err.message : "enrollment failed"}`);
     }
   }
