@@ -176,7 +176,7 @@ export function SettingsPage() {
                 style={
                   logoPreview
                     ? {
-                        backgroundImage: `url(${JSON.stringify(logoPreview).slice(1, -1)})`,
+                        backgroundImage: `url(${JSON.stringify(logoPreview)})`,
                         backgroundSize: "cover",
                         backgroundPosition: "center",
                         backgroundRepeat: "no-repeat",

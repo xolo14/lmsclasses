@@ -49,7 +49,7 @@ export function TopBar({ userName, userRole, onMenuClick, brandLogoUrl }: TopBar
             <div
               className="h-9 w-28 sm:h-10 sm:w-32"
               style={{
-                backgroundImage: `url(${JSON.stringify(brandLogoUrl).slice(1, -1)})`,
+                backgroundImage: `url(${JSON.stringify(brandLogoUrl)})`,
                 backgroundSize: "contain",
                 backgroundPosition: "left center",
                 backgroundRepeat: "no-repeat",

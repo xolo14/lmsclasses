@@ -60,7 +60,7 @@ export function Sidebar({ items, title, collapsed, onNavigate, brandLogoUrl }: S
               <div
                 className="h-10 w-full max-w-[10rem]"
                 style={{
-                  backgroundImage: `url(${JSON.stringify(brandLogoUrl).slice(1, -1)})`,
+                  backgroundImage: `url(${JSON.stringify(brandLogoUrl)})`,
                   backgroundSize: "contain",
                   backgroundPosition: "left center",
                   backgroundRepeat: "no-repeat",
@@ -79,7 +79,7 @@ export function Sidebar({ items, title, collapsed, onNavigate, brandLogoUrl }: S
           <div
             className="mx-auto h-9 w-9"
             style={{
-              backgroundImage: `url(${JSON.stringify(brandLogoUrl).slice(1, -1)})`,
+              backgroundImage: `url(${JSON.stringify(brandLogoUrl)})`,
               backgroundSize: "contain",
               backgroundPosition: "center",
               backgroundRepeat: "no-repeat",

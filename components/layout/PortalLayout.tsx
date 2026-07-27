@@ -70,9 +70,9 @@ export function PortalLayout({
         <main className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-swiss-cream">
           {brandLogoUrl ? (
             <div
-              className="pointer-events-none absolute inset-0 opacity-[0.07]"
+              className="pointer-events-none absolute inset-0 opacity-[0.12]"
               style={{
-                backgroundImage: `url(${JSON.stringify(brandLogoUrl).slice(1, -1)})`,
+                backgroundImage: `url(${JSON.stringify(brandLogoUrl)})`,
                 backgroundSize: "min(28rem, 55%)",
                 backgroundPosition: "center",
                 backgroundRepeat: "no-repeat",
