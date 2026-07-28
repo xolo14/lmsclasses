@@ -15,6 +15,8 @@ export async function GET(
   return NextResponse.json({
     found: true,
     isRevoked: cert.isRevoked,
+    isLocked: cert.isLocked,
+    unlockAt: cert.unlockAt,
     studentName: cert.studentNameSnapshot,
     courseName: cert.courseNameSnapshot,
     orgName: cert.orgNameSnapshot,

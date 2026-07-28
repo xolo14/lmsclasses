@@ -10,6 +10,8 @@ import { formatDateTime } from "@/lib/utils";
 type VerifyData = {
   found: boolean;
   isRevoked?: boolean;
+  isLocked?: boolean;
+  unlockAt?: string | null;
   studentName?: string;
   courseName?: string;
   orgName?: string | null;
@@ -64,10 +66,16 @@ export default function VerifyCertificatePage() {
                 <div><dt className="text-slate-500">Issued by</dt><dd>{data.orgName}</dd></div>
               )}
             </dl>
-            {data.certificateId && (
+            {data.certificateId && !data.isLocked && (
               <Button className="mt-6 w-full" asChild>
                 <a href={`/api/certificates/verify/${token}/download`}>Download PDF</a>
               </Button>
+            )}
+            {data.isLocked && (
+              <p className="mt-6 text-sm text-amber-400/90 text-center">
+                Certificate is locked until course duration completes
+                {data.unlockAt ? ` (${formatDateTime(data.unlockAt)})` : ""}.
+              </p>
             )}
           </>
         )}

@@ -5,9 +5,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Cron: issue certificates on the calendar day course duration from enrollment elapses.
+ * Cron: create locked certificates on enroll (backfill) and unlock+email when
+ * course duration / batch end elapses.
  * Protect with Authorization: Bearer $CRON_SECRET
- * Suggested schedule: daily (e.g. every hour or once per day).
+ * Suggested schedule: hourly or daily.
  */
 export async function GET(request: Request) {
   const auth = request.headers.get("authorization");

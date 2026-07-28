@@ -24,12 +24,13 @@ import {
   CERTIFICATE_BACKGROUND_MAX_LABEL,
 } from "@/lib/upload-limits";
 
+type CourseLink = { courseId: string; courseType: "live" | "record" };
+
 type BuilderState = {
   layout: TemplateLayout;
   selectedId: string | null;
   name: string;
-  courseId: string;
-  courseType: "" | "live" | "record";
+  courses: CourseLink[];
   batchId: string;
   autoIssue: boolean;
   isDefault: boolean;
@@ -182,6 +183,7 @@ export function TemplateBuilder({
   initial?: {
     name: string;
     layout: TemplateLayout;
+    courses?: CourseLink[];
     courseId?: string | null;
     courseType?: "live" | "record" | null;
     batchId?: string | null;
@@ -197,6 +199,13 @@ export function TemplateBuilder({
   const scaleRef = useRef(0.55);
   const [scale, setScale] = useState(0.55);
 
+  const initialCourses: CourseLink[] =
+    initial?.courses && initial.courses.length > 0
+      ? initial.courses
+      : initial?.courseId && initial?.courseType
+        ? [{ courseId: initial.courseId, courseType: initial.courseType }]
+        : [];
+
   const [state, dispatch] = useReducer(reducer, {
     layout: initial?.layout ?? {
       width: DEFAULT_LAYOUT_SIZE.width,
@@ -207,12 +216,16 @@ export function TemplateBuilder({
     },
     selectedId: null,
     name: initial?.name ?? "",
-    courseId: initial?.courseId ?? "",
-    courseType: initial?.courseType ?? "",
+    courses: initialCourses,
     batchId: initial?.batchId ?? "",
     autoIssue: initial?.autoIssue ?? false,
     isDefault: initial?.isDefault ?? false,
   });
+
+  const singleLiveCourse =
+    state.courses.length === 1 && state.courses[0]!.courseType === "live"
+      ? state.courses[0]!
+      : null;
 
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [batchOptions, setBatchOptions] = useState<{ id: string; name: string }[]>([]);
@@ -246,12 +259,15 @@ export function TemplateBuilder({
   }, [loadCourses]);
 
   useEffect(() => {
-    if (state.courseType !== "live" || !state.courseId) {
+    if (!singleLiveCourse) {
       setBatchOptions([]);
+      if (state.batchId) {
+        dispatch({ type: "SET_FIELD", field: "batchId", value: "" });
+      }
       return;
     }
     let cancelled = false;
-    void fetch(`/api/batches?courseId=${encodeURIComponent(state.courseId)}`)
+    void fetch(`/api/batches?courseId=${encodeURIComponent(singleLiveCourse.courseId)}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -264,7 +280,7 @@ export function TemplateBuilder({
     return () => {
       cancelled = true;
     };
-  }, [state.courseId, state.courseType]);
+  }, [singleLiveCourse?.courseId, state.batchId]);
 
   const selected = state.layout.elements.find((el) => el.id === state.selectedId);
 
@@ -289,8 +305,8 @@ export function TemplateBuilder({
       setError("Template name must be at least 2 characters.");
       return;
     }
-    if (state.autoIssue && (!state.courseId || !state.courseType)) {
-      setError("Link a course to enable auto-issue.");
+    if (state.autoIssue && state.courses.length === 0) {
+      setError("Link at least one course to enable auto-issue.");
       return;
     }
     setSaving(true);
@@ -298,9 +314,10 @@ export function TemplateBuilder({
     const payload = {
       name: trimmedName,
       layout: state.layout,
-      courseId: state.courseId || undefined,
-      courseType: state.courseType || undefined,
-      batchId: state.courseType === "live" ? state.batchId || null : null,
+      courses: state.courses,
+      courseId: state.courses[0]?.courseId,
+      courseType: state.courses[0]?.courseType,
+      batchId: singleLiveCourse ? state.batchId || null : null,
       autoIssue: state.autoIssue,
       isDefault: state.isDefault,
     };
@@ -441,35 +458,56 @@ export function TemplateBuilder({
             <Input value={state.name} onChange={(e) => dispatch({ type: "SET_FIELD", field: "name", value: e.target.value })} />
           </div>
           <div className="space-y-2">
-            <Label>Course (optional)</Label>
-            <Select
-              value={state.courseId ? `${state.courseType}:${state.courseId}` : "none"}
-              onValueChange={(v) => {
-                if (v === "none") {
-                  dispatch({ type: "SET_FIELD", field: "courseId", value: "" });
-                  dispatch({ type: "SET_FIELD", field: "courseType", value: "" });
-                  dispatch({ type: "SET_FIELD", field: "batchId", value: "" });
-                } else {
-                  const [type, id] = v.split(":");
-                  dispatch({ type: "SET_FIELD", field: "courseId", value: id });
-                  dispatch({ type: "SET_FIELD", field: "courseType", value: type });
-                  dispatch({ type: "SET_FIELD", field: "batchId", value: "" });
-                }
-              }}
-              onOpenChange={(open) => open && courses.length === 0 && void loadCourses()}
-            >
-              <SelectTrigger><SelectValue placeholder="General template" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">General (any course)</SelectItem>
-                {courses.map((c) => (
-                  <SelectItem key={`${c.type}:${c.id}`} value={`${c.type}:${c.id}`}>
-                    [{c.type}] {c.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Courses (optional, multi-select)</Label>
+            <p className="text-xs text-muted-foreground">
+              One template can cover multiple courses. Required when auto-issue is on.
+            </p>
+            <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+              {courses.length === 0 ? (
+                <p className="text-xs text-muted-foreground px-1 py-2">Loading courses…</p>
+              ) : (
+                courses.map((c) => {
+                  const key = `${c.type}:${c.id}`;
+                  const checked = state.courses.some(
+                    (x) => x.courseId === c.id && x.courseType === c.type
+                  );
+                  return (
+                    <label
+                      key={key}
+                      className="flex items-start gap-2 rounded px-1 py-1 text-sm hover:bg-muted/50"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={checked}
+                        onChange={() => {
+                          const next = checked
+                            ? state.courses.filter(
+                                (x) => !(x.courseId === c.id && x.courseType === c.type)
+                              )
+                            : [...state.courses, { courseId: c.id, courseType: c.type }];
+                          dispatch({ type: "SET_FIELD", field: "courses", value: next });
+                        }}
+                      />
+                      <span>
+                        <span className="font-medium">[{c.type}]</span> {c.title}
+                      </span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+            {state.courses.length > 0 && (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline"
+                onClick={() => dispatch({ type: "SET_FIELD", field: "courses", value: [] })}
+              >
+                Clear course selection
+              </button>
+            )}
           </div>
-          {state.courseType === "live" && state.courseId && (
+          {singleLiveCourse && (
             <div className="space-y-2">
               <Label>Limit to batch (optional)</Label>
               <Select
@@ -491,8 +529,8 @@ export function TemplateBuilder({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Leave empty to auto-issue for the whole course. Timing still depends on each
-                student: no batch → duration from assign date; with batch → batch end date.
+                Only available when exactly one live course is selected. Unlock uses batch end
+                date for students in that batch.
               </p>
             </div>
           )}
@@ -504,15 +542,11 @@ export function TemplateBuilder({
               onChange={(e) => dispatch({ type: "SET_FIELD", field: "autoIssue", value: e.target.checked })}
             />
             <span>
-              <span className="font-medium">Auto-create &amp; issue certificates</span>
+              <span className="font-medium">Auto-create certificates on enrollment</span>
               <span className="block text-xs text-muted-foreground mt-0.5">
-                <strong>Recorded:</strong> on the day course duration ends from assign date
-                (course must have a parseable duration, e.g. &quot;8 weeks&quot;).
-                <br />
-                <strong>Live (no batch):</strong> same — duration from assign date.
-                <br />
-                <strong>Live (with batch):</strong> on the batch <em>end date</em> only —
-                set an end date on the batch or certificates will not auto-issue.
+                On enroll day the certificate is generated in <strong>locked</strong> mode.
+                After course duration (or batch end date for live+batch) it unlocks — student
+                can download and the PDF is emailed automatically.
               </span>
             </span>
           </label>
@@ -524,7 +558,7 @@ export function TemplateBuilder({
               onChange={(e) => dispatch({ type: "SET_FIELD", field: "isDefault", value: e.target.checked })}
             />
             <span>
-              <span className="font-medium">Default template for this course</span>
+              <span className="font-medium">Default template for linked courses</span>
               <span className="block text-xs text-muted-foreground mt-0.5">
                 Preferred when multiple auto-issue templates exist for the same course.
               </span>

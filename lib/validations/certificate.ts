@@ -79,41 +79,99 @@ export const templateLayoutSchema: z.ZodType<TemplateLayout> = z.object({
   elements: z.array(templateElementSchema),
 });
 
-export const createTemplateSchema = z.object({
-  name: z.string().min(2).max(100),
-  courseId: z.string().uuid().optional(),
-  courseType: z.enum(["live", "record"]).optional(),
-  batchId: z.string().uuid().optional().nullable(),
-  layout: templateLayoutSchema,
-  autoIssue: z.boolean(),
-  isDefault: z.boolean(),
-}).superRefine((val, ctx) => {
-  if (val.autoIssue && (!val.courseId || !val.courseType)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Link a course to enable auto-issue",
-      path: ["courseId"],
-    });
-  }
-  if (val.courseType === "record" && val.batchId) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Recorded courses do not use batches",
-      path: ["batchId"],
-    });
-  }
+export const templateCourseLinkSchema = z.object({
+  courseId: z.string().uuid(),
+  courseType: z.enum(["live", "record"]),
 });
 
-export const updateTemplateSchema = z.object({
-  name: z.string().min(2).max(100).optional(),
-  courseId: z.string().uuid().nullable().optional(),
-  courseType: z.enum(["live", "record"]).nullable().optional(),
-  batchId: z.string().uuid().nullable().optional(),
-  layout: templateLayoutSchema.optional(),
-  autoIssue: z.boolean().optional(),
-  isDefault: z.boolean().optional(),
-  isActive: z.boolean().optional(),
-});
+export const createTemplateSchema = z
+  .object({
+    name: z.string().min(2).max(100),
+    /** Preferred: one or more courses. */
+    courses: z.array(templateCourseLinkSchema).max(50).optional(),
+    /** Legacy single-course fields (still accepted; merged into courses). */
+    courseId: z.string().uuid().optional(),
+    courseType: z.enum(["live", "record"]).optional(),
+    batchId: z.string().uuid().optional().nullable(),
+    layout: templateLayoutSchema,
+    autoIssue: z.boolean(),
+    isDefault: z.boolean(),
+  })
+  .superRefine((val, ctx) => {
+    const courses = normalizeCoursesInput(val);
+    if (val.autoIssue && courses.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Link at least one course to enable auto-issue",
+        path: ["courses"],
+      });
+    }
+    const hasRecord = courses.some((c) => c.courseType === "record");
+    const liveCount = courses.filter((c) => c.courseType === "live").length;
+    if (val.batchId && (hasRecord || liveCount !== 1)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Batch filter requires exactly one live course and no recorded courses",
+        path: ["batchId"],
+      });
+    }
+  });
+
+export const updateTemplateSchema = z
+  .object({
+    name: z.string().min(2).max(100).optional(),
+    courses: z.array(templateCourseLinkSchema).max(50).optional(),
+    courseId: z.string().uuid().nullable().optional(),
+    courseType: z.enum(["live", "record"]).nullable().optional(),
+    batchId: z.string().uuid().nullable().optional(),
+    layout: templateLayoutSchema.optional(),
+    autoIssue: z.boolean().optional(),
+    isDefault: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.courses === undefined && val.courseId === undefined) return;
+    const courses = normalizeCoursesInput(val);
+    if (val.autoIssue === true && courses.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Link at least one course to enable auto-issue",
+        path: ["courses"],
+      });
+    }
+    if (val.batchId) {
+      const hasRecord = courses.some((c) => c.courseType === "record");
+      const liveCount = courses.filter((c) => c.courseType === "live").length;
+      if (hasRecord || liveCount !== 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Batch filter requires exactly one live course and no recorded courses",
+          path: ["batchId"],
+        });
+      }
+    }
+  });
+
+export function normalizeCoursesInput(input: {
+  courses?: { courseId: string; courseType: "live" | "record" }[];
+  courseId?: string | null;
+  courseType?: "live" | "record" | null;
+}): { courseId: string; courseType: "live" | "record" }[] {
+  const fromArray = input.courses ?? [];
+  const merged = [...fromArray];
+  if (input.courseId && input.courseType) {
+    if (!merged.some((c) => c.courseId === input.courseId && c.courseType === input.courseType)) {
+      merged.unshift({ courseId: input.courseId, courseType: input.courseType });
+    }
+  }
+  const seen = new Set<string>();
+  return merged.filter((c) => {
+    const key = `${c.courseType}:${c.courseId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 export const issueCertificateSchema = z.object({
   templateId: z.string().uuid(),

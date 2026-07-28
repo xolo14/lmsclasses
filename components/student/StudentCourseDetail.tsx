@@ -90,7 +90,13 @@ export function StudentCourseDetail({
   });
 
   const { data: courseCerts = [] } = useQuery<
-    { id: string; certificateNumber: string; issuedAt: string }[]
+    {
+      id: string;
+      certificateNumber: string;
+      issuedAt: string;
+      isLocked?: boolean;
+      unlockAt?: string | null;
+    }[]
   >({
     queryKey: ["student-course-certs", courseId],
     queryFn: () =>
@@ -157,21 +163,31 @@ export function StudentCourseDetail({
                       <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                         <div>
                           <p className="font-mono text-primary">{c.certificateNumber}</p>
-                          <p className="text-muted-foreground">Issued {format(new Date(c.issuedAt), "MMM d, yyyy")}</p>
+                          <p className="text-muted-foreground">
+                            Generated {format(new Date(c.issuedAt), "MMM d, yyyy")}
+                            {c.isLocked && c.unlockAt
+                              ? ` · Unlocks ${format(new Date(c.unlockAt), "MMM d, yyyy")}`
+                              : ""}
+                          </p>
                         </div>
-                        <Button size="sm" variant="secondary" asChild>
-                          <a href={`/api/certificates/${c.id}/download`}>
-                            <Download className="mr-1 h-3.5 w-3.5" /> Download
-                          </a>
-                        </Button>
+                        {c.isLocked ? (
+                          <Button size="sm" variant="secondary" disabled>
+                            <Lock className="mr-1 h-3.5 w-3.5" /> Locked
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="secondary" asChild>
+                            <a href={`/api/certificates/${c.id}/download`}>
+                              <Download className="mr-1 h-3.5 w-3.5" /> Download
+                            </a>
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Your certificate will appear here once you are eligible: recorded /
-                    live without batch uses course duration from assign date; live with a
-                    batch uses the batch end date.
+                    With auto-issue, your certificate is generated on enrollment (locked) and
+                    unlocks after course duration — then you can download and receive email.
                   </p>
                 )}
               </div>

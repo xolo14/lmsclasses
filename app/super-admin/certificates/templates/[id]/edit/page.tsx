@@ -11,6 +11,7 @@ export default function EditTemplatePage() {
   const [initial, setInitial] = useState<{
     name: string;
     layout: TemplateLayout;
+    courses?: { courseId: string; courseType: "live" | "record" }[];
     courseId?: string | null;
     courseType?: "live" | "record" | null;
     batchId?: string | null;
@@ -26,6 +27,7 @@ export default function EditTemplatePage() {
           setInitial({
             name: data.name,
             layout: data.layout,
+            courses: data.courses,
             courseId: data.courseId,
             courseType: data.courseType,
             batchId: data.batchId,

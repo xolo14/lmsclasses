@@ -799,9 +799,10 @@ export const certificateTemplates = pgTable(
       .notNull()
       .references(() => users.id),
     orgId: uuid("org_id").references(() => organisations.id),
+    /** Denormalized primary course (first linked). Prefer certificate_template_courses. */
     courseId: uuid("course_id"),
     courseType: courseTypeEnum("course_type"),
-    /** Live auto-issue is scoped to this batch when set; null = whole course. Timing uses each student's batch/assign rules. */
+    /** Live auto-issue is scoped to this batch when set; null = whole course. Only valid with a single live course. */
     batchId: uuid("batch_id").references(() => batches.id),
     name: text("name").notNull(),
     isDefault: boolean("is_default").notNull().default(false),
@@ -816,6 +817,25 @@ export const certificateTemplates = pgTable(
     idxCourse: index("idx_cert_tmpl_course").on(t.courseId),
     idxBatch: index("idx_cert_tmpl_batch").on(t.batchId),
     idxCreatedBy: index("idx_cert_tmpl_creator").on(t.createdBy),
+  })
+);
+
+/** Many courses per template (multi-select). */
+export const certificateTemplateCourses = pgTable(
+  "certificate_template_courses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => certificateTemplates.id, { onDelete: "cascade" }),
+    courseId: uuid("course_id").notNull(),
+    courseType: courseTypeEnum("course_type").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uqTemplateCourse: uniqueIndex("uq_cert_tmpl_course").on(t.templateId, t.courseId, t.courseType),
+    idxTemplate: index("idx_cert_tmpl_courses_tmpl").on(t.templateId),
+    idxCourse: index("idx_cert_tmpl_courses_course").on(t.courseId, t.courseType),
   })
 );
 
@@ -846,6 +866,10 @@ export const issuedCertificates = pgTable(
     emailSentTo: text("email_sent_to"),
     emailResendCount: integer("email_resend_count").notNull().default(0),
     issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Auto-issue: generated on enroll, download/email blocked until unlockAt. */
+    isLocked: boolean("is_locked").notNull().default(false),
+    unlockAt: timestamp("unlock_at", { withTimezone: true }),
+    unlockedAt: timestamp("unlocked_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     isRevoked: boolean("is_revoked").notNull().default(false),
     revokeReason: text("revoke_reason"),
@@ -859,6 +883,7 @@ export const issuedCertificates = pgTable(
     idxCourse: index("idx_cert_course").on(t.courseId),
     idxOrg: index("idx_cert_org").on(t.orgId),
     idxTemplate: index("idx_cert_template").on(t.templateId),
+    idxLockedUnlock: index("idx_cert_locked_unlock").on(t.isLocked, t.unlockAt),
     uqCertNum: uniqueIndex("uq_cert_number").on(t.certificateNumber),
   })
 );
@@ -893,5 +918,6 @@ export type WidgetEvent = typeof widgetEvents.$inferSelect;
 export type ApiKeyUsageLog = typeof apiKeyUsageLogs.$inferSelect;
 export type SystemSetting = typeof systemSettings.$inferSelect;
 export type CertificateTemplate = typeof certificateTemplates.$inferSelect;
+export type CertificateTemplateCourse = typeof certificateTemplateCourses.$inferSelect;
 export type IssuedCertificate = typeof issuedCertificates.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];

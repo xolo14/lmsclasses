@@ -196,8 +196,7 @@ export function SettingsPage() {
               </div>
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Upload a logo for your organisation. It is used as the portal background for
-                  students and org admins (not shown as a small image icon).
+                  Upload a logo for your organisation.
                 </p>
                 <Input
                   type="file"

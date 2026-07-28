@@ -14,6 +14,12 @@ export async function GET(
   if (!cert || cert.isRevoked) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  if (cert.isLocked) {
+    return NextResponse.json(
+      { error: "Certificate is locked until course duration completes" },
+      { status: 403 }
+    );
+  }
 
   try {
     const buffer = await readCertificatePdf(cert);
