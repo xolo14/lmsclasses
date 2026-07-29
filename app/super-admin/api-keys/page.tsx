@@ -3,12 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Key, Eye, Copy, Check, ExternalLink } from "lucide-react";
+import { Plus, Trash2, Key, Eye, Copy, Check, ExternalLink, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DataTable } from "@/components/tables/DataTable";
 import { AddApiKeyModal } from "@/components/modals/AddApiKeyModal";
+import { AddRecordingAccessKeyModal } from "@/components/modals/AddRecordingAccessKeyModal";
 import { formatDateTime } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -19,6 +20,8 @@ type ApiKeyRow = {
   courseId: string | null;
   courseTitle: string | null;
   coursePrice?: number | null;
+  courseTitles?: string[];
+  keyType?: "widget" | "recordings";
   permissions: string[];
   environment?: string;
   usageCount?: number;
@@ -36,6 +39,7 @@ type ApiKeyRow = {
 export default function SuperAdminApiKeysPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [recordingsModalOpen, setRecordingsModalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyLink = async (id: string, link: string) => {
@@ -80,7 +84,11 @@ export default function SuperAdminApiKeysPage() {
       header: "Name",
       cell: ({ row }) => (
         <span className="font-medium flex items-center gap-1.5">
-          <Key className="h-3.5 w-3.5 text-muted-foreground" />
+          {row.original.keyType === "recordings" ? (
+            <Film className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <Key className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
           {row.original.name}
         </span>
       ),
@@ -96,10 +104,22 @@ export default function SuperAdminApiKeysPage() {
       accessorKey: "courseTitle",
       header: "Course",
       cell: ({ row }) => (
-        <div className="max-w-[180px]">
-          <p className="text-sm font-medium truncate">{row.original.courseTitle ?? "—"}</p>
+        <div className="max-w-[200px]">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              {row.original.keyType === "recordings" ? "Recordings" : "Widget"}
+            </Badge>
+          </div>
+          <p
+            className="text-sm font-medium truncate"
+            title={(row.original.courseTitles ?? []).join(", ")}
+          >
+            {row.original.courseTitle ?? "—"}
+          </p>
           {row.original.coursePrice != null && (
-            <p className="text-xs text-muted-foreground">₹{row.original.coursePrice.toLocaleString("en-IN")}</p>
+            <p className="text-xs text-muted-foreground">
+              ₹{row.original.coursePrice.toLocaleString("en-IN")}
+            </p>
           )}
         </div>
       ),
@@ -107,22 +127,42 @@ export default function SuperAdminApiKeysPage() {
     {
       accessorKey: "totalLeads",
       header: "Leads",
-      cell: ({ row }) => row.original.totalLeads ?? 0,
+      cell: ({ row }) =>
+        row.original.keyType === "recordings" ? (
+          <span className="text-xs text-muted-foreground">—</span>
+        ) : (
+          row.original.totalLeads ?? 0
+        ),
     },
     {
       accessorKey: "totalConversions",
       header: "Conversions",
-      cell: ({ row }) => row.original.totalConversions ?? 0,
+      cell: ({ row }) =>
+        row.original.keyType === "recordings" ? (
+          <span className="text-xs text-muted-foreground">—</span>
+        ) : (
+          row.original.totalConversions ?? 0
+        ),
     },
     {
       accessorKey: "conversionRate",
       header: "Conv. %",
-      cell: ({ row }) => `${row.original.conversionRate ?? 0}%`,
+      cell: ({ row }) =>
+        row.original.keyType === "recordings" ? (
+          <span className="text-xs text-muted-foreground">—</span>
+        ) : (
+          `${row.original.conversionRate ?? 0}%`
+        ),
     },
     {
       accessorKey: "totalRevenue",
       header: "Revenue",
-      cell: ({ row }) => `₹${(row.original.totalRevenue ?? 0).toLocaleString("en-IN")}`,
+      cell: ({ row }) =>
+        row.original.keyType === "recordings" ? (
+          <span className="text-xs text-muted-foreground">—</span>
+        ) : (
+          `₹${(row.original.totalRevenue ?? 0).toLocaleString("en-IN")}`
+        ),
     },
     {
       id: "formLink",
@@ -202,7 +242,7 @@ export default function SuperAdminApiKeysPage() {
             variant="destructive"
             size="sm"
             onClick={() => {
-              if (confirm(`Delete API key "${row.original.name}"? This cannot be undone.`)) {
+              if (confirm("Delete this API key? This cannot be undone.")) {
                 deleteKey.mutate(row.original.id);
               }
             }}
@@ -221,7 +261,7 @@ export default function SuperAdminApiKeysPage() {
       <div className="space-y-6">
         <PageHeader
           title="API Keys"
-          description="Embed on partner sites or share a hosted form link — one key per course."
+          description="Partner widget keys and recording video access keys."
         />
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 space-y-3">
           <p className="text-destructive font-medium">
@@ -239,10 +279,13 @@ export default function SuperAdminApiKeysPage() {
     <div className="space-y-6">
       <PageHeader
         title="API Keys"
-        description="Embed on partner sites or share a hosted form link — one key per course."
+        description="Widget keys for partner enroll forms, or recording keys for multi-course video access."
       >
+        <Button variant="outline" onClick={() => setRecordingsModalOpen(true)}>
+          <Film className="h-4 w-4 mr-2" /> Recording Access Key
+        </Button>
         <Button onClick={() => setModalOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> Generate New API Key
+          <Plus className="h-4 w-4 mr-2" /> Generate Widget Key
         </Button>
       </PageHeader>
       {keys.length === 0 ? (
@@ -250,11 +293,17 @@ export default function SuperAdminApiKeysPage() {
           <Key className="h-10 w-10 mx-auto text-muted-foreground" />
           <p className="font-medium">No API keys yet</p>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Generate a widget key for each partner. Share the hosted form link (no API key exposed) or give them embed code for their website.
+            Generate a widget key for partner enroll forms, or a recording access key so partners
+            can fetch published recording-class videos for selected courses.
           </p>
-          <Button onClick={() => setModalOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" /> Generate New API Key
-          </Button>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button variant="outline" onClick={() => setRecordingsModalOpen(true)}>
+              <Film className="h-4 w-4 mr-2" /> Recording Access Key
+            </Button>
+            <Button onClick={() => setModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" /> Generate Widget Key
+            </Button>
+          </div>
         </div>
       ) : (
         <DataTable
@@ -265,6 +314,10 @@ export default function SuperAdminApiKeysPage() {
         />
       )}
       <AddApiKeyModal open={modalOpen} onOpenChange={setModalOpen} />
+      <AddRecordingAccessKeyModal
+        open={recordingsModalOpen}
+        onOpenChange={setRecordingsModalOpen}
+      />
     </div>
   );
 }

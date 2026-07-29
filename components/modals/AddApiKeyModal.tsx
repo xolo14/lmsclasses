@@ -69,6 +69,7 @@ export function AddApiKeyModal({ open, onOpenChange }: AddApiKeyModalProps) {
     useForm<CreateApiKeyInput>({
       resolver: zodResolver(createApiKeySchema),
       defaultValues: {
+        keyType: "widget",
         name: "",
         courseId: "",
         widgetDomainsAllowed: [],

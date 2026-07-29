@@ -73,11 +73,12 @@ export async function PATCH(
         ...(data.name !== undefined && { name: data.name }),
         ...(data.courseId !== undefined && {
           courseId: data.courseId,
-          allowedCourses: [data.courseId],
+          ...(data.courseId && data.allowedCourses === undefined
+            ? { allowedCourses: [data.courseId] }
+            : {}),
         }),
         ...(data.permissions !== undefined && { permissions: data.permissions }),
-        ...(data.allowedCourses !== undefined &&
-          data.courseId === undefined && { allowedCourses: data.allowedCourses }),
+        ...(data.allowedCourses !== undefined && { allowedCourses: data.allowedCourses }),
         ...(data.allowedPaymentGateway !== undefined && {
           allowedPaymentGateway: data.allowedPaymentGateway,
         }),

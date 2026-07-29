@@ -10,7 +10,7 @@ import {
   hashApiKey,
   extractDisplayPrefix,
 } from "@/lib/api-key-service";
-import { DEFAULT_LEAD_FIELDS, DEFAULT_RATE_LIMIT } from "@/lib/api-key-types";
+import { DEFAULT_LEAD_FIELDS, DEFAULT_RATE_LIMIT, RECORDINGS_KEY_PERMISSIONS, WIDGET_KEY_DEFAULT_PERMISSIONS } from "@/lib/api-key-types";
 import { serializeApiKey, insertApiKeySafe, selectApiKeysSafe } from "@/lib/api-key-admin";
 import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
 import { generateUniqueFormSlug } from "@/lib/widget/form-slug";
@@ -46,9 +46,11 @@ export async function GET(request: Request) {
 
     const courseIds = [
       ...new Set(
-        list
-          .map((k) => k.courseId ?? (k.allowedCourses?.length === 1 ? k.allowedCourses[0] : null))
-          .filter(Boolean) as string[]
+        list.flatMap((k) => {
+          const allowed = (k.allowedCourses ?? []) as string[];
+          if (allowed.length > 0) return allowed;
+          return k.courseId ? [k.courseId] : [];
+        })
       ),
     ];
     const courseRows =
@@ -64,13 +66,22 @@ export async function GET(request: Request) {
 
     return NextResponse.json(
       list.map((k) => {
-        const courseId = k.courseId ?? (k.allowedCourses?.length === 1 ? k.allowedCourses[0] : null);
+        const allowed = ((k.allowedCourses ?? []) as string[]).filter(Boolean);
+        const ids = allowed.length > 0 ? allowed : k.courseId ? [k.courseId] : [];
+        const titles = ids.map((id) => courseTitleById.get(id)).filter(Boolean) as string[];
+        const isRecordingsKey = ((k.permissions ?? []) as string[]).includes("get_recordings");
         const stats = statsByKey.get(k.id);
         return {
           ...serializeApiKey(k, {
-            courseTitle: courseId ? (courseTitleById.get(courseId) ?? null) : null,
-            coursePrice: courseId ? (coursePriceById.get(courseId) ?? null) : null,
+            courseTitle:
+              titles.length > 1
+                ? `${titles.length} courses`
+                : titles[0] ?? null,
+            coursePrice: titles.length === 1 && ids[0] ? (coursePriceById.get(ids[0]!) ?? null) : null,
           }),
+          keyType: isRecordingsKey ? "recordings" : "widget",
+          courseTitles: titles,
+          allowedCourses: ids,
           totalLeads: stats?.totalLeads ?? 0,
           totalConversions: stats?.totalConversions ?? 0,
           conversionRate: stats?.conversionRate ?? 0,
@@ -111,42 +122,53 @@ export async function POST(request: Request) {
     }
 
     const data = parsed.data;
+    const isRecordingsKey = data.keyType === "recordings";
 
-    const [course] = await db
+    const courseIds = isRecordingsKey
+      ? [...new Set(data.allowedCourses ?? [])]
+      : data.courseId
+        ? [data.courseId]
+        : [];
+
+    if (courseIds.length === 0) {
+      return NextResponse.json({ error: "Select at least one course" }, { status: 400 });
+    }
+
+    const courseRows = await db
       .select({ id: recordCourses.id, title: recordCourses.title, price: recordCourses.price })
       .from(recordCourses)
-      .where(eq(recordCourses.id, data.courseId))
-      .limit(1);
-    if (!course) {
-      return NextResponse.json({ error: "Course not found" }, { status: 400 });
+      .where(inArray(recordCourses.id, courseIds));
+
+    if (courseRows.length !== courseIds.length) {
+      return NextResponse.json({ error: "One or more courses were not found" }, { status: 400 });
     }
+
+    const primaryCourse = courseRows.find((c) => c.id === courseIds[0]) ?? courseRows[0]!;
 
     const plainKey = generatePlainApiKey(data.environment);
     const keyHash = hashApiKey(plainKey);
     const keyPrefix = extractDisplayPrefix(plainKey);
-    const formSlug = await generateUniqueFormSlug(data.name);
+    const formSlug = isRecordingsKey ? null : await generateUniqueFormSlug(data.name);
 
-    const defaultPermissions = data.permissions ?? [
-      "submit_lead",
-      "get_lead_status",
-      "create_payment_order",
-      "confirm_payment",
-      "get_course_list",
-    ];
+    const defaultPermissions = data.permissions?.length
+      ? data.permissions
+      : isRecordingsKey
+        ? RECORDINGS_KEY_PERMISSIONS
+        : WIDGET_KEY_DEFAULT_PERMISSIONS;
 
     const insertValues = {
       name: data.name,
       keyPrefix,
       keyHash,
       permissions: defaultPermissions,
-      courseId: data.courseId,
-      allowedCourses: [data.courseId],
+      courseId: primaryCourse.id,
+      allowedCourses: courseIds,
       allowedPaymentGateway: data.allowedPaymentGateway ?? "any",
       webhookUrl: data.webhookUrl ?? null,
       webhookSecret: data.webhookSecret ?? null,
       leadFields: data.leadFields ?? DEFAULT_LEAD_FIELDS,
-      autoCreateStudent: data.autoCreateStudent ?? true,
-      sendWelcomeEmail: data.sendWelcomeEmail ?? true,
+      autoCreateStudent: isRecordingsKey ? false : (data.autoCreateStudent ?? true),
+      sendWelcomeEmail: isRecordingsKey ? false : (data.sendWelcomeEmail ?? true),
       notifyWebhook: data.notifyWebhook ?? false,
       rateLimit: data.rateLimit ?? DEFAULT_RATE_LIMIT,
       ipWhitelist: data.ipWhitelist ?? [],
@@ -168,17 +190,33 @@ export async function POST(request: Request) {
       action: "API_KEY_GENERATED",
       entity: "ApiKey",
       entityId: row.id,
-      metadata: { name: row.name, environment: row.environment, courseId: row.courseId },
+      metadata: {
+        name: row.name,
+        environment: row.environment,
+        courseId: row.courseId,
+        keyType: data.keyType ?? "widget",
+        allowedCourses: courseIds,
+      },
       ipAddress: getClientIp(request),
     });
 
-    const embedSnippet = buildEmbedSnippet(plainKey);
+    const courseTitles = courseRows.map((c) => c.title);
 
     return NextResponse.json(
       {
+        ...serializeApiKey(row, {
+          courseTitle:
+            courseTitles.length > 1
+              ? `${courseTitles.length} courses`
+              : primaryCourse.title,
+          coursePrice: courseTitles.length === 1 ? parseFloat(primaryCourse.price) : null,
+        }),
         key: plainKey,
-        embedSnippet,
-        ...serializeApiKey(row, { courseTitle: course.title, coursePrice: parseFloat(course.price) }),
+        embedSnippet: isRecordingsKey ? null : buildEmbedSnippet(plainKey),
+        keyType: data.keyType ?? "widget",
+        allowedCourses: courseIds,
+        courseTitles,
+        recordingsEndpoint: isRecordingsKey ? "/api/external/recordings" : null,
       },
       { status: 201 }
     );

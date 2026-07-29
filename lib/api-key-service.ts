@@ -74,15 +74,22 @@ export function courseAllowed(
   courseName: string,
   courseId?: string
 ): boolean {
+  const allowed = (apiKey.allowedCourses ?? []) as string[];
+
+  // Multi-course keys: allow any course in allowedCourses
+  if (allowed.length > 1) {
+    if (courseId && allowed.includes(courseId)) return true;
+    const normalizedName = courseName.trim().toLowerCase();
+    return allowed.some((c) => c.trim().toLowerCase() === normalizedName);
+  }
+
   const boundCourseId =
-    apiKey.courseId ??
-    (apiKey.allowedCourses?.length === 1 ? apiKey.allowedCourses[0] : null);
+    apiKey.courseId ?? (allowed.length === 1 ? allowed[0] : null);
 
   if (boundCourseId) {
     return courseId ? courseId === boundCourseId : false;
   }
 
-  const allowed = (apiKey.allowedCourses ?? []) as string[];
   if (allowed.length === 0) return true;
   const normalizedName = courseName.trim().toLowerCase();
   if (courseId && allowed.includes(courseId)) return true;
@@ -91,4 +98,15 @@ export function courseAllowed(
     if (courseId && value === courseId) return true;
     return value.toLowerCase() === normalizedName;
   });
+}
+
+/** Courses this key may access for recordings / content APIs. */
+export function resolveAllowedCourseIds(apiKey: {
+  allowedCourses?: string[] | null;
+  courseId?: string | null;
+}): string[] {
+  const allowed = (apiKey.allowedCourses ?? []).filter(Boolean);
+  if (allowed.length > 0) return [...new Set(allowed)];
+  if (apiKey.courseId) return [apiKey.courseId];
+  return [];
 }
