@@ -38,6 +38,7 @@ export function EmbeddedVideoPlayer({
     );
   }
 
+  // Never open raw video URLs in a new tab — always play in-player with download disabled.
   const directSrc = embed?.type === "direct" ? embed.embedUrl : videoUrl?.trim();
   if (directSrc) {
     return (

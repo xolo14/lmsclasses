@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Trash2, ArrowLeft, ExternalLink, FileSpreadsheet } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, Play, FileSpreadsheet } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
 import { AddClassRecordingModal } from "@/components/modals/AddClassRecordingModal";
 import { BulkImportModal } from "@/components/modals/BulkImportModal";
+import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 import { formatDateTime } from "@/lib/utils";
 
 type Recording = {
@@ -30,6 +31,7 @@ export default function BatchRecordingsPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [watchRecording, setWatchRecording] = useState<{ url: string; title: string } | null>(null);
 
   const { data: recordings = [], isLoading } = useQuery<Recording[]>({
     queryKey: ["class-recordings", batchId],
@@ -50,14 +52,18 @@ export default function BatchRecordingsPage() {
       accessorKey: "videoUrl",
       header: "Video",
       cell: ({ row }) => (
-        <a
-          href={row.original.videoUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary hover:underline flex items-center gap-1 text-sm"
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            setWatchRecording({
+              url: row.original.videoUrl,
+              title: row.original.topicName,
+            })
+          }
         >
-          Watch <ExternalLink className="h-3 w-3" />
-        </a>
+          <Play className="h-3 w-3 mr-1" /> Watch
+        </Button>
       ),
     },
     { accessorKey: "uploaderName", header: "Uploaded By" },
@@ -108,6 +114,12 @@ export default function BatchRecordingsPage() {
         onOpenChange={setModalOpen}
         courseId={courseId}
         batchId={batchId}
+      />
+      <WatchRecordingModal
+        open={!!watchRecording}
+        onOpenChange={(open) => !open && setWatchRecording(null)}
+        videoUrl={watchRecording?.url ?? ""}
+        title={watchRecording?.title ?? ""}
       />
       <BulkImportModal
         open={importModalOpen}

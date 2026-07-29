@@ -41,7 +41,6 @@ export function AddRecordingAccessKeyModal({
   const [environment, setEnvironment] = useState<"live" | "test">("live");
   const [notes, setNotes] = useState("");
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
-  const [domainsInput, setDomainsInput] = useState("");
 
   const {
     data: courses = [],
@@ -70,16 +69,11 @@ export function AddRecordingAccessKeyModal({
       setEnvironment("live");
       setNotes("");
       setSelectedCourseIds([]);
-      setDomainsInput("");
     }
   }, [open]);
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const domains = domainsInput
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
       const res = await fetch("/api/super-admin/api-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,7 +83,6 @@ export function AddRecordingAccessKeyModal({
           allowedCourses: selectedCourseIds,
           environment,
           notes: notes || null,
-          widgetDomainsAllowed: domains,
           autoCreateStudent: false,
           sendWelcomeEmail: false,
         }),
@@ -150,14 +143,15 @@ export function AddRecordingAccessKeyModal({
           </DialogHeader>
 
           <div className="rounded-lg border border-swiss-black/10 bg-swiss-cream/50 p-3 text-sm space-y-1">
-            <p className="font-medium">Courses with video access</p>
+            <p className="font-medium">Published videos for these record courses</p>
             <ul className="list-disc pl-5 text-muted-foreground">
               {generated.courseTitles.map((t) => (
                 <li key={t}>{t}</li>
               ))}
             </ul>
             <p className="text-xs text-muted-foreground pt-2">
-              Partner endpoint:{" "}
+              API only — no enroll form or widget link.
+              <br />
               <code className="font-mono">GET {generated.recordingsEndpoint}</code>
               <br />
               Header: <code className="font-mono">Authorization: Bearer &lt;api_key&gt;</code>
@@ -199,8 +193,8 @@ export function AddRecordingAccessKeyModal({
             Create Recording Access Key
           </DialogTitle>
           <DialogDescription>
-            Partner site key for fetching published recording-class videos. Select one or more
-            record courses this key may access.
+            API-only access to all published videos for the record courses you select. No enroll
+            form, payment link, or widget embed.
           </DialogDescription>
         </DialogHeader>
 
@@ -217,7 +211,7 @@ export function AddRecordingAccessKeyModal({
           <div>
             <Label>Record courses *</Label>
             <p className="text-xs text-muted-foreground mb-2">
-              Multi-select — partner can load videos only for checked courses.
+              Select courses — the partner receives every published recording for each one.
             </p>
             {coursesLoading ? (
               <p className="text-sm text-muted-foreground">Loading courses…</p>
@@ -262,33 +256,23 @@ export function AddRecordingAccessKeyModal({
             )}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label>Environment</Label>
-              <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={environment}
-                onChange={(e) => setEnvironment(e.target.value as "live" | "test")}
-              >
-                <option value="live">Live (lms_live_…)</option>
-                <option value="test">Test (lms_test_…)</option>
-              </select>
-            </div>
-            <div>
-              <Label>Allowed Domains (optional)</Label>
-              <Input
-                placeholder="partner-site.com"
-                value={domainsInput}
-                onChange={(e) => setDomainsInput(e.target.value)}
-              />
-            </div>
+          <div>
+            <Label>Environment</Label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={environment}
+              onChange={(e) => setEnvironment(e.target.value as "live" | "test")}
+            >
+              <option value="live">Live (lms_live_…)</option>
+              <option value="test">Test (lms_test_…)</option>
+            </select>
           </div>
 
           <div>
             <Label>Notes (optional)</Label>
             <Textarea
               rows={2}
-              placeholder="Video CDN partner for recording classes"
+              placeholder="Partner site video catalog"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />

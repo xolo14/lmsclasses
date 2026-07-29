@@ -73,9 +73,20 @@ export default function SuperAdminApiKeysPage() {
   });
 
   const deleteKey = useMutation({
-    mutationFn: (id: string) =>
-      fetch(`/api/super-admin/api-keys/${id}`, { method: "DELETE" }),
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/super-admin/api-keys/${id}`, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body?.error === "string" ? body.error : "Failed to delete API key"
+        );
+      }
+      return body;
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["api-keys"] }),
+    onError: (err: Error) => {
+      alert(err.message || "Failed to delete API key");
+    },
   });
 
   const columns: ColumnDef<ApiKeyRow>[] = [
@@ -168,7 +179,9 @@ export default function SuperAdminApiKeysPage() {
       id: "formLink",
       header: "Form link",
       cell: ({ row }) =>
-        row.original.formLink ? (
+        row.original.keyType === "recordings" ? (
+          <span className="text-xs text-muted-foreground">API only</span>
+        ) : row.original.formLink ? (
           <div className="flex items-center gap-1.5">
             <Button
               size="sm"

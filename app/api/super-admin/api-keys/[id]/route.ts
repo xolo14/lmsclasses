@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { apiKeys } from "@/lib/db/schema";
+import {
+  apiKeys,
+  apiKeyUsageLogs,
+  partnerLeads,
+  widgetEvents,
+  widgetLeads,
+} from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { updateApiKeySchema } from "@/lib/validations/api-key";
@@ -13,6 +19,7 @@ import {
 import { serializeApiKey, serializeApiKeyWithCourse, selectApiKeysSafe } from "@/lib/api-key-admin";
 import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
 import { ensureFormSlug } from "@/lib/widget/form-slug";
+import { isRecordingsApiKey } from "@/lib/api-key-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +34,20 @@ export async function GET(
 
   const [row] = await selectApiKeysSafe(eq(apiKeys.id, id));
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Widget keys get a hosted form slug; recordings keys are API-only (no enroll link).
+  if (isRecordingsApiKey(row)) {
+    if (row.formSlug) {
+      await db
+        .update(apiKeys)
+        .set({ formSlug: null, updatedAt: new Date() })
+        .where(eq(apiKeys.id, id));
+    }
+    return NextResponse.json(
+      await serializeApiKeyWithCourse({ ...row, formSlug: null }, { includeSecrets: true })
+    );
+  }
+
   const formSlug = row.formSlug ?? (await ensureFormSlug(row));
   return NextResponse.json(
     await serializeApiKeyWithCourse({ ...row, formSlug }, { includeSecrets: true })
@@ -126,6 +147,14 @@ export async function DELETE(
     const [existing] = await db.select().from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    // neon-http does not support interactive transactions — delete children then the key.
+    await db.delete(apiKeyUsageLogs).where(eq(apiKeyUsageLogs.apiKeyId, id));
+    await db.delete(widgetEvents).where(eq(widgetEvents.apiKeyId, id));
+    await db.delete(widgetLeads).where(eq(widgetLeads.apiKeyId, id));
+    await db
+      .update(partnerLeads)
+      .set({ apiKeyId: null, updatedAt: new Date() })
+      .where(eq(partnerLeads.apiKeyId, id));
     await db.delete(apiKeys).where(eq(apiKeys.id, id));
 
     await logAction({
@@ -140,8 +169,18 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error("[api/super-admin/api-keys/:id] DELETE:", err);
-    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error:
+          /foreign key|violates foreign key/i.test(message)
+            ? "Delete failed because related records still reference this key"
+            : "Delete failed",
+        details: message,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -184,9 +223,11 @@ export async function POST(
       ipAddress: getClientIp(request),
     });
 
+    const recordingsKey = isRecordingsApiKey(updated);
     return NextResponse.json({
       key: plainKey,
-      embedSnippet: buildEmbedSnippet(plainKey),
+      embedSnippet: recordingsKey ? null : buildEmbedSnippet(plainKey),
+      recordingsEndpoint: recordingsKey ? "/api/external/recordings" : null,
       ...serializeApiKey(updated),
     });
   } catch (err) {

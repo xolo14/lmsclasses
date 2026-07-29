@@ -17,7 +17,7 @@ export type PartnerRecordingCourse = {
 };
 
 /**
- * Published course recordings for courses this API key is allowed to access.
+ * All published course recordings for the record courses on this API key.
  * Optional courseId narrows to one allowed course.
  */
 export async function getRecordingsForApiKey(

@@ -66,3 +66,12 @@
     @apply border-swiss-black/12;
   }
 }
+
+/* Hide native HTML5 video download control across the LMS player */
+video::-webkit-media-controls-download-button {
+  display: none !important;
+}
+
+video::-webkit-media-controls-enclosure {
+  overflow: hidden;
+}

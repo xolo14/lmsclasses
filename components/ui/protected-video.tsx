@@ -6,16 +6,16 @@ import { protectedVideoProps } from "@/lib/video-embed";
 
 export const ProtectedVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLVideoElement>>(
   function ProtectedVideo(
-    { className, onContextMenu, onDragStart, controlsList, disablePictureInPicture, playsInline, ...props },
+    { className, onContextMenu, onDragStart, controlsList: _controlsList, disablePictureInPicture: _pip, playsInline: _playsInline, ...props },
     ref
   ) {
     return (
       <video
         ref={ref}
         {...props}
-        controlsList={controlsList ?? protectedVideoProps.controlsList}
-        disablePictureInPicture={disablePictureInPicture ?? protectedVideoProps.disablePictureInPicture}
-        playsInline={playsInline ?? protectedVideoProps.playsInline}
+        controlsList={protectedVideoProps.controlsList}
+        disablePictureInPicture={protectedVideoProps.disablePictureInPicture}
+        playsInline={protectedVideoProps.playsInline}
         onContextMenu={(e) => {
           e.preventDefault();
           onContextMenu?.(e);

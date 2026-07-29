@@ -28,6 +28,12 @@ export const PERMISSION_GROUPS = {
 
 export const RECORDINGS_KEY_PERMISSIONS: ApiPermission[] = ["get_recordings"];
 
+export function isRecordingsApiKey(apiKey: {
+  permissions?: string[] | null;
+}): boolean {
+  return ((apiKey.permissions ?? []) as string[]).includes("get_recordings");
+}
+
 export const WIDGET_KEY_DEFAULT_PERMISSIONS: ApiPermission[] = [
   "submit_lead",
   "get_lead_status",

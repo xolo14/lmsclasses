@@ -45,7 +45,8 @@ export function getYouTubeEmbedUrl(url: string, autoplay = false): string | null
   params.set("modestbranding", "1");
   params.set("rel", "0");
   params.set("disablekb", "1");
-  return `https://www.youtube.com/embed/${id}?${params}`;
+  // youtube-nocookie + disablekb reduces download/share chrome vs watch pages
+  return `https://www.youtube-nocookie.com/embed/${id}?${params}`;
 }
 
 export function getVimeoEmbedUrl(url: string, autoplay = false): string | null {

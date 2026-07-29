@@ -1,9 +1,10 @@
 import type { ApiKey } from "@/lib/db/schema";
 import type { SQL } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { apiKeys, recordCourses } from "@/lib/db/schema";
-import { maskFromPrefix } from "@/lib/api-key-service";
+import { maskFromPrefix, resolveAllowedCourseIds } from "@/lib/api-key-service";
+import { isRecordingsApiKey } from "@/lib/api-key-types";
 import { buildFormLink } from "@/lib/widget/form-slug";
 
 export function resolveApiKeyCourseId(k: ApiKey): string | null {
@@ -165,17 +166,50 @@ export async function serializeApiKeyWithCourse(
   k: ApiKey,
   options?: { includeSecrets?: boolean }
 ) {
-  const courseId = resolveApiKeyCourseId(k);
-  const meta = await fetchApiKeyCourseMeta(courseId);
-  return serializeApiKey(k, { ...options, ...meta });
+  const allowedIds = resolveAllowedCourseIds(k);
+  if (allowedIds.length === 0) {
+    return serializeApiKey(k, options);
+  }
+
+  if (allowedIds.length === 1) {
+    const meta = await fetchApiKeyCourseMeta(allowedIds[0]!);
+    return serializeApiKey(k, {
+      ...options,
+      ...meta,
+      courseTitles: meta.courseTitle ? [meta.courseTitle] : [],
+    });
+  }
+
+  const rows = await db
+    .select({ id: recordCourses.id, title: recordCourses.title })
+    .from(recordCourses)
+    .where(inArray(recordCourses.id, allowedIds));
+  const titleById = new Map(rows.map((r) => [r.id, r.title]));
+  const courseTitles = allowedIds
+    .map((id) => titleById.get(id))
+    .filter(Boolean) as string[];
+
+  return serializeApiKey(k, {
+    ...options,
+    courseTitle: `${courseTitles.length} courses`,
+    coursePrice: null,
+    courseTitles,
+  });
 }
 
 export function serializeApiKey(
   k: ApiKey,
-  options?: { includeSecrets?: boolean; courseTitle?: string | null; coursePrice?: number | null }
+  options?: {
+    includeSecrets?: boolean;
+    courseTitle?: string | null;
+    coursePrice?: number | null;
+    courseTitles?: string[];
+  }
 ) {
   const includeSecrets = options?.includeSecrets ?? false;
   const courseId = resolveApiKeyCourseId(k);
+  const allowedCourses = resolveAllowedCourseIds(k);
+  const recordingsKey = isRecordingsApiKey(k);
   return {
     id: k.id,
     name: k.name,
@@ -184,8 +218,10 @@ export function serializeApiKey(
     courseId,
     courseTitle: options?.courseTitle ?? null,
     coursePrice: options?.coursePrice ?? null,
+    courseTitles: options?.courseTitles ?? [],
+    keyType: recordingsKey ? ("recordings" as const) : ("widget" as const),
     permissions: k.permissions ?? [],
-    allowedCourses: courseId ? [courseId] : (k.allowedCourses ?? []),
+    allowedCourses,
     allowedPaymentGateway: k.allowedPaymentGateway,
     webhookUrl: k.webhookUrl,
     webhookSecret: includeSecrets ? k.webhookSecret : k.webhookSecret ? "••••••••" : null,
@@ -197,15 +233,17 @@ export function serializeApiKey(
     ipWhitelist: k.ipWhitelist ?? [],
     environment: k.environment,
     isActive: k.isActive,
-    widgetDomainsAllowed: k.widgetDomainsAllowed ?? [],
+    widgetDomainsAllowed: recordingsKey ? [] : (k.widgetDomainsAllowed ?? []),
     redirectOnSuccess: k.redirectOnSuccess ?? "/login",
     redirectOnFailure: k.redirectOnFailure ?? null,
     expiresAt: k.expiresAt,
     lastUsedAt: k.lastUsedAt,
     usageCount: k.usageCount,
     notes: k.notes,
-    formSlug: k.formSlug ?? null,
-    formLink: k.formSlug ? buildFormLink(k.formSlug) : null,
+    // Recordings keys never expose hosted form / embed enrollment links
+    formSlug: recordingsKey ? null : (k.formSlug ?? null),
+    formLink: recordingsKey || !k.formSlug ? null : buildFormLink(k.formSlug),
+    recordingsEndpoint: recordingsKey ? "/api/external/recordings" : null,
     createdAt: k.createdAt,
     updatedAt: k.updatedAt,
   };
