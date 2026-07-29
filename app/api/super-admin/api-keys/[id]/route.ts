@@ -225,10 +225,9 @@ export async function POST(
 
     const recordingsKey = isRecordingsApiKey(updated);
     return NextResponse.json({
+      ...serializeApiKey(updated),
       key: plainKey,
       embedSnippet: recordingsKey ? null : buildEmbedSnippet(plainKey),
-      recordingsEndpoint: recordingsKey ? "/api/external/recordings" : null,
-      ...serializeApiKey(updated),
     });
   } catch (err) {
     console.error("[api/super-admin/api-keys/:id] POST rotate:", err);
