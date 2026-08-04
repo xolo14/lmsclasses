@@ -30,13 +30,9 @@ export function logAction(input: AuditLogInput): Promise<void> {
       console.error("[AUDIT LOG FAILED]", err);
     });
 
-  // Attempt to use Vercel's waitUntil to keep serverless function execution context warm/alive, if available
-  try {
-    const { waitUntil } = require("@vercel/functions");
-    waitUntil(promise);
-  } catch {
-    // Graceful fallback when not in Vercel environment
-  }
+  // Fire-and-forget: do not await. Hostinger runs a long-lived Node process,
+  // so the insert continues after the response without Vercel waitUntil.
+  void promise;
 
   return Promise.resolve();
 }
