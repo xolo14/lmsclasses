@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { courseRecordingSchema } from "@/lib/validations/course-recording";
 import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
+import { encodeUrlForApiTransport } from "@/lib/api-url-transport";
 import type { CourseRecording } from "@/lib/db/schema";
 import { z } from "zod";
 
@@ -98,13 +99,40 @@ export function AddCourseRecordingModal({
       const url = existingRecording
         ? `/api/super-admin/recordings/${existingRecording.id}`
         : "/api/super-admin/recordings";
+      // Prefer POST for updates — Hostinger/WAF often returns plain-text 403 on PATCH.
+      // Encode video URL so remote http(s) signatures in the body are not blocked.
+      const payload = {
+        ...data,
+        videoUrl: encodeUrlForApiTransport(data.videoUrl),
+      };
       const res = await fetch(url, {
-        method: existingRecording ? "PATCH" : "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to save recording");
+      const raw = await res.text();
+      let json: { error?: unknown } = {};
+      if (raw) {
+        try {
+          json = JSON.parse(raw) as { error?: unknown };
+        } catch {
+          if (!res.ok) {
+            throw new Error(
+              res.status === 403
+                ? "Save blocked (403 Forbidden) by the host firewall. Retry after deploy, or whitelist /api/super-admin/recordings in Hostinger WAF."
+                : `Save failed (${res.status}): ${raw.slice(0, 120)}`
+            );
+          }
+          throw new Error("Invalid server response");
+        }
+      }
+      if (!res.ok) {
+        const msg =
+          typeof json.error === "string"
+            ? json.error
+            : "Failed to save recording";
+        throw new Error(msg);
+      }
       onSuccess();
       onClose();
     } catch (err) {

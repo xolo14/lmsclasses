@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { videoUrlFromApiInput } from "@/lib/api-url-transport";
 
 export const courseRecordingSchema = z.object({
   courseId: z.string().uuid(),
   title: z.string().min(1).max(200),
-  videoUrl: z.string().url(),
+  videoUrl: z.preprocess(videoUrlFromApiInput, z.string().url()),
   description: z.string().max(2000).optional(),
   duration: z.coerce.number().int().min(0).optional(),
   sortOrder: z.coerce.number().int().min(0).default(0),
