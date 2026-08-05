@@ -79,142 +79,240 @@ function generateOtp() {
 }
 
 export async function POSTHrRequestOtp(request: Request) {
-  const body = await request.json();
-  const parsed = hrEmailSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-  const email = parsed.data.email.toLowerCase();
-  const domain = getDomain(email);
-  if (FREE_EMAIL_DOMAINS.has(domain)) {
-    return NextResponse.json({ error: "Use official company email." }, { status: 400 });
-  }
+  try {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
 
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-  const [recent] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(hrEmailVerifications)
-    .where(and(eq(hrEmailVerifications.email, email), gte(hrEmailVerifications.createdAt, tenMinutesAgo)));
-  if ((recent?.count ?? 0) >= 5) {
-    return NextResponse.json({ error: "Too many OTP requests. Try again later." }, { status: 429 });
-  }
+    const parsed = hrEmailSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: formatApiError(parsed.error.flatten(), "Invalid email") },
+        { status: 400 }
+      );
+    }
 
-  const otp = generateOtp();
-  await db.insert(hrEmailVerifications).values({
-    email,
-    otp,
-    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-  });
-  await sendHrOtpEmail({ email, otp });
-  return NextResponse.json({ success: true, message: "OTP sent" });
+    const ip = getClientIp(request) ?? "unknown";
+    const { checkRateLimit, rateLimitResponse } = await import("@/lib/rate-limit");
+    const ipLimit = checkRateLimit(`hr-otp:ip:${ip}`, 10, 60 * 60 * 1000);
+    if (!ipLimit.allowed) {
+      const rl = rateLimitResponse(ipLimit.retryAfterSec);
+      return NextResponse.json(rl.body, { status: rl.status, headers: rl.headers });
+    }
+
+    const email = parsed.data.email.toLowerCase();
+    const domain = getDomain(email);
+    if (FREE_EMAIL_DOMAINS.has(domain)) {
+      return NextResponse.json({ error: "Use official company email." }, { status: 400 });
+    }
+
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const [recent] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(hrEmailVerifications)
+      .where(
+        and(eq(hrEmailVerifications.email, email), gte(hrEmailVerifications.createdAt, tenMinutesAgo))
+      );
+    if ((recent?.count ?? 0) >= 5) {
+      return NextResponse.json(
+        { error: "Too many OTP requests. Try again later." },
+        { status: 429 }
+      );
+    }
+
+    const otp = generateOtp();
+    await db.insert(hrEmailVerifications).values({
+      email,
+      otp,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    });
+
+    try {
+      await sendHrOtpEmail({ email, otp });
+    } catch (emailErr) {
+      console.error("[hr/request-otp] email send failed:", emailErr);
+      return NextResponse.json(
+        { error: "Could not send OTP email. Please try again later." },
+        { status: 503 }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: "OTP sent" });
+  } catch (err) {
+    console.error("[hr/request-otp]", err);
+    return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });
+  }
 }
 
 export async function POSTHrVerifyOtp(request: Request) {
-  const body = await request.json();
-  const parsed = hrOtpSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const email = parsed.data.email.toLowerCase();
+  try {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
 
-  const [otpRow] = await db
-    .select()
-    .from(hrEmailVerifications)
-    .where(eq(hrEmailVerifications.email, email))
-    .orderBy(desc(hrEmailVerifications.createdAt))
-    .limit(1);
-  if (!otpRow) return NextResponse.json({ error: "OTP not found" }, { status: 404 });
-  if (otpRow.verifiedAt) return NextResponse.json({ success: true, verified: true });
-  if (otpRow.expiresAt < new Date()) return NextResponse.json({ error: "OTP expired" }, { status: 400 });
-  if (otpRow.otp !== parsed.data.otp) {
+    const parsed = hrOtpSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: formatApiError(parsed.error.flatten(), "Invalid OTP request") },
+        { status: 400 }
+      );
+    }
+
+    const ip = getClientIp(request) ?? "unknown";
+    const { checkRateLimit, rateLimitResponse } = await import("@/lib/rate-limit");
+    const ipLimit = checkRateLimit(`hr-otp-verify:ip:${ip}`, 30, 60 * 60 * 1000);
+    if (!ipLimit.allowed) {
+      const rl = rateLimitResponse(ipLimit.retryAfterSec);
+      return NextResponse.json(rl.body, { status: rl.status, headers: rl.headers });
+    }
+
+    const email = parsed.data.email.toLowerCase();
+
+    const [otpRow] = await db
+      .select()
+      .from(hrEmailVerifications)
+      .where(eq(hrEmailVerifications.email, email))
+      .orderBy(desc(hrEmailVerifications.createdAt))
+      .limit(1);
+    if (!otpRow) return NextResponse.json({ error: "OTP not found" }, { status: 404 });
+    if (otpRow.verifiedAt) return NextResponse.json({ success: true, verified: true });
+    if (otpRow.expiresAt < new Date()) {
+      return NextResponse.json({ error: "OTP expired" }, { status: 400 });
+    }
+    if (otpRow.otp !== parsed.data.otp) {
+      const attempts = (otpRow.attempts ?? 0) + 1;
+      await db
+        .update(hrEmailVerifications)
+        .set({ attempts })
+        .where(eq(hrEmailVerifications.id, otpRow.id));
+      if (attempts >= 5) {
+        return NextResponse.json(
+          { error: "Too many invalid OTP attempts. Request a new code." },
+          { status: 429 }
+        );
+      }
+      return NextResponse.json({ error: "Invalid OTP" }, { status: 400 });
+    }
     await db
       .update(hrEmailVerifications)
-      .set({ attempts: (otpRow.attempts ?? 0) + 1 })
+      .set({ verifiedAt: new Date() })
       .where(eq(hrEmailVerifications.id, otpRow.id));
-    return NextResponse.json({ error: "Invalid OTP" }, { status: 400 });
+    return NextResponse.json({ success: true, verified: true });
+  } catch (err) {
+    console.error("[hr/verify-otp]", err);
+    return NextResponse.json({ error: "Failed to verify OTP" }, { status: 500 });
   }
-  await db.update(hrEmailVerifications).set({ verifiedAt: new Date() }).where(eq(hrEmailVerifications.id, otpRow.id));
-  return NextResponse.json({ success: true, verified: true });
 }
 
 export async function POSTHrCompleteRegistration(request: Request) {
-  const body = await request.json();
-  const parsed = hrRegistrationSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  try {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
 
-  const email = parsed.data.email.toLowerCase();
-  const [verifiedOtp] = await db
-    .select()
-    .from(hrEmailVerifications)
-    .where(eq(hrEmailVerifications.email, email))
-    .orderBy(desc(hrEmailVerifications.createdAt))
-    .limit(1);
-  if (!verifiedOtp || !verifiedOtp.verifiedAt) {
-    return NextResponse.json({ error: "Email OTP verification required." }, { status: 400 });
-  }
+    const parsed = hrRegistrationSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: formatApiError(parsed.error.flatten(), "Invalid registration data") },
+        { status: 400 }
+      );
+    }
 
-  const existingUser = await db.select({ id: hrUsers.id }).from(hrUsers).where(eq(hrUsers.email, email)).limit(1);
-  if (existingUser.length) {
-    return NextResponse.json({ error: "HR account already exists for this email." }, { status: 409 });
-  }
+    const email = parsed.data.email.toLowerCase();
+    const [verifiedOtp] = await db
+      .select()
+      .from(hrEmailVerifications)
+      .where(eq(hrEmailVerifications.email, email))
+      .orderBy(desc(hrEmailVerifications.createdAt))
+      .limit(1);
+    if (!verifiedOtp || !verifiedOtp.verifiedAt) {
+      return NextResponse.json({ error: "Email OTP verification required." }, { status: 400 });
+    }
 
-  const companyCheck = verifyCompanyBasic(parsed.data.companyName, email);
-  if (!companyCheck.ok) {
-    return NextResponse.json({ error: companyCheck.message }, { status: 400 });
-  }
-  const verifiedCompany = companyCheck as {
-    ok: true;
-    website: string;
-    domain: string;
-    registrationDetails: Record<string, unknown>;
-  };
+    const existingUser = await db
+      .select({ id: hrUsers.id })
+      .from(hrUsers)
+      .where(eq(hrUsers.email, email))
+      .limit(1);
+    if (existingUser.length) {
+      return NextResponse.json(
+        { error: "HR account already exists for this email." },
+        { status: 409 }
+      );
+    }
 
-  const [company] = await db
-    .insert(companies)
-    .values({
-      companyName: parsed.data.companyName.trim(),
-      domain: verifiedCompany.domain,
-      website: verifiedCompany.website,
-      registrationDetails: verifiedCompany.registrationDetails,
-      verificationStatus: "verified",
-    })
-    .returning();
+    const companyCheck = verifyCompanyBasic(parsed.data.companyName, email);
+    if (!companyCheck.ok) {
+      return NextResponse.json({ error: companyCheck.message }, { status: 400 });
+    }
+    const verifiedCompany = companyCheck as {
+      ok: true;
+      website: string;
+      domain: string;
+      registrationDetails: Record<string, unknown>;
+    };
 
-  const hashed = await bcrypt.hash(parsed.data.password, 12);
-  const [hr] = await db
-    .insert(hrUsers)
-    .values({
-      companyId: company.id,
-      name: parsed.data.name.trim(),
-      email,
-      passwordHash: hashed,
+    const [company] = await db
+      .insert(companies)
+      .values({
+        companyName: parsed.data.companyName.trim(),
+        domain: verifiedCompany.domain,
+        website: verifiedCompany.website,
+        registrationDetails: verifiedCompany.registrationDetails,
+        verificationStatus: "verified",
+      })
+      .returning();
+
+    const hashed = await bcrypt.hash(parsed.data.password, 12);
+    const [hr] = await db
+      .insert(hrUsers)
+      .values({
+        companyId: company.id,
+        name: parsed.data.name.trim(),
+        email,
+        passwordHash: hashed,
+        role: "hr",
+        designation: parsed.data.designation || null,
+        isActive: true,
+      })
+      .returning();
+
+    await trySendWelcomeEmail("HR welcome", () =>
+      sendHrWelcomeEmail({
+        email,
+        hrName: hr.name,
+        companyName: company.companyName,
+        password: parsed.data.password,
+      })
+    );
+    await logAction({
+      userId: undefined,
       role: "hr",
-      designation: parsed.data.designation || null,
-      isActive: true,
-    })
-    .returning();
+      action: "HR_REGISTERED",
+      entity: "HrUser",
+      entityId: hr.id,
+      metadata: {
+        hrId: hr.id,
+        companyId: company.id,
+        companyName: company.companyName,
+      },
+      ipAddress: getClientIp(request),
+    });
 
-  await trySendWelcomeEmail("HR welcome", () =>
-    sendHrWelcomeEmail({
-      email,
-      hrName: hr.name,
-      companyName: company.companyName,
-      password: parsed.data.password,
-    })
-  );
-  await logAction({
-    userId: undefined,
-    role: "hr",
-    action: "HR_REGISTERED",
-    entity: "HrUser",
-    entityId: hr.id,
-    metadata: {
-      hrId: hr.id,
-      companyId: company.id,
-      companyName: company.companyName,
-    },
-    ipAddress: getClientIp(request),
-  });
-
-  return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[hr/complete]", err);
+    return NextResponse.json({ error: "Registration failed" }, { status: 500 });
+  }
 }
 
 export async function GETHrDashboard() {

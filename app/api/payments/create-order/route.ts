@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/api-auth";
 import { buySlotsSchema } from "@/lib/validations";
 import { getClientIp } from "@/lib/audit";
 import { fulfillSlotPurchase } from "@/lib/payments-fulfill";
+import { formatApiError } from "@/lib/utils";
 import {
   getRazorpayInstance,
   getRazorpayKeyId,
@@ -56,7 +57,10 @@ export async function POST(request: Request) {
 
     const parsed = buySlotsSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json(
+        { error: formatApiError(parsed.error.flatten(), "Invalid request") },
+        { status: 400 }
+      );
     }
 
     const { courseId, slotsCount } = parsed.data;
@@ -255,7 +259,6 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     console.error("[payments/create-order] error:", err);
-    const message = err instanceof Error ? err.message : "Failed to create order";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
   }
 }

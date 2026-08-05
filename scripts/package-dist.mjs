@@ -82,7 +82,8 @@ Razorpay (live payments — NOT mock):
   RAZORPAY_WEBHOOK_SECRET=from Razorpay webhook settings (optional but recommended)
 After changing env vars you MUST redeploy / rebuild this app.
 
-Verify deploy: open https://your-domain/api/health
+Verify deploy: open https://your-domain/api/health (public returns { ok: true } only).
+For full diagnostics: Authorization: Bearer $CRON_SECRET (or HEALTH_SECRET), or sign in as super_admin.
   deployVersion should be "razorpay-v3"
   razorpay.configured should be true
 `

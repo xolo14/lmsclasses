@@ -157,7 +157,7 @@ export function AddStudentModal({
       if (data.emailSent === false) {
         setEmailNotice(
           data.emailWarning ??
-            "Student created but welcome email was not sent. Check SMTP at /api/health (SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_PORT=465)."
+            "Student created but welcome email was not sent. Check SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_PORT=465)."
         );
         queryClient.invalidateQueries({ queryKey: ["students"] });
         queryClient.invalidateQueries({ queryKey: ["slots"] });

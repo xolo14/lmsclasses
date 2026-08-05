@@ -1089,7 +1089,7 @@ export async function POSTStudent(request: Request) {
         emailWarning: emailResult.sent
           ? undefined
           : emailResult.error ??
-            "Welcome email was not sent. Check SMTP settings at /api/health.",
+            "Welcome email was not sent. Check SMTP settings (super-admin diagnostics).",
       },
       { status: 201 }
     );

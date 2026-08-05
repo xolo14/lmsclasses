@@ -10,6 +10,8 @@ import { sendWelcomeEmail } from "@/lib/email";
 import { generatePaymentInvoice } from "@/lib/invoice";
 import { buildSessionSetCookieHeader } from "@/lib/session-token";
 import { getAppUrl } from "@/lib/app-url";
+import { formatApiError } from "@/lib/utils";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -68,10 +70,20 @@ export async function POST(request: Request) {
   let amount = "0";
 
   try {
+    const ip = getClientIp(request) ?? "unknown";
+    const limited = checkRateLimit(`public-enroll:ip:${ip}`, 30, 60 * 60 * 1000);
+    if (!limited.allowed) {
+      const rl = rateLimitResponse(limited.retryAfterSec);
+      return NextResponse.json(rl.body, { status: rl.status, headers: rl.headers });
+    }
+
     const body = await request.json();
     const parsed = PublicEnrollmentSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json(
+        { error: formatApiError(parsed.error.flatten(), "Invalid enrollment data") },
+        { status: 400 }
+      );
     }
 
     const { courseId: enrolledCourseId, paymentData, studentData } = parsed.data;
@@ -276,7 +288,6 @@ export async function POST(request: Request) {
       {
         error: "Enrollment failed",
         paymentRecorded,
-        paymentId: razorpayPaymentId,
       },
       { status: 500 }
     );

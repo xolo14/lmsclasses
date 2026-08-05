@@ -1,6 +1,5 @@
-import { access, mkdir, readFile } from "fs/promises";
+import { access, mkdir } from "fs/promises";
 import { constants } from "fs";
-import { join } from "path";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -19,41 +18,48 @@ import {
   isEmailConfigured,
   isSmtpConfigured,
   isResendConfigured,
-  getDefaultFromEmail,
-  getSmtpUser,
   verifySmtpConnection,
   type SmtpVerifyResult,
 } from "@/lib/mail";
+import { auth } from "@/lib/auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-const HEALTH_VERSION = "health-v3";
-
-function maskKeyId(keyId: string | null): string | null {
-  if (!keyId) return null;
-  if (keyId.length <= 12) return "***";
-  return `${keyId.slice(0, 8)}...${keyId.slice(-4)}`;
+function hasDiagnosticsAccess(request: Request): boolean {
+  const secret =
+    process.env.HEALTH_SECRET?.trim() || process.env.CRON_SECRET?.trim() || "";
+  if (secret) {
+    const authHeader = request.headers.get("authorization") ?? "";
+    const bearer = authHeader.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7).trim()
+      : "";
+    const querySecret = new URL(request.url).searchParams.get("secret") ?? "";
+    if (bearer === secret || querySecret === secret) return true;
+  }
+  return false;
 }
 
-function collectWarnings(authUrl: string | null, appUrl: string): string[] {
-  const warnings: string[] = [];
-  if (authUrl?.startsWith("http://") && !authUrl.includes("localhost")) {
-    warnings.push(
-      "Set NEXTAUTH_URL and AUTH_URL to https://lmsclasses.com (you use HTTP now — login cookies may fail on HTTPS)."
-    );
+/** Public probe — no config, paths, keys, or user counts. */
+async function publicHealth() {
+  let dbOk = false;
+  try {
+    await db.select({ id: users.id }).from(users).limit(1);
+    dbOk = true;
+  } catch {
+    dbOk = false;
   }
-  if (!process.env.NEXT_PUBLIC_APP_URL?.trim()) {
-    warnings.push(
-      "Set NEXT_PUBLIC_APP_URL=https://lmsclasses.com in Hostinger (email links use AUTH_URL as fallback for now)."
-    );
-  }
-  if (appUrl.startsWith("http://") && !appUrl.includes("localhost")) {
-    warnings.push("App URL should use https://lmsclasses.com for production.");
-  }
-  return warnings;
+  return NextResponse.json(
+    { ok: dbOk },
+    {
+      status: dbOk ? 200 : 503,
+      headers: { "Cache-Control": "no-store" },
+    }
+  );
 }
 
-export async function GET() {
+/** Super-admin / secret-gated diagnostics — never expose raw secrets. */
+async function diagnosticsHealth() {
   let dbConnected = false;
   let activeUsers = 0;
   let dbError: string | null = null;
@@ -72,11 +78,9 @@ export async function GET() {
   const authUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? null;
   const appUrl = getAppUrl();
   const secretSet = !!(process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET);
-  const warnings = collectWarnings(authUrl, appUrl);
 
   let smtpConnected = false;
   let smtpError: string | null = null;
-  let smtpPort: number | null = null;
   if (isSmtpConfigured()) {
     try {
       const result = await Promise.race<SmtpVerifyResult>([
@@ -89,132 +93,84 @@ export async function GET() {
         ),
       ]);
       smtpConnected = result.ok;
-      smtpPort = result.port ?? null;
-      if (!result.ok) {
-        smtpError = result.error ?? "SMTP connection failed";
-        const err = smtpError.toLowerCase();
-        if (err.includes("timeout")) {
-          warnings.push(
-            "SMTP verify timed out. Hostinger panel: smtp.hostinger.com port 465 SSL — set SMTP_PORT=465, SMTP_SECURE=true, correct SMTP_PASS, restart app. If still timing out, try SMTP_PORT=587 and SMTP_SECURE=false, or use Resend."
-          );
-        } else if (err.includes("535") || err.includes("authentication")) {
-          warnings.push(
-            "SMTP auth failed (535). Reset mailbox password for info@lmsclasses.com in hPanel, set SMTP_USER=info@lmsclasses.com and SMTP_PASS to that password (no quotes)."
-          );
-        } else {
-          warnings.push(
-            "SMTP failed. Hostinger: SMTP_HOST=smtp.hostinger.com, SMTP_PORT=465, SMTP_SECURE=true, SMTP_USER=info@lmsclasses.com, valid SMTP_PASS."
-          );
-        }
-      }
+      if (!result.ok) smtpError = result.error ?? "SMTP connection failed";
     } catch (err) {
       smtpError = err instanceof Error ? err.message : "SMTP connection failed";
-      warnings.push("SMTP verify error. Check SMTP_PASS and port 465/587.");
     }
   }
 
   const razorpayOk = isRazorpayConfigured();
-
   const uploadsDiag = await refreshUploadsRootDir();
-  warnings.push(...uploadsDiag.warnings);
-  const uploadsRoot = uploadsDiag.rootDir;
   let uploadsWritable = false;
-  let uploadsError: string | null = null;
   try {
-    await mkdir(uploadsRoot, { recursive: true });
-    await access(uploadsRoot, constants.W_OK);
+    await mkdir(uploadsDiag.rootDir, { recursive: true });
+    await access(uploadsDiag.rootDir, constants.W_OK);
     uploadsWritable = true;
-  } catch (err) {
-    uploadsError = err instanceof Error ? err.message : "Uploads directory not writable";
-    warnings.push(
-      `Uploads directory not writable: ${uploadsRoot}. Create the folder and check permissions (chmod 755).`
-    );
+  } catch {
+    uploadsWritable = false;
   }
 
-  let emailOk = false;
-  if (isSmtpConfigured()) {
-    emailOk = smtpConnected;
-  } else if (isResendConfigured()) {
-    emailOk = true;
-  } else {
-    warnings.push("No email provider configured (set SMTP or RESEND env vars).");
-  }
+  const emailOk = isSmtpConfigured()
+    ? smtpConnected
+    : isResendConfigured();
 
   const whatsapp = getMetaWhatsAppConfigSummary();
-  if (!whatsapp.configured) {
-    warnings.push(
-      "Meta WhatsApp not configured — set META_WHATSAPP_TOKEN and META_WHATSAPP_PHONE_NUMBER_ID for live class WhatsApp alerts."
-    );
-  }
-
   const coreOk = dbConnected && secretSet && razorpayOk;
 
-  let nextBuildId: string | null = null;
-  try {
-    nextBuildId = (await readFile(join(process.cwd(), ".next", "BUILD_ID"), "utf8")).trim();
-  } catch {
-    // optional — missing in some dev setups
+  return NextResponse.json(
+    {
+      ok: coreOk && emailOk,
+      coreOk,
+      emailOk,
+      deployVersion: PAYMENTS_DEPLOY_VERSION,
+      database: { connected: dbConnected, activeUsers, error: dbError },
+      auth: {
+        secretSet,
+        urlScheme: authUrl?.startsWith("https://")
+          ? "https"
+          : authUrl?.startsWith("http://")
+            ? "http"
+            : "unset",
+        appUrlScheme: appUrl.startsWith("https://") ? "https" : "http",
+        useSecureCookies,
+      },
+      razorpay: {
+        configured: razorpayOk,
+        mode: getRazorpayKeyId()?.startsWith("rzp_live_") ? "live" : "test",
+        keySecretSet: !!getRazorpayKeySecret(),
+        webhookSecretSet: !!process.env.RAZORPAY_WEBHOOK_SECRET?.trim(),
+      },
+      email: {
+        configured: isEmailConfigured(),
+        provider: isSmtpConfigured() ? "smtp" : isResendConfigured() ? "resend" : "none",
+        smtpConnected: isSmtpConfigured() ? smtpConnected : null,
+        smtpError,
+      },
+      uploads: {
+        writable: uploadsWritable,
+        configuredViaEnv: uploadsDiag.configuredEnv,
+      },
+      whatsapp: {
+        configured: whatsapp.configured,
+        templateName: whatsapp.templateName,
+      },
+      cron: {
+        secretSet: !!process.env.CRON_SECRET?.trim(),
+      },
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
+}
+
+export async function GET(request: Request) {
+  if (hasDiagnosticsAccess(request)) {
+    return diagnosticsHealth();
   }
 
-  return NextResponse.json({
-    ok: coreOk && emailOk,
-    coreOk,
-    emailOk,
-    version: HEALTH_VERSION,
-    deployVersion: PAYMENTS_DEPLOY_VERSION,
-    nextBuildId,
-    warnings,
-    database: { connected: dbConnected, activeUsers, error: dbError },
-    auth: {
-      secretSet,
-      url: authUrl,
-      appUrl,
-      trustHost: true,
-      useSecureCookies,
-      httpsRecommended: authUrl?.startsWith("https://") ?? false,
-    },
-    razorpay: {
-      configured: razorpayOk,
-      mode: getRazorpayKeyId()?.startsWith("rzp_live_") ? "live" : "test",
-      keyIdMasked: maskKeyId(getRazorpayKeyId()),
-      keySecretSet: !!getRazorpayKeySecret(),
-      webhookSecretSet: !!process.env.RAZORPAY_WEBHOOK_SECRET?.trim(),
-    },
-    email: {
-      configured: isEmailConfigured(),
-      provider: isSmtpConfigured() ? "smtp" : isResendConfigured() ? "resend" : "none",
-      from: getDefaultFromEmail(),
-      smtpHost: process.env.SMTP_HOST ?? null,
-      smtpUser: getSmtpUser() || null,
-      smtpPortConfigured: Number(process.env.SMTP_PORT || 465),
-      smtpSecureConfigured: process.env.SMTP_SECURE ?? "(auto)",
-      smtpPort,
-      smtpConnected: isSmtpConfigured() ? smtpConnected : null,
-      smtpError,
-    },
-    uploads: {
-      rootDir: uploadsRoot,
-      configured: uploadsDiag.configuredEnv,
-      normalized: uploadsDiag.normalizedEnv,
-      fallbackUsed: uploadsDiag.fallbackUsed,
-      cwd: uploadsDiag.cwd,
-      writable: uploadsWritable,
-      error: uploadsError,
-      publicUrlExample: `${appUrl}/uploads/course-thumbnails/example.jpg`,
-    },
-    whatsapp: {
-      provider: "meta",
-      configured: whatsapp.configured,
-      templateName: whatsapp.templateName,
-      languageCode: whatsapp.languageCode,
-      countryCode: whatsapp.countryCode,
-      hasToken: whatsapp.hasToken,
-      phoneNumberIdSet: whatsapp.phoneNumberIdSet,
-      apiVersion: whatsapp.apiVersion,
-    },
-    cron: {
-      secretSet: !!process.env.CRON_SECRET?.trim(),
-      certificateAutoIssuePath: "/api/cron/certificate-auto-issue",
-    },
-  });
+  const session = await auth();
+  if (session?.user?.role === "super_admin") {
+    return diagnosticsHealth();
+  }
+
+  return publicHealth();
 }

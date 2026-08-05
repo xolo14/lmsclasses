@@ -26,6 +26,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const email = (credentials.email as string).trim().toLowerCase();
           const password = credentials.password as string;
 
+          // Per-account lockout (complements IP limit on the auth route)
+          const { peekRateLimit, recordRateLimitHit, clearRateLimit } = await import(
+            "@/lib/rate-limit"
+          );
+          const accountLimit = peekRateLimit(`login:email:${email}`, 8, 15 * 60 * 1000);
+          if (!accountLimit.allowed) {
+            return null;
+          }
+
           const [user] = await db
             .select()
             .from(users)
@@ -35,11 +44,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (user && user.isActive !== false) {
             const hash = user.password.trim();
             if (!hash.startsWith("$2")) {
-              console.error("[auth] Password not bcrypt-hashed for:", email);
+              recordRateLimitHit(`login:email:${email}`, 15 * 60 * 1000);
               return null;
             }
             const isValid = await bcrypt.compare(password, hash);
             if (isValid) {
+              clearRateLimit(`login:email:${email}`);
               return {
                 id: user.id,
                 name: user.name,
@@ -50,11 +60,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 companyId: null,
               };
             }
-            console.error("[auth] Password mismatch for:", email);
-          } else if (user) {
-            console.error("[auth] User inactive or deleted:", email);
-          } else {
-            console.error("[auth] No user found:", email);
           }
 
           const [hr] = await db
@@ -62,21 +67,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             .from(hrUsers)
             .where(eq(hrUsers.email, email))
             .limit(1);
-          if (!hr || hr.isActive === false) return null;
+          if (hr && hr.isActive !== false) {
+            const hrHash = hr.passwordHash.trim();
+            const isHrValid = await bcrypt.compare(password, hrHash);
+            if (isHrValid) {
+              clearRateLimit(`login:email:${email}`);
+              return {
+                id: hr.id,
+                name: hr.name,
+                email: hr.email,
+                role: hr.role,
+                organisationId: null,
+                lmsId: null,
+                companyId: hr.companyId,
+              };
+            }
+          }
 
-          const hrHash = hr.passwordHash.trim();
-          const isHrValid = await bcrypt.compare(password, hrHash);
-          if (!isHrValid) return null;
-
-          return {
-            id: hr.id,
-            name: hr.name,
-            email: hr.email,
-            role: hr.role,
-            organisationId: null,
-            lmsId: null,
-            companyId: hr.companyId,
-          };
+          recordRateLimitHit(`login:email:${email}`, 15 * 60 * 1000);
+          return null;
         } catch (err) {
           console.error("[auth] authorize failed:", err);
           return null;
