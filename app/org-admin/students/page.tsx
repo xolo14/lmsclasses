@@ -281,6 +281,7 @@ export default function OrgAdminStudentsPage() {
             onOpenChange={setStudentModalOpen}
             courseId={selectedCourse.id}
             courseName={selectedCourse.title}
+            courseType="live"
             showCourseSelect={false}
           />
           <EditStudentModal

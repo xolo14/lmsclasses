@@ -13,6 +13,15 @@ interface EmbeddedVideoPlayerProps {
   autoPlay?: boolean;
 }
 
+function mediaTypeForUrl(url: string): string | undefined {
+  const lower = url.toLowerCase();
+  if (lower.includes(".webm")) return "video/webm";
+  if (lower.includes(".ogg")) return "video/ogg";
+  if (lower.includes(".mov")) return "video/quicktime";
+  if (lower.includes(".m4v") || lower.includes(".mp4")) return "video/mp4";
+  return undefined;
+}
+
 export function EmbeddedVideoPlayer({
   embed,
   videoUrl,
@@ -38,17 +47,19 @@ export function EmbeddedVideoPlayer({
     );
   }
 
-  // Never open raw video URLs in a new tab — always play in-player with download disabled.
   const directSrc = embed?.type === "direct" ? embed.embedUrl : videoUrl?.trim();
   if (directSrc) {
+    const type = mediaTypeForUrl(directSrc);
     return (
       <ProtectedVideo
         key={directSrc}
-        src={directSrc}
         controls
         autoPlay={autoPlay}
+        preload={autoPlay ? "auto" : "metadata"}
         className={cn("h-full w-full object-contain", className)}
-      />
+      >
+        <source src={directSrc} {...(type ? { type } : {})} />
+      </ProtectedVideo>
     );
   }
 

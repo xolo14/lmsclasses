@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
 import { ExternalLink, Video } from "lucide-react";
 import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
+import { prefetchVideoUrl } from "@/lib/video-prefetch";
 
 type Recording = {
   id: string;
@@ -72,6 +73,8 @@ export default function StudentRecordingClassesPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onMouseEnter={() => prefetchVideoUrl(rec.videoUrl)}
+                  onFocus={() => prefetchVideoUrl(rec.videoUrl)}
                   onClick={() => {
                     setSelectedVideo({ url: rec.videoUrl, title: rec.topicName });
                     setModalOpen(true);

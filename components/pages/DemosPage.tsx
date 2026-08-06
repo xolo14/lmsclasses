@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatCurrency } from "@/lib/utils";
 import { Play, AlertCircle, Link2, Check } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
@@ -143,12 +142,6 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-xl font-bold text-foreground">{selectedCourse.title}</h2>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className="border-swiss-red/30 bg-swiss-red/5 font-mono text-swiss-red"
-                      >
-                        {formatCurrency(selectedCourse.price)}
-                      </Badge>
                       <Badge variant={selectedCourse.isActive ? "success" : "destructive"}>
                         {selectedCourse.isActive ? "Active" : "Inactive"}
                       </Badge>

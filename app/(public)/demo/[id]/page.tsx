@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPublicDemoCourseById } from "@/lib/public-demo";
-import { formatCurrency } from "@/lib/utils";
 import { resolveVideoEmbed } from "@/lib/video-embed";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { Badge } from "@/components/ui/badge";
@@ -68,12 +67,6 @@ export default async function PublicCourseDemoPage({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-xl font-bold text-foreground">{course.title}</h2>
             <div className="flex items-center gap-2">
-              <Badge
-                variant="outline"
-                className="border-swiss-red/30 bg-swiss-red/5 font-mono text-swiss-red"
-              >
-                {formatCurrency(course.price)}
-              </Badge>
               <Badge variant={course.isActive ? "success" : "destructive"}>
                 {course.isActive ? "Active" : "Inactive"}
               </Badge>

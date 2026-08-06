@@ -32,6 +32,8 @@ interface AddStudentModalProps {
   /** Fixed course (org-admin). Omit when showCourseSelect is true. */
   courseId?: string;
   courseName?: string;
+  /** live = show batch; record = self-paced, no batch field */
+  courseType?: "live" | "record";
   /** Super admin / manager: pick organisation before enrolling */
   requireOrganisation?: boolean;
   /** Let user pick course inside the modal (super admin) */
@@ -43,6 +45,7 @@ export function AddStudentModal({
   onOpenChange,
   courseId: fixedCourseId,
   courseName: fixedCourseName,
+  courseType = "live",
   requireOrganisation,
   showCourseSelect,
 }: AddStudentModalProps) {
@@ -54,6 +57,8 @@ export function AddStudentModal({
   const [emailNotice, setEmailNotice] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const needsBatch = courseType === "live";
 
   const {
     register,
@@ -119,7 +124,7 @@ export function AddStudentModal({
       }
       return Array.isArray(data) ? data : [];
     },
-    enabled: open && !!activeCourseId && (!requireOrganisation || !!organisationId),
+    enabled: open && needsBatch && !!activeCourseId && (!requireOrganisation || !!organisationId),
   });
 
   const mutation = useMutation({
@@ -137,6 +142,7 @@ export function AddStudentModal({
         body: JSON.stringify({
           ...data,
           courseId,
+          batchId: needsBatch ? data.batchId || undefined : undefined,
           organisationId: organisationId || undefined,
         }),
       });
@@ -326,6 +332,7 @@ export function AddStudentModal({
               <Label>College Name (optional)</Label>
               <Input {...register("collegeName")} />
             </div>
+            {needsBatch ? (
             <div className="space-y-2">
               <Label>Batch</Label>
               <Select
@@ -374,6 +381,11 @@ export function AddStudentModal({
                 <p className="text-sm text-destructive">{errors.batchId.message}</p>
               )}
             </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Record courses are self-paced — no batch is required.
+              </p>
+            )}
             {mutation.isError &&
               mutation.error?.message !== "SLOT_EXCEEDED" &&
               mutation.error?.message !== "Select an organisation" &&

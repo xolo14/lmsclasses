@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
+import { prefetchVideoUrl } from "@/lib/video-prefetch";
 
 interface VideoPlayerModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
 
   useEffect(() => {
     if (isOpen && videoUrl) {
+      prefetchVideoUrl(videoUrl);
       setEmbed(resolveVideoEmbed(videoUrl, true));
     } else {
       setEmbed(null);
@@ -40,7 +42,9 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
-          <EmbeddedVideoPlayer embed={embed} videoUrl={videoUrl} title={title} autoPlay />
+          {isOpen && videoUrl ? (
+            <EmbeddedVideoPlayer embed={embed} videoUrl={videoUrl} title={title} autoPlay />
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

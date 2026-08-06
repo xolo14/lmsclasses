@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayerModal } from "@/components/student/VideoPlayerModal";
+import { prefetchVideoUrl } from "@/lib/video-prefetch";
 
 type CourseContent = {
   enrollment: {
@@ -235,7 +236,11 @@ export function StudentCourseDetail({
                         </Badge>
                       )}
                     </div>
-                    <Button onClick={() => setVideo({ url: rec.videoUrl, title: rec.title })}>
+                    <Button
+                      onMouseEnter={() => prefetchVideoUrl(rec.videoUrl)}
+                      onFocus={() => prefetchVideoUrl(rec.videoUrl)}
+                      onClick={() => setVideo({ url: rec.videoUrl, title: rec.title })}
+                    >
                       <Play className="mr-2 h-4 w-4" /> Play
                     </Button>
                   </CardContent>
@@ -305,6 +310,8 @@ export function StudentCourseDetail({
                             {cls.status === "completed" && cls.recordingUrl && (
                               <Button
                                 size="sm"
+                                onMouseEnter={() => prefetchVideoUrl(cls.recordingUrl!)}
+                                onFocus={() => prefetchVideoUrl(cls.recordingUrl!)}
                                 onClick={() =>
                                   setVideo({ url: cls.recordingUrl!, title: cls.title })
                                 }
@@ -342,6 +349,8 @@ export function StudentCourseDetail({
                         )}
                         <Button
                           className="w-full"
+                          onMouseEnter={() => prefetchVideoUrl(rec.recordingUrl!)}
+                          onFocus={() => prefetchVideoUrl(rec.recordingUrl!)}
                           onClick={() =>
                             setVideo({ url: rec.recordingUrl!, title: rec.title })
                           }

@@ -181,6 +181,7 @@ export default function OrgAdminRecordStudentsPage() {
             onOpenChange={setStudentModalOpen}
             courseId={selectedCourse.id}
             courseName={selectedCourse.title}
+            courseType="record"
             showCourseSelect={false}
           />
           <EditStudentModal
