@@ -1,17 +1,31 @@
 import type { NextAuthConfig } from "next-auth";
 import type { Role } from "@/lib/db/schema";
 
+/** Hostinger hPanel Environment variables → process.env (no .env file required). */
+function authSecret() {
+  return (
+    process.env.AUTH_SECRET?.trim() ||
+    process.env.NEXTAUTH_SECRET?.trim() ||
+    undefined
+  );
+}
+
 const authBaseUrl =
-  process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "";
+  process.env.AUTH_URL?.trim() ||
+  process.env.NEXTAUTH_URL?.trim() ||
+  "";
 
 /** Secure cookies only when AUTH_URL/NEXTAUTH_URL uses https. */
 export const useSecureCookies = authBaseUrl
   ? authBaseUrl.startsWith("https://")
-  : false;
+  : process.env.NODE_ENV === "production";
 
 export const authConfig = {
   trustHost: true,
-  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+  // Read at config use time from Hostinger Environment variables
+  get secret() {
+    return authSecret();
+  },
   useSecureCookies,
   pages: { signIn: "/login" },
   session: { strategy: "jwt" },
