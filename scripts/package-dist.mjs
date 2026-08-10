@@ -64,7 +64,9 @@ Uploads (course images, certificates, logos) — stored outside public/:
   If UPLOADS_DIR is wrong, the app falls back to ./uploads automatically.
   Subfolders created automatically: certificate-backgrounds, certificates, org-logos, etc.
   Served by the app at https://your-domain/uploads/...
-
+  If older course images 404 after a deploy, copy legacy folders into ./uploads:
+    node scripts/migrate-legacy-uploads.mjs
+  (looks in public/uploads and ../public_html/uploads)
 Meta WhatsApp Cloud API (live class meeting links):
   META_WHATSAPP_TOKEN=permanent token from Meta Developer → WhatsApp → API Setup
   META_WHATSAPP_PHONE_NUMBER_ID=from the same API Setup page

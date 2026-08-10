@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
-import { resolveUploadDiskPath, refreshUploadsRootDir } from "@/lib/uploads";
+import { findUploadDiskPath, refreshUploadsRootDir } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
@@ -27,9 +27,10 @@ export async function GET(
     return new NextResponse("Not found", { status: 404 });
   }
 
-  // Align read root with write path (may have fallen back to ./uploads)
+  // Align read root with write path (may have fallen back to ./uploads).
+  // Also checks legacy public/uploads and public_html/uploads for older files.
   await refreshUploadsRootDir();
-  const diskPath = resolveUploadDiskPath(segments ?? []);
+  const diskPath = findUploadDiskPath(segments ?? []);
   if (!diskPath) {
     return new NextResponse("Not found", { status: 404 });
   }

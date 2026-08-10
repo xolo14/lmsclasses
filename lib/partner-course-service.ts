@@ -1,7 +1,6 @@
 import { and, eq, isNull, ilike } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { batches, liveCourses, recordCourses } from "@/lib/db/schema";
-import { getAppUrl } from "@/lib/app-url";
 import { resolveCourseThumbnailUrl } from "@/lib/course-thumbnail";
 import type { ApiKey } from "@/lib/db/schema";
 import { courseAllowed } from "@/lib/api-key-service";
@@ -153,7 +152,6 @@ export async function getCoursesForApiKey(apiKey: ApiKey): Promise<PublicCourseI
     .from(recordCourses)
     .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)));
 
-  const appUrl = getAppUrl();
   return rows
     .filter((c) => {
       if (!c.slug) return false;
@@ -168,9 +166,8 @@ export async function getCoursesForApiKey(apiKey: ApiKey): Promise<PublicCourseI
       currency: "INR",
       level: c.level,
       language: c.language,
-      thumbnail: resolveCourseThumbnailUrl(c.thumbnailUrl, c.demoVideoUrl || c.demoUrl)
-        ? `${appUrl}${resolveCourseThumbnailUrl(c.thumbnailUrl, c.demoVideoUrl || c.demoUrl)}`
-        : null,
+      // resolveCourseThumbnailUrl already returns an absolute URL
+      thumbnail: resolveCourseThumbnailUrl(c.thumbnailUrl, c.demoVideoUrl || c.demoUrl),
     }));
 }
 

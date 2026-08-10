@@ -1,6 +1,6 @@
 import { access, mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { constants } from "fs";
+import { constants, existsSync } from "fs";
 
 export type UploadCategory =
   | "course-thumbnails"
@@ -166,6 +166,42 @@ export function getUploadPublicUrl(category: UploadCategory, filename: string): 
   return `${UPLOADS_URL_PREFIX}/${category}/${filename}`;
 }
 
+/**
+ * Older deploys stored files under public/uploads or public_html/uploads.
+ * New uploads go to ./uploads (or UPLOADS_DIR). Keep reading legacy roots so
+ * existing course thumbnails still resolve after the storage move.
+ */
+export function getLegacyUploadsRoots(): string[] {
+  const cwd = process.cwd();
+  const primary = path.resolve(getUploadsRootDir());
+  const candidates = [
+    path.join(cwd, "public", "uploads"),
+    path.join(cwd, "..", "public_html", "uploads"),
+    path.join(cwd, "..", "public", "uploads"),
+    // Hostinger: app in nodejs/, old UPLOADS_DIR pointed at public_html/uploads
+    path.join(cwd, "..", "..", "public_html", "uploads"),
+  ];
+
+  const roots: string[] = [];
+  const seen = new Set<string>([primary]);
+  for (const candidate of candidates) {
+    const resolved = path.resolve(candidate);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    roots.push(resolved);
+  }
+  return roots;
+}
+
+function safePathUnderRoot(root: string, category: string, filename: string): string | null {
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(resolvedRoot, category, filename);
+  if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) {
+    return null;
+  }
+  return resolved;
+}
+
 /** Resolve a safe on-disk path under the uploads root (prevents path traversal). */
 export function resolveUploadDiskPath(segments: string[]): string | null {
   if (!segments.length || segments.some((s) => !s || s === "." || s === "..")) {
@@ -176,12 +212,27 @@ export function resolveUploadDiskPath(segments: string[]): string | null {
     return null;
   }
 
-  const root = path.resolve(getUploadsRootDir());
-  const resolved = path.resolve(root, category, rest[0]!);
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-    return null;
+  return safePathUnderRoot(getUploadsRootDir(), category, rest[0]!);
+}
+
+/**
+ * Resolve an upload for serving: primary root first, then legacy locations
+ * (public/uploads, public_html/uploads) so pre-migration files still display.
+ */
+export function findUploadDiskPath(segments: string[]): string | null {
+  const primary = resolveUploadDiskPath(segments);
+  if (!primary) return null;
+  if (existsSync(primary)) return primary;
+
+  const [category, filename] = segments;
+  if (!category || !filename) return null;
+
+  for (const legacyRoot of getLegacyUploadsRoots()) {
+    const candidate = safePathUnderRoot(legacyRoot, category, filename);
+    if (candidate && existsSync(candidate)) return candidate;
   }
-  return resolved;
+
+  return primary;
 }
 
 export async function saveUploadFile(
