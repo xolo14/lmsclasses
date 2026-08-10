@@ -57,16 +57,18 @@ Required: set all environment variables in hPanel (DATABASE_URL, AUTH_SECRET, NE
 Do NOT upload .env.local with secrets to public folders — use Hostinger env settings.
 
 Uploads (course images, certificates, logos) — stored outside public/:
-  Default: ./uploads next to server.js (no env var needed — RECOMMENDED)
-  Optional override in hPanel (use YOUR real username, lowercase /home/):
-    UPLOADS_DIR=/home/u123456789/domains/lmsclasses.com/nodejs/uploads
+  Default: ./uploads next to server.js (OK for local; WIPED on Hostinger Git/hbuild redeploy)
+  Production (RECOMMENDED) — set in hPanel to a folder OUTSIDE the deploy dir:
+    UPLOADS_DIR=/home/u123456789/domains/lmsclasses.com/persistent-uploads
+  Do NOT use .../nodejs/uploads — Hostinger rebuilds replace the app folder.
   Do NOT copy literally — replace u123456789 with your Hostinger username.
   If UPLOADS_DIR is wrong, the app falls back to ./uploads automatically.
   Subfolders created automatically: certificate-backgrounds, certificates, org-logos, etc.
   Served by the app at https://your-domain/uploads/...
-  If older course images 404 after a deploy, copy legacy folders into ./uploads:
+  If older course images 404 after a deploy, copy legacy folders into UPLOADS_DIR:
     node scripts/migrate-legacy-uploads.mjs
-  (looks in public/uploads and ../public_html/uploads)
+    node scripts/migrate-legacy-uploads.mjs --dest=/home/.../persistent-uploads
+  (looks in public/uploads, ../public_html/uploads, ../persistent-uploads, ../nodejs/uploads)
 Meta WhatsApp Cloud API (live class meeting links):
   META_WHATSAPP_TOKEN=permanent token from Meta Developer → WhatsApp → API Setup
   META_WHATSAPP_PHONE_NUMBER_ID=from the same API Setup page

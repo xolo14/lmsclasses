@@ -2,16 +2,20 @@
  * Copy uploads from legacy folders into the current uploads root.
  *
  * After storage moved off public/uploads and public_html/uploads into
- * ./uploads, older course thumbnails 404 unless copied.
+ * ./uploads (or UPLOADS_DIR), older course thumbnails 404 unless copied.
  *
- * Designed for Hostinger shared hosting — no env variables required.
- * Run from the Node app directory (same folder as server.js):
+ * Hostinger note: the live app is rebuilt from GitHub (hPanel build), not by
+ * hand-editing the nodejs folder. Keep uploads OUTSIDE the deploy folder so
+ * rebuilds do not wipe them, e.g. ../persistent-uploads.
  *
+ * Run from the app directory (same folder as server.js), or pass --dest:
  *   node scripts/migrate-legacy-uploads.mjs
  *   node scripts/migrate-legacy-uploads.mjs --dry-run
+ *   node scripts/migrate-legacy-uploads.mjs --dest=/home/.../persistent-uploads
  *
- * Optional absolute dest (only if uploads live somewhere else):
- *   node scripts/migrate-legacy-uploads.mjs --dest=/home/.../nodejs/uploads
+ * Env alternatives:
+ *   DRY_RUN=1 node scripts/migrate-legacy-uploads.mjs
+ *   UPLOADS_DIR=/path/to/persistent-uploads node scripts/migrate-legacy-uploads.mjs
  */
 import fs from "fs";
 import path from "path";
@@ -42,6 +46,10 @@ const legacyRoots = [
   path.join(cwd, "..", "public_html", "uploads"),
   path.join(cwd, "..", "public", "uploads"),
   path.join(cwd, "..", "..", "public_html", "uploads"),
+  // Common persistent folder next to the Hostinger app deploy dir
+  path.join(cwd, "..", "persistent-uploads"),
+  // Previous app-local uploads if cwd moved (e.g. sibling nodejs/uploads)
+  path.join(cwd, "..", "nodejs", "uploads"),
 ]
   .map((p) => path.resolve(p))
   .filter((p, i, arr) => p !== destRoot && arr.indexOf(p) === i && fs.existsSync(p));
@@ -52,6 +60,8 @@ if (!legacyRoots.length) {
   console.log(`  - ${path.join(cwd, "public", "uploads")}`);
   console.log(`  - ${path.resolve(cwd, "..", "public_html", "uploads")}`);
   console.log(`  - ${path.resolve(cwd, "..", "public", "uploads")}`);
+  console.log(`  - ${path.resolve(cwd, "..", "persistent-uploads")}`);
+  console.log(`  - ${path.resolve(cwd, "..", "nodejs", "uploads")}`);
   process.exit(0);
 }
 

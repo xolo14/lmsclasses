@@ -88,7 +88,7 @@ function resolveUploadsDir(): UploadsDirDiagnostics {
 
   if (hasPlaceholderSegment(normalizedEnv)) {
     warnings.push(
-      'UPLOADS_DIR still contains placeholder "USER". Remove UPLOADS_DIR from hPanel or set your real path, e.g. /home/u123456789/domains/lmsclasses.com/nodejs/uploads. Using ./uploads next to server.js instead.'
+      'UPLOADS_DIR still contains placeholder "USER". Remove UPLOADS_DIR from hPanel or set a real path OUTSIDE the deploy folder, e.g. /home/u123456789/domains/lmsclasses.com/persistent-uploads. Using ./uploads next to server.js instead.'
     );
     return {
       rootDir: fallback,
@@ -178,8 +178,12 @@ export function getLegacyUploadsRoots(): string[] {
     path.join(cwd, "public", "uploads"),
     path.join(cwd, "..", "public_html", "uploads"),
     path.join(cwd, "..", "public", "uploads"),
-    // Hostinger: app in nodejs/, old UPLOADS_DIR pointed at public_html/uploads
+    // Hostinger: app in nodejs/ (or rebuild dir), old files under public_html
     path.join(cwd, "..", "..", "public_html", "uploads"),
+    // Persistent folder outside the Git/hPanel rebuild target
+    path.join(cwd, "..", "persistent-uploads"),
+    // Sibling app-local uploads from an older deploy layout
+    path.join(cwd, "..", "nodejs", "uploads"),
   ];
 
   const roots: string[] = [];
@@ -253,7 +257,7 @@ export async function saveUploadFile(
     throw new Error(
       `Cannot save file to ${dir}: ${msg}. ` +
         (diag.configuredEnv
-          ? `UPLOADS_DIR="${diag.configuredEnv}" — remove it from hPanel or fix to /home/u123456789/domains/lmsclasses.com/nodejs/uploads (lowercase home, real username).`
+          ? `UPLOADS_DIR="${diag.configuredEnv}" — remove it from hPanel or fix to a path outside the deploy folder, e.g. /home/u123456789/domains/lmsclasses.com/persistent-uploads (lowercase home, real username).`
           : `Using ${diag.rootDir} (cwd: ${diag.cwd}).`)
     );
   }

@@ -6,7 +6,7 @@ export function certificatePdfFilename(certificateNumber: string) {
   return `${certificateNumber.replace(/[^a-zA-Z0-9.-]/g, "_")}.pdf`;
 }
 
-/** Save under {UPLOADS_DIR}/certificates/ — e.g. Hostinger: .../nodejs/uploads/certificates/ */
+/** Save under {UPLOADS_DIR}/certificates/ — e.g. Hostinger: .../persistent-uploads/certificates/ */
 export async function saveCertificatePdf(certificateNumber: string, data: Buffer) {
   const filename = certificatePdfFilename(certificateNumber);
   return saveUploadFile("certificates", filename, data);

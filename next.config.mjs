@@ -87,10 +87,8 @@ const nextConfig = {
         source: "/lms-logo.jpg",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },
-      {
-        source: "/uploads/:path*",
-        headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }],
-      },
+      // Do NOT set Cache-Control for /uploads here — app/uploads/[...path]/route.ts
+      // controls it (success: short cache; 404: no-store so restored files are not stuck).
       {
         source: "/site.webmanifest",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
