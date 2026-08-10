@@ -69,6 +69,12 @@ const nextConfig = {
       "@radix-ui/react-select",
     ],
   },
+  async redirects() {
+    return [
+      // Browsers always request /favicon.ico; we ship favicon.png
+      { source: "/favicon.ico", destination: "/favicon.png", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {
