@@ -2,14 +2,16 @@
  * Copy uploads from legacy folders into the current uploads root.
  *
  * After storage moved off public/uploads and public_html/uploads into
- * ./uploads (or UPLOADS_DIR), older course thumbnails 404 unless copied.
+ * ./uploads, older course thumbnails 404 unless copied.
  *
- * Usage (on the server, from the app directory next to server.js):
+ * Designed for Hostinger shared hosting — no env variables required.
+ * Run from the Node app directory (same folder as server.js):
+ *
  *   node scripts/migrate-legacy-uploads.mjs
- *   UPLOADS_DIR=/path/to/nodejs/uploads node scripts/migrate-legacy-uploads.mjs
+ *   node scripts/migrate-legacy-uploads.mjs --dry-run
  *
- * Dry run:
- *   DRY_RUN=1 node scripts/migrate-legacy-uploads.mjs
+ * Optional absolute dest (only if uploads live somewhere else):
+ *   node scripts/migrate-legacy-uploads.mjs --dest=/home/.../nodejs/uploads
  */
 import fs from "fs";
 import path from "path";
@@ -25,9 +27,15 @@ const CATEGORIES = [
   "record-classes",
 ];
 
-const dryRun = process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true";
+const args = process.argv.slice(2);
+const dryRun =
+  args.includes("--dry-run") ||
+  process.env.DRY_RUN === "1" ||
+  process.env.DRY_RUN === "true";
+const destArg = args.find((a) => a.startsWith("--dest="))?.slice("--dest=".length)?.trim();
+
 const cwd = process.cwd();
-const destRoot = path.resolve(process.env.UPLOADS_DIR?.trim() || path.join(cwd, "uploads"));
+const destRoot = path.resolve(destArg || process.env.UPLOADS_DIR?.trim() || path.join(cwd, "uploads"));
 
 const legacyRoots = [
   path.join(cwd, "public", "uploads"),
