@@ -16,6 +16,17 @@ const MIME: Record<string, string> = {
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 
+/** Never let CDN/browser cache a miss — restored files would stay broken for hours. */
+function notFound() {
+  return new NextResponse("Not found", {
+    status: 404,
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      Pragma: "no-cache",
+    },
+  });
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ path: string[] }> }
@@ -24,7 +35,7 @@ export async function GET(
   const category = segments?.[0];
   // Private categories — only via authenticated API routes (e.g. certificate download)
   if (category === "certificates" || category === "resumes") {
-    return new NextResponse("Not found", { status: 404 });
+    return notFound();
   }
 
   // Align read root with write path (may have fallen back to ./uploads).
@@ -32,7 +43,7 @@ export async function GET(
   await refreshUploadsRootDir();
   const diskPath = findUploadDiskPath(segments ?? []);
   if (!diskPath) {
-    return new NextResponse("Not found", { status: 404 });
+    return notFound();
   }
 
   try {
@@ -42,10 +53,12 @@ export async function GET(
     return new NextResponse(data, {
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400, immutable",
+        // Unique UUID filenames — safe to cache, but not forever-immutable
+        // so a same-name restore after deploy can refresh.
+        "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
       },
     });
   } catch {
-    return new NextResponse("Not found", { status: 404 });
+    return notFound();
   }
 }
