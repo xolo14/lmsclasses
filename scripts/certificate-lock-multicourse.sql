@@ -30,3 +30,8 @@ ALTER TABLE issued_certificates
 
 CREATE INDEX IF NOT EXISTS idx_cert_locked_unlock
   ON issued_certificates (is_locked, unlock_at);
+
+-- One active (non-revoked) certificate per student per course
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cert_student_course_active
+  ON issued_certificates (student_id, course_id, course_type)
+  WHERE is_revoked = false;

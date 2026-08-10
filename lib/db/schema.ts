@@ -11,6 +11,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /** JSON shape for live_schedule on courses */
 export type LiveScheduleJson = {
@@ -717,6 +718,8 @@ export const partnerLeads = pgTable("partner_leads", {
   index("partner_leads_created_at_idx").on(table.createdAt),
   index("partner_leads_api_key_id_idx").on(table.apiKeyId),
   index("partner_leads_email_course_idx").on(table.email, table.course),
+  // Matches product rule: one lead per email + record course (blocks concurrent races)
+  uniqueIndex("partner_leads_email_record_course_uq").on(table.email, table.recordCourseId),
 ]);
 
 export const apiKeyUsageLogs = pgTable("api_key_usage_logs", {
@@ -885,6 +888,10 @@ export const issuedCertificates = pgTable(
     idxTemplate: index("idx_cert_template").on(t.templateId),
     idxLockedUnlock: index("idx_cert_locked_unlock").on(t.isLocked, t.unlockAt),
     uqCertNum: uniqueIndex("uq_cert_number").on(t.certificateNumber),
+    // One active (non-revoked) certificate per student per course
+    uqStudentCourseActive: uniqueIndex("uq_cert_student_course_active")
+      .on(t.studentId, t.courseId, t.courseType)
+      .where(sql`${t.isRevoked} = false`),
   })
 );
 

@@ -45,7 +45,8 @@ export async function POST(request: Request) {
   );
 
   if (!isValid) {
-    await db.update(payments).set({ status: "failed" }).where(eq(payments.id, paymentId));
+    // Do NOT mark payment failed — a bad client signature must not block the
+    // Razorpay webhook from fulfilling after a real capture.
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 

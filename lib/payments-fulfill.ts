@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { payments, slots, coupons, organisations, liveCourses, recordCourses, users } from "@/lib/db/schema";
 import { logAction } from "@/lib/audit";
@@ -30,6 +30,8 @@ export async function fulfillSlotPurchase(
   }
 
   if (existing.status === "success") {
+    // Recover slots if a prior crash left success without a slot row
+    await ensureSlotsForPayment(existing);
     return { ok: true, alreadyProcessed: true };
   }
 
@@ -38,7 +40,8 @@ export async function fulfillSlotPurchase(
     return { ok: true, ignored: true };
   }
 
-  // Atomic claim: only one concurrent fulfill wins
+  // Atomic claim: pending OR failed (failed may be a bad client verify that must not
+  // block webhook fulfill after a real Razorpay capture).
   const claimed = await db
     .update(payments)
     .set({
@@ -46,23 +49,30 @@ export async function fulfillSlotPurchase(
       razorpayOrderId: opts.razorpayOrderId,
       razorpayPaymentId: opts.razorpayPaymentId,
     })
-    .where(and(eq(payments.id, paymentId), eq(payments.status, "pending")))
+    .where(
+      and(
+        eq(payments.id, paymentId),
+        or(eq(payments.status, "pending"), eq(payments.status, "failed"))
+      )
+    )
     .returning();
 
   const payment = claimed[0];
   if (!payment) {
     const [again] = await db
-      .select({ status: payments.status })
+      .select()
       .from(payments)
       .where(eq(payments.id, paymentId))
       .limit(1);
     if (again?.status === "success") {
+      await ensureSlotsForPayment(again);
       return { ok: true, alreadyProcessed: true };
     }
     return { ok: false, error: "Payment is not pending" };
   }
 
   const organisationId = payment.organisationId!;
+  let needsManualReview = false;
 
   if (payment.couponId) {
     // Hard-enforce maxUses: CAS increment must succeed when a limit is set
@@ -87,10 +97,10 @@ export async function fulfillSlotPurchase(
         .returning({ id: coupons.id });
 
       if (incremented.length === 0) {
-        // Money already captured at Razorpay — keep payment success, skip slot credit,
-        // and ACK webhooks so we don't retry-storm. Ops must review manually.
+        // Money already captured — still grant slots; flag for coupon oversell review.
+        needsManualReview = true;
         console.error(
-          `[FulfillPayment] coupon exhausted after capture; payment=${paymentId} needs_manual_review`
+          `[FulfillPayment] coupon exhausted after capture; payment=${paymentId} granting_slots_needs_manual_review`
         );
         await logAction({
           action: "PAYMENT_NEEDS_MANUAL_REVIEW",
@@ -98,16 +108,12 @@ export async function fulfillSlotPurchase(
           entityId: paymentId,
           metadata: {
             reason: "coupon_max_uses_exhausted",
+            actionTaken: "slots_granted_anyway",
             razorpayOrderId: opts.razorpayOrderId,
             razorpayPaymentId: opts.razorpayPaymentId,
           },
           ipAddress: opts.ipAddress ?? undefined,
         });
-        return {
-          ok: true,
-          needsManualReview: true,
-          alreadyProcessed: false,
-        };
       }
     } else {
       await db
@@ -119,23 +125,7 @@ export async function fulfillSlotPurchase(
     }
   }
 
-  // Idempotent slots insert if a prior crash left payment=success without slots
-  const [existingSlot] = await db
-    .select({ id: slots.id })
-    .from(slots)
-    .where(eq(slots.paymentId, payment.id))
-    .limit(1);
-
-  if (!existingSlot) {
-    await db.insert(slots).values({
-      organisationId,
-      courseId: payment.liveCourseId ?? null,
-      recordCourseId: payment.recordCourseId ?? null,
-      totalSlots: payment.slotsCount,
-      usedSlots: 0,
-      paymentId: payment.id,
-    });
-  }
+  await ensureSlotsForPayment(payment);
 
   if (opts.userId && opts.role) {
     await logAction({
@@ -148,6 +138,7 @@ export async function fulfillSlotPurchase(
         slotsCount: payment.slotsCount,
         courseId: payment.liveCourseId ?? payment.recordCourseId,
         courseType: payment.liveCourseId ? "live" : "record",
+        needsManualReview: needsManualReview || undefined,
       },
       ipAddress: opts.ipAddress ?? undefined,
     });
@@ -216,7 +207,28 @@ export async function fulfillSlotPurchase(
     console.error("[FulfillPayment] Failed to send slot purchase email:", emailErr);
   }
 
-  return { ok: true };
+  return { ok: true, needsManualReview: needsManualReview || undefined };
+}
+
+async function ensureSlotsForPayment(payment: typeof payments.$inferSelect) {
+  if (!payment.organisationId) return;
+
+  const [existingSlot] = await db
+    .select({ id: slots.id })
+    .from(slots)
+    .where(eq(slots.paymentId, payment.id))
+    .limit(1);
+
+  if (existingSlot) return;
+
+  await db.insert(slots).values({
+    organisationId: payment.organisationId,
+    courseId: payment.liveCourseId ?? null,
+    recordCourseId: payment.recordCourseId ?? null,
+    totalSlots: payment.slotsCount,
+    usedSlots: 0,
+    paymentId: payment.id,
+  });
 }
 
 /** Find pending payment by Razorpay order id (order_xxx). */
@@ -227,4 +239,60 @@ export async function findPaymentByRazorpayOrderId(razorpayOrderId: string) {
     .where(eq(payments.razorpayOrderId, razorpayOrderId))
     .limit(1);
   return payment ?? null;
+}
+
+/**
+ * Repair success org-slot payments that somehow have no slots row,
+ * and surface failed rows that still carry a Razorpay payment id.
+ */
+export async function reconcileStuckSlotPayments(): Promise<{
+  slotsRepaired: number;
+  failedWithPaymentId: number;
+}> {
+  const successOrgPayments = await db
+    .select()
+    .from(payments)
+    .where(
+      and(
+        eq(payments.status, "success"),
+        isNotNull(payments.organisationId),
+        isNotNull(payments.adminId)
+      )
+    )
+    .limit(200);
+
+  let slotsRepaired = 0;
+  for (const payment of successOrgPayments) {
+    const [existingSlot] = await db
+      .select({ id: slots.id })
+      .from(slots)
+      .where(eq(slots.paymentId, payment.id))
+      .limit(1);
+    if (existingSlot) continue;
+
+    await ensureSlotsForPayment(payment);
+    slotsRepaired += 1;
+    await logAction({
+      action: "PAYMENT_SLOTS_RECONCILED",
+      entity: "Payment",
+      entityId: payment.id,
+      metadata: { reason: "success_without_slots" },
+    });
+  }
+
+  const [failedCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.status, "failed"),
+        isNotNull(payments.razorpayPaymentId),
+        isNotNull(payments.organisationId)
+      )
+    );
+
+  return {
+    slotsRepaired,
+    failedWithPaymentId: failedCount?.count ?? 0,
+  };
 }

@@ -10,7 +10,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Mail, GraduationCap } from "lucide-react";
 
-export const revalidate = 60;
+/** Hostinger hbuild has no DATABASE_URL at compile time — never ISR-prerender DB pages. */
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function generateMetadata({
   params,

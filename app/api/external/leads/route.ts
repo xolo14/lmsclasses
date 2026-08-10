@@ -147,21 +147,47 @@ export async function POST(request: Request) {
       );
     }
 
-    const [lead] = await db
-      .insert(partnerLeads)
-      .values(
-        buildLeadInsertValues(body, {
-          apiKeyId: ctx.apiKey.id,
-          apiKeyName: ctx.apiKey.name,
-          ipAddress: ctx.ipAddress,
-          userAgent: request.headers.get("user-agent") ?? undefined,
-          course: resolved.title,
-          recordCourseId: resolved.id,
-          courseSlug: resolved.slug,
-          courseFee: resolved.price.toFixed(2),
-        })
-      )
-      .returning();
+    let lead: typeof partnerLeads.$inferSelect;
+    try {
+      const [inserted] = await db
+        .insert(partnerLeads)
+        .values(
+          buildLeadInsertValues(body, {
+            apiKeyId: ctx.apiKey.id,
+            apiKeyName: ctx.apiKey.name,
+            ipAddress: ctx.ipAddress,
+            userAgent: request.headers.get("user-agent") ?? undefined,
+            course: resolved.title,
+            recordCourseId: resolved.id,
+            courseSlug: resolved.slug,
+            courseFee: resolved.price.toFixed(2),
+          })
+        )
+        .returning();
+      lead = inserted;
+    } catch (insertErr) {
+      const msg = insertErr instanceof Error ? insertErr.message : String(insertErr);
+      const code = (insertErr as { code?: string }).code;
+      if (code === "23505" || /unique|duplicate/i.test(msg)) {
+        const [dup] = await db
+          .select({ id: partnerLeads.id })
+          .from(partnerLeads)
+          .where(
+            and(
+              eq(partnerLeads.email, normalizedEmail),
+              eq(partnerLeads.recordCourseId, resolved.id)
+            )
+          )
+          .limit(1);
+        return finishApiKeyRequest(
+          ctx,
+          ENDPOINT,
+          ApiKeyErrors.duplicateLead(dup?.id ?? "unknown"),
+          { requestBody: body }
+        );
+      }
+      throw insertErr;
+    }
 
     await logAction({
       action: "EXTERNAL_LEAD_SUBMITTED",

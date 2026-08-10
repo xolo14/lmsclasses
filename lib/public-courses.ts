@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { recordCourses, studentCourses, courseRecordings } from "@/lib/db/schema";
 import { resolveCourseThumbnailUrl } from "@/lib/course-thumbnail";
-import { backfillMissingRecordCourseSlugs } from "@/lib/slug";
 import { and, eq, isNull, sql, desc, count } from "drizzle-orm";
 
 export type PublicCourseListItem = {
@@ -26,8 +25,6 @@ function mapDemoUrl(course: { demoVideoUrl: string | null; demoUrl: string | nul
 }
 
 export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
-  await backfillMissingRecordCourseSlugs();
-
   const rows = await db
     .select({
       id: recordCourses.id,

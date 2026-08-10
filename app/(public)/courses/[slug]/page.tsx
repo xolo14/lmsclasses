@@ -9,7 +9,9 @@ import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { resolveVideoEmbed } from "@/lib/video-embed";
 import { LandingCell, LandingSection, landingLayout } from "@/components/public/landing/landing-grid";
 
-export const revalidate = 60;
+/** Hostinger hbuild has no DATABASE_URL at compile time — never ISR-prerender DB pages. */
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function generateMetadata({
   params,
