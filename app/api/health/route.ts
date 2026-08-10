@@ -40,19 +40,48 @@ function hasDiagnosticsAccess(request: Request): boolean {
   return false;
 }
 
-/** Public probe — no config, paths, keys, or user counts. */
+/** Public probe — DB reachability + which required env keys are present (never values). */
 async function publicHealth() {
   let dbOk = false;
+  let dbError: string | null = null;
   try {
     await db.select({ id: users.id }).from(users).limit(1);
     dbOk = true;
-  } catch {
+  } catch (err) {
     dbOk = false;
+    dbError = err instanceof Error ? err.message.slice(0, 120) : "db_failed";
   }
+
+  const present = (key: string) => {
+    const v = process.env[key]?.trim();
+    return !!(v && !v.startsWith("REPLACE") && !v.includes("USER:PASSWORD") && v !== "your-secret");
+  };
+
+  const env = {
+    DATABASE_URL: present("DATABASE_URL"),
+    AUTH_SECRET: present("AUTH_SECRET") || present("NEXTAUTH_SECRET"),
+    AUTH_URL: present("AUTH_URL") || present("NEXTAUTH_URL"),
+    RAZORPAY_KEY_ID: present("RAZORPAY_KEY_ID"),
+    RAZORPAY_KEY_SECRET: present("RAZORPAY_KEY_SECRET"),
+    SMTP_HOST: present("SMTP_HOST"),
+    UPLOADS_DIR: present("UPLOADS_DIR"),
+    CRON_SECRET: present("CRON_SECRET"),
+  };
+
+  const requiredOk = env.DATABASE_URL && env.AUTH_SECRET && env.AUTH_URL;
+
   return NextResponse.json(
-    { ok: dbOk },
     {
-      status: dbOk ? 200 : 503,
+      ok: dbOk && requiredOk,
+      dbOk,
+      dbError: dbOk ? null : dbError,
+      env,
+      hint: requiredOk
+        ? null
+        : "Missing or placeholder env vars in hPanel. Set real values → Save and redeploy. Check env.* above (true = injected).",
+    },
+    {
+      status: dbOk && requiredOk ? 200 : 503,
       headers: { "Cache-Control": "no-store" },
     }
   );
