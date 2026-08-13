@@ -7,6 +7,7 @@
     "icons": "node scripts/copy-logo.mjs && node scripts/generate-icons.mjs",
     "prebuild": "node scripts/check-build-root.cjs && npm run icons",
     "build": "next build",
+    "postbuild": "node scripts/hostinger-postbuild.cjs",
     "build:dist": "node scripts/build-dist.mjs",
     "start": "node server.js",
     "start:next": "next start -H 0.0.0.0",

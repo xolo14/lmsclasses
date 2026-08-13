@@ -1,101 +1,44 @@
 /**
- * Hostinger Node.js entry file.
+ * App entry for local start and Hostinger when the full project is the app root.
  *
- * hPanel recommended:
+ * Hostinger hPanel (required):
  * - Framework: Next.js
  * - Build: npm run build
- * - Output: .next
- * - Entry file: server.js  (or empty if Hostinger runs npm start)
- * - Start: npm start
+ * - Output directory: .next
+ * - Entry file: server.js
  *
- * Listens on process.env.PORT (required by Hostinger).
+ * With Output=.next, Hostinger syncs `.next/*` → `hbuilds/current/nodejs/`.
+ * `postbuild` writes `.next/server.js` so Entry `server.js` resolves there.
  */
+process.env.HOSTNAME = process.env.HOSTNAME || "0.0.0.0";
+process.env.PORT = process.env.PORT || "3000";
+
+const path = require("path");
+const fs = require("fs");
+
 try {
   require("./scripts/load-hostinger-env.cjs");
 } catch (err) {
   console.warn(
-    "[server] env helper load skipped:",
+    "[server] env helper skipped:",
     err && err.message ? err.message : err
   );
 }
 
-const fs = require("fs");
-const path = require("path");
-const { createServer } = require("http");
-const { parse } = require("url");
-const next = require("next");
+const candidates = [
+  path.join(__dirname, ".next", "standalone", "server.js"),
+  path.join(__dirname, "standalone", "server.js"),
+];
 
-const port = Number(process.env.PORT) || 3000;
-const hostname = process.env.HOSTNAME || "0.0.0.0";
-
-function findAppDir() {
-  const candidates = [
-    process.cwd(),
-    __dirname,
-    path.join(process.cwd(), "repository"),
-    path.join(__dirname, "repository"),
-    path.join(__dirname, ".."),
-  ];
-  for (const dir of candidates) {
-    const resolved = path.resolve(dir);
-    if (
-      fs.existsSync(path.join(resolved, ".next")) &&
-      fs.existsSync(path.join(resolved, "package.json"))
-    ) {
-      return resolved;
-    }
-  }
-  return path.resolve(process.cwd());
-}
-
-const appDir = findAppDir();
-const nextDir = path.join(appDir, ".next");
-
-console.log(`[server] cwd=${process.cwd()}`);
-console.log(`[server] __dirname=${__dirname}`);
-console.log(`[server] appDir=${appDir}`);
-console.log(`[server] PORT=${port} HOST=${hostname}`);
-console.log(`[server] .next exists=${fs.existsSync(nextDir)}`);
-
-if (!fs.existsSync(nextDir)) {
+const standaloneServer = candidates.find((p) => fs.existsSync(p));
+if (!standaloneServer) {
   console.error(
-    "[server] FATAL: .next folder missing. Build must succeed before start. Check Deployments build log."
+    "[server] FATAL: .next/standalone/server.js missing. Run a successful npm run build first."
   );
   process.exit(1);
 }
 
-const app = next({
-  dev: false,
-  hostname,
-  port,
-  dir: appDir,
-});
-const handle = app.getRequestHandler();
-
-app
-  .prepare()
-  .then(() => {
-    const server = createServer(async (req, res) => {
-      try {
-        const parsedUrl = parse(req.url, true);
-        await handle(req, res, parsedUrl);
-      } catch (err) {
-        console.error("[server] request failed:", err);
-        res.statusCode = 500;
-        res.end("Internal Server Error");
-      }
-    });
-
-    server.listen(port, hostname, () => {
-      console.log(`[server] ready on http://${hostname}:${port}`);
-    });
-
-    server.on("error", (err) => {
-      console.error("[server] listen error:", err);
-      process.exit(1);
-    });
-  })
-  .catch((err) => {
-    console.error("[server] failed to prepare Next.js:", err);
-    process.exit(1);
-  });
+console.log(`[server] cwd=${process.cwd()}`);
+console.log(`[server] starting standalone: ${standaloneServer}`);
+process.chdir(path.dirname(standaloneServer));
+require(standaloneServer);

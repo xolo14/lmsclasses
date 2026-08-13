@@ -61,7 +61,9 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  ...(process.env.BUILD_STANDALONE === "1" ? { output: "standalone" } : {}),
+  // Required for Hostinger: runtime app root syncs from output and expects a server.js.
+  // Standalone emits .next/standalone/server.js; postbuild adds .next/server.js launcher.
+  output: "standalone",
   // Prevent Hostinger parent lockfiles from shifting the workspace root.
   outputFileTracingRoot: projectRoot,
   serverExternalPackages: ["pdfkit"],
