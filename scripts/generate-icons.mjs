@@ -1,12 +1,28 @@
+/**
+ * Regenerate app icons from public/lms-logo.jpg when sharp is available.
+ * On Hostinger, sharp's linux binary often fails to load — use committed icons instead.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import sharp from "sharp";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const iconPath = path.join(root, "app", "icon.png");
 const applePath = path.join(root, "app", "apple-icon.png");
 const publicIcon = path.join(root, "public", "favicon.png");
+const publicApple = path.join(root, "public", "apple-icon.png");
+
+function hasCommittedIcons() {
+  return fs.existsSync(iconPath) && fs.existsSync(applePath) && fs.existsSync(publicIcon);
+}
+
+function useCommittedIcons(reason) {
+  console.log(`Using committed favicons (${reason}).`);
+  if (fs.existsSync(applePath) && !fs.existsSync(publicApple)) {
+    fs.copyFileSync(applePath, publicApple);
+  }
+  process.exit(0);
+}
 
 const logoPath = [
   path.join(root, "public", "lms-logo.jpg"),
@@ -15,13 +31,23 @@ const logoPath = [
 ].find((p) => fs.existsSync(p));
 
 if (!logoPath) {
-  if (fs.existsSync(iconPath) && fs.existsSync(applePath)) {
-    console.log("Using committed favicons (no logo file to regenerate from).");
-    process.exit(0);
+  if (hasCommittedIcons()) {
+    useCommittedIcons("no logo file to regenerate from");
   }
   console.error(
     "Missing public/lms-logo.jpg and app/icon.png — commit logo or icons to the repo."
   );
+  process.exit(1);
+}
+
+let sharp;
+try {
+  sharp = (await import("sharp")).default;
+} catch (err) {
+  if (hasCommittedIcons()) {
+    useCommittedIcons(`sharp unavailable: ${err instanceof Error ? err.message.split("\n")[0] : err}`);
+  }
+  console.error("sharp is required to generate icons, and no committed icons were found.");
   process.exit(1);
 }
 
@@ -66,8 +92,17 @@ async function makeSquareIcon(size, outPath) {
   console.log("Wrote", outPath, size + "x" + size);
 }
 
-// 48px source — browsers scale down sharper than a native 32px export
-await makeSquareIcon(48, iconPath);
-await makeSquareIcon(180, applePath);
-await makeSquareIcon(32, publicIcon);
-fs.copyFileSync(applePath, path.join(root, "public", "apple-icon.png"));
+try {
+  await makeSquareIcon(48, iconPath);
+  await makeSquareIcon(180, applePath);
+  await makeSquareIcon(32, publicIcon);
+  fs.copyFileSync(applePath, publicApple);
+} catch (err) {
+  if (hasCommittedIcons()) {
+    useCommittedIcons(
+      `sharp runtime failed: ${err instanceof Error ? err.message.split("\n")[0] : err}`
+    );
+  }
+  console.error("Failed to generate icons and no committed icons found:", err);
+  process.exit(1);
+}
