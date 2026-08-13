@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "icons": "node scripts/copy-logo.mjs && node scripts/generate-icons.mjs",
-    "prebuild": "npm run icons",
+    "prebuild": "node scripts/check-build-root.cjs && npm run icons",
     "build": "next build",
     "build:dist": "node scripts/build-dist.mjs",
     "start": "node server.js",

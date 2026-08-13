@@ -1,13 +1,22 @@
 import path from "path";
+import { createRequire } from "module";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const projectRoot = path.resolve(__dirname);
+
+/**
+ * Hostinger hbuilds often has a leftover package-lock.json in the domain root
+ * above the Git checkout. Next then treats the wrong folder as workspace root
+ * and `@/` imports fail. Pin tracing + webpack alias to this config's directory.
+ */
+console.log(`[next.config] projectRoot=${projectRoot}`);
 
 /** Optional — missing on Hostinger when npm omits devDependencies. */
 let withBundleAnalyzer = (config) => config;
 try {
-  const { default: bundleAnalyzer } = await import("@next/bundle-analyzer");
-  withBundleAnalyzer = bundleAnalyzer({
+  withBundleAnalyzer = require("@next/bundle-analyzer")({
     enabled: process.env.ANALYZE === "true",
   });
 } catch {
@@ -53,27 +62,37 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   ...(process.env.BUILD_STANDALONE === "1" ? { output: "standalone" } : {}),
+  // Prevent Hostinger parent lockfiles from shifting the workspace root.
+  outputFileTracingRoot: projectRoot,
   serverExternalPackages: ["pdfkit"],
   poweredByHeader: false,
   compress: true,
-  // Hostinger runs `next build` with production npm install (no devDependencies).
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // Do not typecheck CLI-only files (drizzle-kit/dotenv live in devDependencies).
   typescript: {
     ignoreBuildErrors: false,
   },
-  // Hostinger linux builds sometimes miss tsconfig path mapping for `@/`
   webpack: (config) => {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      "@": path.resolve(__dirname),
-    };
+    const alias = { "@": projectRoot };
+    if (config.resolve.alias instanceof Map) {
+      for (const [key, value] of Object.entries(alias)) {
+        config.resolve.alias.set(key, value);
+      }
+    } else {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        ...alias,
+      };
+    }
     return config;
   },
+  turbopack: {
+    resolveAlias: {
+      "@": projectRoot,
+    },
+  },
   images: {
-    // Only allow known thumbnail hosts — blocks open /_next/image proxy (H2).
     remotePatterns: [
       { protocol: "https", hostname: "img.youtube.com" },
       { protocol: "https", hostname: "i.ytimg.com" },
@@ -84,7 +103,6 @@ const nextConfig = {
     minimumCacheTTL: 60 * 60 * 24,
   },
   experimental: {
-    /** Allow large certificate background uploads through middleware (default is 10MB). */
     middlewareClientMaxBodySize: "62mb",
     serverActions: {
       bodySizeLimit: "62mb",
@@ -101,7 +119,6 @@ const nextConfig = {
   },
   async redirects() {
     return [
-      // Browsers always request /favicon.ico; we ship favicon.png
       { source: "/favicon.ico", destination: "/favicon.png", permanent: false },
     ];
   },
@@ -123,8 +140,6 @@ const nextConfig = {
         source: "/lms-logo.jpg",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },
-      // Do NOT set Cache-Control for /uploads here — app/uploads/[...path]/route.ts
-      // controls it (success: short cache; 404: no-store so restored files are not stuck).
       {
         source: "/site.webmanifest",
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
