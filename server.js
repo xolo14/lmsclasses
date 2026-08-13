@@ -1,119 +1,42 @@
 /**
- * Hostinger Node.js entry file.
- * hPanel: Entry file = server.js | Build = npm run build | Start = npm start
+ * Optional Hostinger entry file (only if hPanel requires a .js entry).
+ * Prefer leaving Entry file EMPTY so Hostinger runs `next start` (official Next.js SSR).
  *
- * 1) Prefer Hostinger Environment variables (process.env).
- * 2) If hPanel list is empty (common bug), load domain-root .env as fallback
- *    from /home/.../domains/lmsclasses.com/.env (outside hbuilds — survives redeploy).
+ * If Entry file is required, set it to: server.js
  */
-const fs = require("fs");
-const path = require("path");
+const { spawn } = require("child_process");
 
-function parseEnvFile(filePath) {
-  if (!fs.existsSync(filePath)) return false;
-  const text = fs.readFileSync(filePath, "utf8");
-  let loaded = 0;
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq <= 0) continue;
-    const key = line.slice(0, eq).trim();
-    if (!/^[A-Z_][A-Z0-9_]*$/i.test(key)) continue;
-    let val = line.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
-      val = val.slice(1, -1);
-    }
-    if (!process.env[key]?.trim()) {
-      process.env[key] = val;
-      loaded += 1;
-    }
-  }
-  if (loaded > 0) {
-    console.log(`[server] loaded ${loaded} env key(s) from ${filePath}`);
-  }
-  return loaded > 0;
-}
-
-function loadEnvFallback() {
-  const cwd = process.cwd();
-  const candidates = [
-    path.join(cwd, ".env"),
-    path.resolve(cwd, "../../../../.env"),
-    path.resolve(cwd, "../../../../lms.env"),
-    "/home/u586955688/domains/lmsclasses.com/.env",
-    "/home/u586955688/domains/lmsclasses.com/lms.env",
-  ];
-  const seen = new Set();
-  for (const file of candidates) {
-    const resolved = path.resolve(file);
-    if (seen.has(resolved)) continue;
-    seen.add(resolved);
-    if (parseEnvFile(resolved)) return true;
-  }
-  return false;
-}
-
-function envSet(key) {
-  return !!process.env[key]?.trim();
-}
-
-const hadPanelEnv =
-  envSet("DATABASE_URL") || envSet("AUTH_SECRET") || envSet("NEXTAUTH_SECRET");
-
-if (!hadPanelEnv) {
+try {
+  require("./scripts/load-hostinger-env.cjs");
+} catch (err) {
   console.warn(
-    "[server] No AUTH/DB env in process.env (hPanel Environment variables empty?). Trying domain-root .env fallback…"
+    "[server] env helper load skipped:",
+    err && err.message ? err.message : err
   );
-  loadEnvFallback();
 }
 
-const authSecretOk = envSet("AUTH_SECRET") || envSet("NEXTAUTH_SECRET");
-const databaseOk = envSet("DATABASE_URL");
+const port = String(process.env.PORT || 3000);
+const nextBin = require.resolve("next/dist/bin/next");
 
-console.log(
-  `[server] env ready: DATABASE_URL=${databaseOk} AUTH_SECRET=${authSecretOk} source=${
-    hadPanelEnv ? "hPanel" : "file-fallback-or-missing"
-  }`
+console.log(`[server] starting next start -H 0.0.0.0 -p ${port}`);
+
+const child = spawn(
+  process.execPath,
+  [nextBin, "start", "-H", "0.0.0.0", "-p", port],
+  {
+    stdio: "inherit",
+    env: process.env,
+    cwd: __dirname,
+  }
 );
 
-if (!authSecretOk || !databaseOk) {
-  console.error(
-    "[server] Still missing DATABASE_URL / AUTH_SECRET. " +
-      "Either fix hPanel → Environment variables (Save and redeploy), " +
-      "OR create /home/u586955688/domains/lmsclasses.com/.env with real values."
-  );
-}
-
-const { createServer } = require("http");
-const { parse } = require("url");
-const next = require("next");
-
-const port = Number(process.env.PORT) || 3000;
-const hostname = process.env.HOSTNAME || "0.0.0.0";
-
-const app = next({ dev: false, hostname, port });
-const handle = app.getRequestHandler();
-
-app
-  .prepare()
-  .then(() => {
-    createServer(async (req, res) => {
-      try {
-        await handle(req, res, parse(req.url, true));
-      } catch (err) {
-        console.error("[server] request failed", req.url, err);
-        res.statusCode = 500;
-        res.end("internal server error");
-      }
-    }).listen(port, hostname, () => {
-      console.log(`[server] ready on http://${hostname}:${port}`);
-    });
-  })
-  .catch((err) => {
-    console.error("[server] failed to start:", err);
+child.on("exit", (code, signal) => {
+  if (signal) {
+    console.error(`[server] next exited from signal ${signal}`);
     process.exit(1);
-  });
+  }
+  process.exit(code == null ? 0 : code);
+});
+
+process.on("SIGTERM", () => child.kill("SIGTERM"));
+process.on("SIGINT", () => child.kill("SIGINT"));
