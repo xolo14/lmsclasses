@@ -20,11 +20,16 @@ export const useSecureCookies = authBaseUrl
   ? authBaseUrl.startsWith("https://")
   : process.env.NODE_ENV === "production";
 
+/** Writable secret — NextAuth assigns this; getter-only crashed middleware (500/503). */
+let configuredSecret: string | undefined;
+
 export const authConfig = {
   trustHost: true,
-  // Read at config use time from Hostinger Environment variables
   get secret() {
-    return authSecret();
+    return configuredSecret ?? authSecret();
+  },
+  set secret(value: string | undefined) {
+    configuredSecret = value?.trim() || undefined;
   },
   useSecureCookies,
   pages: { signIn: "/login" },
