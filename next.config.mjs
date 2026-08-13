@@ -60,6 +60,10 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Do not typecheck CLI-only files (drizzle-kit/dotenv live in devDependencies).
+  typescript: {
+    ignoreBuildErrors: false,
+  },
   // Hostinger linux builds sometimes miss tsconfig path mapping for `@/`
   webpack: (config) => {
     config.resolve.alias = {
