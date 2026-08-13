@@ -56,6 +56,10 @@ const nextConfig = {
   serverExternalPackages: ["pdfkit"],
   poweredByHeader: false,
   compress: true,
+  // Hostinger runs `next build` with production npm install (no devDependencies).
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   // Hostinger linux builds sometimes miss tsconfig path mapping for `@/`
   webpack: (config) => {
     config.resolve.alias = {
