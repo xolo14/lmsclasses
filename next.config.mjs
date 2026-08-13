@@ -1,8 +1,17 @@
-import bundleAnalyzer from "@next/bundle-analyzer";
-
-const withBundleAnalyzer = bundleAnalyzer({
-  enabled: process.env.ANALYZE === "true",
-});
+/** Optional — missing on Hostinger when npm omits devDependencies. */
+let withBundleAnalyzer = (config) => config;
+try {
+  const { default: bundleAnalyzer } = await import("@next/bundle-analyzer");
+  withBundleAnalyzer = bundleAnalyzer({
+    enabled: process.env.ANALYZE === "true",
+  });
+} catch {
+  if (process.env.ANALYZE === "true") {
+    console.warn(
+      "[next.config] @next/bundle-analyzer not installed — continuing without ANALYZE"
+    );
+  }
+}
 
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
