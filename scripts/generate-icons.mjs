@@ -43,6 +43,16 @@ if (!logoPath) {
 let sharp;
 try {
   sharp = (await import("sharp")).default;
+  // Harden against untrusted GIF/TIFF/VIPS decoders (libvips advisories).
+  if (typeof sharp.block === "function") {
+    sharp.block({
+      operation: [
+        "VipsForeignLoadNsgif",
+        "VipsForeignLoadTiff",
+        "VipsForeignLoadVips",
+      ],
+    });
+  }
 } catch (err) {
   if (hasCommittedIcons()) {
     useCommittedIcons(`sharp unavailable: ${err instanceof Error ? err.message.split("\n")[0] : err}`);
