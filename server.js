@@ -1,11 +1,10 @@
 /**
- * Optional Hostinger entry file (only if hPanel requires a .js entry).
- * Prefer leaving Entry file EMPTY so Hostinger runs `next start` (official Next.js SSR).
+ * Hostinger Node.js entry file.
+ * hPanel: Entry file = server.js | Build = npm run build | Start = npm start
  *
- * If Entry file is required, set it to: server.js
+ * Must listen on process.env.PORT itself (do not only spawn `next start` —
+ * Hostinger health checks the entry process and returns 503 if it is not bound).
  */
-const { spawn } = require("child_process");
-
 try {
   require("./scripts/load-hostinger-env.cjs");
 } catch (err) {
@@ -15,28 +14,38 @@ try {
   );
 }
 
-const port = String(process.env.PORT || 3000);
-const nextBin = require.resolve("next/dist/bin/next");
+const { createServer } = require("http");
+const { parse } = require("url");
+const next = require("next");
 
-console.log(`[server] starting next start -H 0.0.0.0 -p ${port}`);
+const port = Number(process.env.PORT) || 3000;
+const hostname = process.env.HOSTNAME || "0.0.0.0";
 
-const child = spawn(
-  process.execPath,
-  [nextBin, "start", "-H", "0.0.0.0", "-p", port],
-  {
-    stdio: "inherit",
-    env: process.env,
-    cwd: __dirname,
-  }
-);
-
-child.on("exit", (code, signal) => {
-  if (signal) {
-    console.error(`[server] next exited from signal ${signal}`);
-    process.exit(1);
-  }
-  process.exit(code == null ? 0 : code);
+const app = next({
+  dev: false,
+  hostname,
+  port,
+  dir: __dirname,
 });
+const handle = app.getRequestHandler();
 
-process.on("SIGTERM", () => child.kill("SIGTERM"));
-process.on("SIGINT", () => child.kill("SIGINT"));
+app
+  .prepare()
+  .then(() => {
+    createServer(async (req, res) => {
+      try {
+        const parsedUrl = parse(req.url, true);
+        await handle(req, res, parsedUrl);
+      } catch (err) {
+        console.error("[server] request failed:", err);
+        res.statusCode = 500;
+        res.end("Internal Server Error");
+      }
+    }).listen(port, hostname, () => {
+      console.log(`[server] ready on http://${hostname}:${port}`);
+    });
+  })
+  .catch((err) => {
+    console.error("[server] failed to start:", err);
+    process.exit(1);
+  });
