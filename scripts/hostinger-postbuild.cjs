@@ -104,11 +104,15 @@ require(target);
 fs.writeFileSync(path.join(nextDir, "server.js"), nextRootLauncher, "utf8");
 console.log("[hostinger-postbuild] wrote .next/server.js fallback launcher");
 
+// PassengerRestartDir .../nodejs/tmp
+fs.mkdirSync(path.join(standaloneDir, "tmp"), { recursive: true });
+fs.writeFileSync(path.join(standaloneDir, "tmp", ".gitkeep"), "");
+
 console.log("");
-console.log("[hostinger-postbuild] ========== hPanel settings ==========");
-console.log("[hostinger-postbuild] Application type : Next.js (or Other)");
-console.log("[hostinger-postbuild] Build            : npm run build");
-console.log("[hostinger-postbuild] Output directory : .next/standalone");
-console.log("[hostinger-postbuild] Entry file       : server.js");
-console.log("[hostinger-postbuild] Node             : 20 or 22");
-console.log("[hostinger-postbuild] =====================================");
+console.log("[hostinger-postbuild] ========== REQUIRED (Passenger) ==========");
+console.log("[hostinger-postbuild] PassengerStartupFile is ALWAYS server.js");
+console.log("[hostinger-postbuild] Output directory MUST be: .next/standalone");
+console.log("[hostinger-postbuild] (UI may hide Entry — Passenger still needs server.js)");
+console.log("[hostinger-postbuild] After deploy, File Manager must show:");
+console.log("[hostinger-postbuild]   hbuilds/current/nodejs/server.js");
+console.log("[hostinger-postbuild] ============================================");

@@ -1,8 +1,10 @@
 /**
- * Optional local entry. On Hostinger use:
- *   Output directory = .next/standalone
- *   Entry file       = server.js
- * so LiteSpeed loads nodejs/server.js from the standalone build.
+ * Repo-root helper (local). On Hostinger, Passenger always uses:
+ *   PassengerStartupFile server.js
+ *   PassengerAppRoot .../hbuilds/current/nodejs
+ *
+ * So hPanel Output directory MUST be: .next/standalone
+ * (that folder's server.js is copied to nodejs/server.js)
  */
 process.env.HOSTNAME = process.env.HOSTNAME || "0.0.0.0";
 process.env.PORT = process.env.PORT || "3000";
