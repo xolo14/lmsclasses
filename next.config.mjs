@@ -1,3 +1,8 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 /** Optional — missing on Hostinger when npm omits devDependencies. */
 let withBundleAnalyzer = (config) => config;
 try {
@@ -51,6 +56,14 @@ const nextConfig = {
   serverExternalPackages: ["pdfkit"],
   poweredByHeader: false,
   compress: true,
+  // Hostinger linux builds sometimes miss tsconfig path mapping for `@/`
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@": path.resolve(__dirname),
+    };
+    return config;
+  },
   images: {
     // Only allow known thumbnail hosts — blocks open /_next/image proxy (H2).
     remotePatterns: [
