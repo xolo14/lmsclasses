@@ -176,14 +176,17 @@ export function getLegacyUploadsRoots(): string[] {
   const primary = path.resolve(getUploadsRootDir());
   const candidates = [
     path.join(cwd, "public", "uploads"),
+    path.join(cwd, "..", "uploads"), // nodejs/uploads when cwd is nodejs/hostinger-app
     path.join(cwd, "..", "public_html", "uploads"),
     path.join(cwd, "..", "public", "uploads"),
-    // Hostinger: app in nodejs/ (or rebuild dir), old files under public_html
     path.join(cwd, "..", "..", "public_html", "uploads"),
-    // Persistent folder outside the Git/hPanel rebuild target
+    path.join(cwd, "..", "..", "..", "public_html", "uploads"),
+    path.join(cwd, "..", "..", "..", "..", "public_html", "uploads"),
     path.join(cwd, "..", "persistent-uploads"),
-    // Sibling app-local uploads from an older deploy layout
+    path.join(cwd, "..", "..", "..", "..", "persistent-uploads"),
     path.join(cwd, "..", "nodejs", "uploads"),
+    "/home/u586955688/domains/lmsclasses.com/persistent-uploads",
+    "/home/u586955688/domains/lmsclasses.com/public_html/uploads",
   ];
 
   const roots: string[] = [];
