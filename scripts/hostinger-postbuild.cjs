@@ -19,7 +19,8 @@ const root = process.cwd();
 const nextDir = path.join(root, ".next");
 const standaloneDir = path.join(nextDir, "standalone");
 const standaloneServer = path.join(standaloneDir, "server.js");
-const renamedServer = path.join(standaloneDir, "server.next.js");
+const renamedServer = path.join(standaloneDir, "next-server.cjs");
+const renamedServerLegacy = path.join(standaloneDir, "server.next.js");
 
 function copyDir(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
@@ -33,11 +34,13 @@ function samePath(a, b) {
 /**
  * Hostinger's version switcher leaves broken symlinks in hbuilds/current and
  * never refreshes the stale nodejs/ folder (mtime stays days old). Passenger
- * still starts hbuilds/current/nodejs/server.js — copy the app there ourselves.
+ * still starts hostinger-app/server.js under nodejs/ (Output dir + Entry file).
  */
 function publishToPassengerNodejs(srcDir) {
   const skip = new Set(["console.log", "stderr.log"]);
   const candidates = [
+    path.resolve(root, "../../current/nodejs/hostinger-app"),
+    "/home/u586955688/domains/lmsclasses.com/hbuilds/current/nodejs/hostinger-app",
     path.resolve(root, "../../current/nodejs"),
     "/home/u586955688/domains/lmsclasses.com/hbuilds/current/nodejs",
   ];
@@ -80,8 +83,24 @@ function publishToPassengerNodejs(srcDir) {
 
   if (published === 0) {
     console.warn(
-      "[hostinger-postbuild] WARNING: could not write hbuilds/current/nodejs/server.js. Copy hostinger-app into that folder in File Manager."
+      "[hostinger-postbuild] WARNING: could not write nodejs/hostinger-app/server.js. In File Manager copy hostinger-app into hbuilds/current/nodejs/."
     );
+    return;
+  }
+
+  for (const dest of seen) {
+    for (const name of ["server.js", "next-server.cjs", "server.next.js"]) {
+      const from = path.join(srcDir, name);
+      const to = path.join(dest, name);
+      if (fs.existsSync(from) && !fs.existsSync(to)) {
+        try {
+          fs.copyFileSync(from, to);
+          console.log("[hostinger-postbuild] filled missing", to);
+        } catch (err) {
+          console.warn("[hostinger-postbuild] failed to copy", name, err.message);
+        }
+      }
+    }
   }
 }
 
@@ -148,11 +167,15 @@ try {
 }
 
 console.log("[server] Hostinger standalone boot PORT=" + process.env.PORT + " HOST=0.0.0.0");
-require("./server.next.js");
+const nextServer = require("fs").existsSync(require("path").join(__dirname, "next-server.cjs"))
+  ? "./next-server.cjs"
+  : "./server.next.js";
+require(nextServer);
 `;
 
 fs.writeFileSync(standaloneServer, wrapper, "utf8");
-console.log("[hostinger-postbuild] wrote standalone/server.js wrapper");
+fs.copyFileSync(renamedServer, renamedServerLegacy);
+console.log("[hostinger-postbuild] wrote standalone/server.js wrapper + next-server.cjs");
 
 // Also support Output=.next (launcher at .next/server.js → nodejs/server.js)
 const nextRootLauncher = `/**
