@@ -26,6 +26,65 @@ function copyDir(src, dest) {
   fs.cpSync(src, dest, { recursive: true });
 }
 
+function samePath(a, b) {
+  return path.resolve(a) === path.resolve(b);
+}
+
+/**
+ * Hostinger's version switcher leaves broken symlinks in hbuilds/current and
+ * never refreshes the stale nodejs/ folder (mtime stays days old). Passenger
+ * still starts hbuilds/current/nodejs/server.js — copy the app there ourselves.
+ */
+function publishToPassengerNodejs(srcDir) {
+  const skip = new Set(["console.log", "stderr.log"]);
+  const candidates = [
+    path.resolve(root, "../../current/nodejs"),
+    "/home/u586955688/domains/lmsclasses.com/hbuilds/current/nodejs",
+  ];
+  const seen = new Set();
+  let published = 0;
+
+  for (const dest of candidates) {
+    const resolved = path.resolve(dest);
+    if (seen.has(resolved) || samePath(resolved, srcDir)) continue;
+    seen.add(resolved);
+
+    try {
+      fs.mkdirSync(resolved, { recursive: true });
+      for (const name of fs.readdirSync(srcDir)) {
+        if (skip.has(name)) continue;
+        fs.cpSync(path.join(srcDir, name), path.join(resolved, name), {
+          recursive: true,
+          force: true,
+        });
+      }
+      const server = path.join(resolved, "server.js");
+      if (!fs.existsSync(server)) {
+        console.warn("[hostinger-postbuild] publish missing server.js at", resolved);
+        continue;
+      }
+      published += 1;
+      console.log("[hostinger-postbuild] published app →", resolved);
+      console.log(
+        "[hostinger-postbuild] nodejs now contains:",
+        fs.readdirSync(resolved).join(", ")
+      );
+    } catch (err) {
+      console.warn(
+        "[hostinger-postbuild] could not publish to",
+        resolved,
+        err && err.message ? err.message : err
+      );
+    }
+  }
+
+  if (published === 0) {
+    console.warn(
+      "[hostinger-postbuild] WARNING: could not write hbuilds/current/nodejs/server.js. Copy hostinger-app into that folder in File Manager."
+    );
+  }
+}
+
 if (!fs.existsSync(standaloneServer) && !fs.existsSync(renamedServer)) {
   console.error(
     "[hostinger-postbuild] Missing .next/standalone/server.js — standalone build failed."
@@ -141,11 +200,12 @@ console.log(
 );
 console.log("[hostinger-postbuild] hostinger-app contains:", publishedNames.join(", "));
 
+publishToPassengerNodejs(hostingerOut);
+
 console.log("");
 console.log("[hostinger-postbuild] ========== REQUIRED (Passenger) ==========");
-console.log("[hostinger-postbuild] Framework preset  = Express (or Other), NOT Next.js");
-console.log("[hostinger-postbuild] Output directory  = hostinger-app");
-console.log("[hostinger-postbuild] Entry file        = server.js");
+console.log("[hostinger-postbuild] Keep Output directory = hostinger-app, Entry = server.js");
+console.log("[hostinger-postbuild] NestJS/Express/Other are all OK if those two fields are set");
 console.log("[hostinger-postbuild] After deploy, File Manager must show:");
 console.log("[hostinger-postbuild]   hbuilds/current/nodejs/server.js");
 console.log("[hostinger-postbuild] ============================================");
