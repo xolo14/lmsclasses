@@ -125,7 +125,7 @@ if (!booted) {
     console.error("[server] FATAL: could not start Next.js");
     console.error(err && err.stack ? err.stack : err);
     console.error(
-      "[server] hPanel: Output directory = .next/standalone, Node 20+, PORT injected, then Redeploy."
+      "[server] hPanel: Framework=Express (or Other), Output=hostinger-app, Entry=server.js, then Redeploy."
     );
     process.exit(1);
   }
