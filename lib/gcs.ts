@@ -43,7 +43,7 @@ function sanitizePemAscii(value: string): string {
 }
 
 function chunkBase64(body: string): string {
-  const compact = body.replace(/\s+/g, "");
+  const compact = body.replace(/\s+/g, "").replace(/\\n/g, "");
   const lines: string[] = [];
   for (let i = 0; i < compact.length; i += 64) {
     lines.push(compact.slice(i, i + 64));
@@ -51,9 +51,25 @@ function chunkBase64(body: string): string {
   return lines.join("\n");
 }
 
+/** Safe probe of raw env (never returns key material). */
+export function probePrivateKeyEnv(raw: string | undefined) {
+  const value = raw ?? "";
+  const first = value.slice(0, 24);
+  return {
+    length: value.length,
+    hasBegin: /BEGIN\s+[A-Z0-9 ]*PRIVATE KEY/i.test(value),
+    hasEnd: /END\s+[A-Z0-9 ]*PRIVATE KEY/i.test(value),
+    hasBackslashN: value.includes("\\n"),
+    hasRealNewline: value.includes("\n"),
+    /** Hex of first bytes — should start with 2d2d2d2d2d424547494e = -----BEGIN */
+    headHex: Buffer.from(first, "utf8").toString("hex"),
+  };
+}
+
 /**
  * Hostinger / .env often wrap the PEM in quotes or keep literal `\n`.
  * Normalize to a usable PKCS8 / RSA PEM string OpenSSL accepts.
+ * OpenSSL requires a REAL newline after the BEGIN line — literal \n is not enough.
  */
 export function normalizeGcpPrivateKey(raw: string | undefined): string | null {
   if (!raw?.trim()) return null;
@@ -74,32 +90,51 @@ export function normalizeGcpPrivateKey(raw: string | undefined): string | null {
 
   key = unescapeNewlines(key).trim();
 
-  // Extract existing PEM block if present (tolerant of spacing)
+  // Still no real newlines? Force-split on literal \n or compact markers.
+  if (!key.includes("\n")) {
+    if (key.includes("\\n")) {
+      key = key.split("\\n").join("\n");
+    } else {
+      key = key
+        .replace(/(-+BEGIN [A-Z0-9 ]*PRIVATE KEY-+)/i, "$1\n")
+        .replace(/(-+END [A-Z0-9 ]*PRIVATE KEY-+)/i, "\n$1\n");
+    }
+  }
+
+  // Tolerant extract (4–6 dashes, optional spaces)
   const pemMatch = key.match(
-    /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----([\s\S]*?)-----END \1-----/i
+    /-+BEGIN\s+([A-Z0-9 ]*PRIVATE KEY)-+\s*([\s\S]*?)\s*-+END\s+\1-+/i
   );
   if (pemMatch) {
     const label = pemMatch[1]!.toUpperCase().replace(/\s+/g, " ").trim();
     const body = chunkBase64(pemMatch[2]!);
+    if (body.length < 80) return null;
+    return `-----BEGIN ${label}-----\n${body}\n-----END ${label}-----\n`;
+  }
+
+  // Looser: any BEGIN ... END PRIVATE KEY pair
+  const loose = key.match(
+    /-+BEGIN\s+([A-Z0-9 ]*PRIVATE KEY)-+\s*([\s\S]*?)\s*-+END\s+[A-Z0-9 ]*PRIVATE KEY-+/i
+  );
+  if (loose) {
+    const label = loose[1]!.toUpperCase().replace(/\s+/g, " ").trim();
+    const body = chunkBase64(loose[2]!);
+    if (body.length < 80) return null;
     return `-----BEGIN ${label}-----\n${body}\n-----END ${label}-----\n`;
   }
 
   // Body-only paste (common mistake): wrap as PKCS8
-  const maybeBody = key.replace(/\s+/g, "");
+  const maybeBody = key.replace(/\s+/g, "").replace(/\\n/g, "");
   if (
     maybeBody.length > 80 &&
     /^[A-Za-z0-9+/=]+$/.test(maybeBody) &&
-    !maybeBody.includes("BEGIN")
+    !/BEGIN/i.test(maybeBody)
   ) {
     const body = chunkBase64(maybeBody);
     return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`;
   }
 
-  if (!/BEGIN\s+[A-Z0-9 ]*PRIVATE KEY/i.test(key)) {
-    return null;
-  }
-
-  return key.endsWith("\n") ? key : `${key}\n`;
+  return null;
 }
 
 type GcpCredentials = {
@@ -155,6 +190,7 @@ export function getGcsEnvStatus() {
   const creds = resolveGcpCredentials();
   const privateKey = normalizeGcpPrivateKey(process.env.GCP_PRIVATE_KEY);
   const bucket = getBucketName();
+  const keyProbe = probePrivateKeyEnv(process.env.GCP_PRIVATE_KEY);
 
   return {
     projectIdSet: !!projectId && !projectId.includes("your-gcp"),
@@ -163,6 +199,7 @@ export function getGcsEnvStatus() {
     privateKeySet: privateKeyRaw.length > 0,
     privateKeyLooksValid: !!privateKey || !!creds?.privateKey,
     privateKeyLength: privateKeyRaw.length,
+    privateKeyProbe: keyProbe,
     serviceAccountJsonSet: jsonRaw.length > 0,
     credentialSource: creds?.source ?? null,
     bucketName: bucket,
