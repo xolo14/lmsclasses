@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { videoUrlFromApiInput } from "@/lib/api-url-transport";
+import { decodeUrlFromApiTransport } from "@/lib/api-url-transport";
 
 const VIDEO_EXT = /\.(mp4|webm|ogg|mov|m4v)(?:\?.*)?$/i;
 
 /**
  * Accepts:
- * - GCS object key: course-1/lesson-1-intro.mp4
+ * - GCS object key: aiml/video1.mp4
  * - gs://lmsclasses-videos/...
  * - https://storage.googleapis.com/lmsclasses-videos/...
  * - YouTube / Vimeo / other https URLs
@@ -18,7 +18,7 @@ export function isValidVideoReference(value: string): boolean {
     return /^gs:\/\/[^/]+\/.+/i.test(v) && VIDEO_EXT.test(v);
   }
 
-  // Bare object key (no scheme)
+  // Bare object key (no scheme) — preferred for private GCS
   if (!/^[a-z][a-z0-9+.-]*:/i.test(v) && !v.includes("://")) {
     return VIDEO_EXT.test(v) && !v.includes("..") && !v.startsWith("/");
   }
@@ -32,13 +32,23 @@ export function isValidVideoReference(value: string): boolean {
   }
 }
 
-export const videoReferenceSchema = z.preprocess(
-  videoUrlFromApiInput,
-  z
-    .string()
-    .min(1, "Video path or URL is required")
-    .refine(isValidVideoReference, {
-      message:
-        "Use a GCS key (e.g. course-1/lesson-1.mp4), gs:// URI, storage.googleapis.com URL, or YouTube/Vimeo link",
-    })
-);
+function decodeIfTransported(value: string): string {
+  try {
+    return decodeUrlFromApiTransport(value).trim();
+  } catch {
+    return value.trim();
+  }
+}
+
+/**
+ * Use transform (not preprocess) so react-hook-form / zodResolver accepts GCS keys.
+ * Also unwraps b64: transport encoding used to bypass Hostinger WAF.
+ */
+export const videoReferenceSchema = z
+  .string()
+  .min(1, "Video path or URL is required")
+  .transform(decodeIfTransported)
+  .refine(isValidVideoReference, {
+    message:
+      "Use a GCS key (e.g. aiml/video1.mp4), gs:// URI, storage.googleapis.com URL, or YouTube/Vimeo link",
+  });

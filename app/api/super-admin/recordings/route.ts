@@ -42,7 +42,13 @@ export async function POST(request: Request) {
     const body = await request.json();
     const parsed = courseRecordingSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid recording data" }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: parsed.error.issues[0]?.message ?? "Invalid recording data",
+          details: parsed.error.flatten(),
+        },
+        { status: 400 }
+      );
     }
 
     const [course] = await db

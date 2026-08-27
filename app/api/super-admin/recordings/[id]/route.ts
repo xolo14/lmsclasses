@@ -31,7 +31,10 @@ async function updateRecording(request: Request, params: Promise<{ id: string }>
     const parsed = courseRecordingUpdateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid recording data" },
+        {
+          error: parsed.error.issues[0]?.message ?? "Invalid recording data",
+          details: parsed.error.flatten(),
+        },
         { status: 400 }
       );
     }

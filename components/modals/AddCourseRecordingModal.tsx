@@ -17,11 +17,12 @@ import { Button } from "@/components/ui/button";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { courseRecordingSchema } from "@/lib/validations/course-recording";
 import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
+import { resolvePlayableVideoUrl } from "@/lib/resolve-playable-video-url";
 import { encodeUrlForApiTransport } from "@/lib/api-url-transport";
 import type { CourseRecording } from "@/lib/db/schema";
 import { z } from "zod";
 
-type FormValues = z.infer<typeof courseRecordingSchema>;
+type FormValues = z.input<typeof courseRecordingSchema>;
 
 interface AddCourseRecordingModalProps {
   courseId: string;
@@ -44,6 +45,8 @@ export function AddCourseRecordingModal({
   const [error, setError] = useState<string>();
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewEmbed, setPreviewEmbed] = useState<ResolvedVideoEmbed | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(courseRecordingSchema),
@@ -69,7 +72,6 @@ export function AddCourseRecordingModal({
         sortOrder: existingRecording.sortOrder,
         isPublished: existingRecording.isPublished,
       });
-      setPreviewUrl(existingRecording.videoUrl);
     } else {
       form.reset({
         courseId,
@@ -80,30 +82,62 @@ export function AddCourseRecordingModal({
         sortOrder: nextSortOrder,
         isPublished: false,
       });
-      setPreviewUrl("");
     }
   }, [existingRecording, courseId, nextSortOrder, form, isOpen]);
 
   const videoUrl = form.watch("videoUrl");
 
   useEffect(() => {
-    const url = videoUrl || "";
-    setPreviewUrl(url);
-    setPreviewEmbed(url ? resolveVideoEmbed(url) : null);
+    const raw = (videoUrl || "").trim();
+    if (!raw) {
+      setPreviewUrl("");
+      setPreviewEmbed(null);
+      setPreviewLoading(false);
+      setPreviewError(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError(false);
+    setPreviewUrl("");
+    setPreviewEmbed(null);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const playable = await resolvePlayableVideoUrl(raw);
+        if (cancelled) return;
+        setPreviewUrl(playable);
+        setPreviewEmbed(resolveVideoEmbed(playable));
+      } catch {
+        if (!cancelled) setPreviewError(true);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [videoUrl]);
 
   const onSubmit = async (data: FormValues) => {
     setSubmitting(true);
     setError(undefined);
     try {
+      const parsed = courseRecordingSchema.safeParse(data);
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues[0]?.message ?? "Invalid recording data");
+      }
       const url = existingRecording
         ? `/api/super-admin/recordings/${existingRecording.id}`
         : "/api/super-admin/recordings";
       // Prefer POST for updates — Hostinger/WAF often returns plain-text 403 on PATCH.
       // Encode video URL so remote http(s) signatures in the body are not blocked.
       const payload = {
-        ...data,
-        videoUrl: encodeUrlForApiTransport(data.videoUrl),
+        ...parsed.data,
+        videoUrl: encodeUrlForApiTransport(parsed.data.videoUrl),
       };
       const res = await fetch(url, {
         method: "POST",
@@ -142,6 +176,8 @@ export function AddCourseRecordingModal({
     }
   };
 
+  const videoFieldError = form.formState.errors.videoUrl?.message;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[min(90dvh,90vh)] overflow-y-auto sm:max-w-lg">
@@ -153,25 +189,42 @@ export function AddCourseRecordingModal({
           <div className="space-y-2">
             <Label htmlFor="title">Title</Label>
             <Input id="title" {...form.register("title")} />
+            {form.formState.errors.title && (
+              <p className="text-sm text-destructive">{form.formState.errors.title.message}</p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="videoUrl">Video path / URL</Label>
+            <Label htmlFor="videoUrl">Video path (GCS key)</Label>
             <Input
               id="videoUrl"
               {...form.register("videoUrl")}
-              placeholder="course-1/lesson-1-intro.mp4"
+              placeholder="aiml/video1.mp4"
             />
             <p className="text-xs text-muted-foreground">
-              Prefer the GCS object key (e.g. course-1/lesson-1-intro.mp4). YouTube/Vimeo links also work.
+              Paste the object key only — e.g. <code>aiml/video1.mp4</code>. Not a Console or signed URL.
+              YouTube/Vimeo links also work.
             </p>
-            {previewUrl && (
+            {videoFieldError && (
+              <p className="text-sm text-destructive">{String(videoFieldError)}</p>
+            )}
+            {(previewLoading || previewUrl || previewError) && (
               <div className="aspect-video overflow-hidden rounded-lg border bg-black">
-                <EmbeddedVideoPlayer
-                  embed={previewEmbed}
-                  videoUrl={previewUrl}
-                  title="Recording preview"
-                />
+                {previewLoading ? (
+                  <div className="flex h-full items-center justify-center text-sm text-white/80">
+                    Loading preview…
+                  </div>
+                ) : previewError ? (
+                  <div className="flex h-full items-center justify-center p-4 text-center text-sm text-white/80">
+                    Preview unavailable. You can still save if the key is correct and GCS env vars are set on the server.
+                  </div>
+                ) : (
+                  <EmbeddedVideoPlayer
+                    embed={previewEmbed}
+                    videoUrl={previewUrl}
+                    title="Recording preview"
+                  />
+                )}
               </div>
             )}
           </div>
@@ -195,7 +248,7 @@ export function AddCourseRecordingModal({
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={form.watch("isPublished")}
+              checked={!!form.watch("isPublished")}
               onChange={(e) => form.setValue("isPublished", e.target.checked)}
             />
             Publish immediately
