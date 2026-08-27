@@ -1,3 +1,4 @@
+import { createPrivateKey } from "crypto";
 import { Storage } from "@google-cloud/storage";
 
 const DEFAULT_BUCKET = "lmsclasses-videos";
@@ -141,18 +142,36 @@ type GcpCredentials = {
   projectId: string;
   clientEmail: string;
   privateKey: string;
-  source: "json" | "fields";
+  source: "json" | "json_b64" | "fields" | "key_b64";
 };
 
+function decodeBase64Env(raw: string | undefined): string | null {
+  if (!raw?.trim()) return null;
+  try {
+    const text = Buffer.from(stripWrappingQuotes(raw).replace(/\s+/g, ""), "base64").toString(
+      "utf8"
+    );
+    return text.trim() ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+function assertPrivateKeyUsable(pem: string): void {
+  createPrivateKey(pem);
+}
+
 /**
- * Prefer GCP_SERVICE_ACCOUNT_JSON (entire JSON key file as one line) on Hostinger.
- * Falls back to GCP_PROJECT_ID + GCP_CLIENT_EMAIL + GCP_PRIVATE_KEY.
+ * Prefer base64 env vars on Hostinger (no broken \\n handling).
+ * Order: JSON_BASE64 → JSON → PRIVATE_KEY_BASE64 → fields.
  */
 export function resolveGcpCredentials(): GcpCredentials | null {
-  const jsonRaw = process.env.GCP_SERVICE_ACCOUNT_JSON?.trim();
-  if (jsonRaw) {
+  const tryFromJson = (
+    jsonText: string,
+    source: GcpCredentials["source"]
+  ): GcpCredentials | null => {
     try {
-      const parsed = JSON.parse(stripWrappingQuotes(unescapeNewlines(jsonRaw))) as {
+      const parsed = JSON.parse(stripWrappingQuotes(unescapeNewlines(jsonText))) as {
         project_id?: string;
         client_email?: string;
         private_key?: string;
@@ -160,16 +179,42 @@ export function resolveGcpCredentials(): GcpCredentials | null {
       const privateKey = normalizeGcpPrivateKey(parsed.private_key);
       const projectId = (parsed.project_id || process.env.GCP_PROJECT_ID || "").trim();
       const clientEmail = (parsed.client_email || process.env.GCP_CLIENT_EMAIL || "").trim();
-      if (projectId && clientEmail && privateKey) {
-        return { projectId, clientEmail, privateKey, source: "json" };
-      }
+      if (!projectId || !clientEmail || !privateKey) return null;
+      assertPrivateKeyUsable(privateKey);
+      return { projectId, clientEmail, privateKey, source };
     } catch {
-      // fall through to field-based config
+      return null;
     }
+  };
+
+  const jsonB64 = decodeBase64Env(process.env.GCP_SERVICE_ACCOUNT_JSON_BASE64);
+  if (jsonB64) {
+    const creds = tryFromJson(jsonB64, "json_b64");
+    if (creds) return creds;
+  }
+
+  const jsonRaw = process.env.GCP_SERVICE_ACCOUNT_JSON?.trim();
+  if (jsonRaw) {
+    const creds = tryFromJson(jsonRaw, "json");
+    if (creds) return creds;
   }
 
   const projectId = process.env.GCP_PROJECT_ID?.trim() || "";
   const clientEmail = process.env.GCP_CLIENT_EMAIL?.trim() || "";
+
+  const keyB64 = decodeBase64Env(process.env.GCP_PRIVATE_KEY_BASE64);
+  if (keyB64 && projectId && clientEmail.includes("@")) {
+    const privateKey = normalizeGcpPrivateKey(keyB64);
+    if (privateKey) {
+      try {
+        assertPrivateKeyUsable(privateKey);
+        return { projectId, clientEmail, privateKey, source: "key_b64" };
+      } catch {
+        // fall through
+      }
+    }
+  }
+
   const privateKey = normalizeGcpPrivateKey(process.env.GCP_PRIVATE_KEY);
   if (
     projectId &&
@@ -177,7 +222,12 @@ export function resolveGcpCredentials(): GcpCredentials | null {
     clientEmail.includes("@") &&
     privateKey
   ) {
-    return { projectId, clientEmail, privateKey, source: "fields" };
+    try {
+      assertPrivateKeyUsable(privateKey);
+      return { projectId, clientEmail, privateKey, source: "fields" };
+    } catch {
+      return null;
+    }
   }
   return null;
 }
@@ -187,22 +237,43 @@ export function getGcsEnvStatus() {
   const clientEmail = process.env.GCP_CLIENT_EMAIL?.trim() || "";
   const privateKeyRaw = process.env.GCP_PRIVATE_KEY?.trim() || "";
   const jsonRaw = process.env.GCP_SERVICE_ACCOUNT_JSON?.trim() || "";
-  const creds = resolveGcpCredentials();
-  const privateKey = normalizeGcpPrivateKey(process.env.GCP_PRIVATE_KEY);
-  const bucket = getBucketName();
   const keyProbe = probePrivateKeyEnv(process.env.GCP_PRIVATE_KEY);
+  const creds = resolveGcpCredentials();
+
+  let privateKeyCryptoOk: boolean | null = null;
+  let privateKeyCryptoError: string | null = null;
+  const normalized = normalizeGcpPrivateKey(process.env.GCP_PRIVATE_KEY);
+  if (creds) {
+    privateKeyCryptoOk = true;
+  } else if (normalized) {
+    try {
+      assertPrivateKeyUsable(normalized);
+      privateKeyCryptoOk = true;
+    } catch (err) {
+      privateKeyCryptoOk = false;
+      privateKeyCryptoError =
+        err instanceof Error ? err.message.slice(0, 200) : "crypto_failed";
+    }
+  } else if (privateKeyRaw) {
+    privateKeyCryptoOk = false;
+    privateKeyCryptoError = "normalize_failed";
+  }
 
   return {
     projectIdSet: !!projectId && !projectId.includes("your-gcp"),
     clientEmailSet:
       !!clientEmail && clientEmail.includes("@") && !clientEmail.includes("your-project"),
     privateKeySet: privateKeyRaw.length > 0,
-    privateKeyLooksValid: !!privateKey || !!creds?.privateKey,
+    privateKeyLooksValid: !!normalized || !!creds?.privateKey,
     privateKeyLength: privateKeyRaw.length,
     privateKeyProbe: keyProbe,
+    privateKeyCryptoOk,
+    privateKeyCryptoError,
     serviceAccountJsonSet: jsonRaw.length > 0,
+    serviceAccountJsonBase64Set: !!process.env.GCP_SERVICE_ACCOUNT_JSON_BASE64?.trim(),
+    privateKeyBase64Set: !!process.env.GCP_PRIVATE_KEY_BASE64?.trim(),
     credentialSource: creds?.source ?? null,
-    bucketName: bucket,
+    bucketName: getBucketName(),
     configured: !!creds,
   };
 }
@@ -214,8 +285,8 @@ function getStorage(): Storage {
   if (!creds) {
     const status = getGcsEnvStatus();
     throw new Error(
-      `GCS is not configured correctly (project=${status.projectIdSet}, email=${status.clientEmailSet}, keyValid=${status.privateKeyLooksValid}, json=${status.serviceAccountJsonSet}, keyLen=${status.privateKeyLength}). ` +
-        "Prefer GCP_SERVICE_ACCOUNT_JSON (full key file, one line). Then Restart the Node app."
+      `GCS credentials unusable (cryptoOk=${status.privateKeyCryptoOk}, source=${status.credentialSource}, keyLen=${status.privateKeyLength}, err=${status.privateKeyCryptoError ?? "n/a"}). ` +
+        "On Hostinger set GCP_SERVICE_ACCOUNT_JSON_BASE64 (base64 of the full .json key file), then Restart Node."
     );
   }
 

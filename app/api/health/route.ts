@@ -71,9 +71,12 @@ async function publicHealth() {
     GCP_CLIENT_EMAIL: present("GCP_CLIENT_EMAIL"),
     GCP_PRIVATE_KEY: present("GCP_PRIVATE_KEY"),
     GCS_BUCKET_NAME: present("GCS_BUCKET_NAME"),
+    GCP_SERVICE_ACCOUNT_JSON_BASE64: present("GCP_SERVICE_ACCOUNT_JSON_BASE64"),
+    GCP_PRIVATE_KEY_BASE64: present("GCP_PRIVATE_KEY_BASE64"),
   };
 
   const requiredOk = env.DATABASE_URL && env.AUTH_SECRET && env.AUTH_URL;
+  const gcs = getGcsEnvStatus();
 
   return NextResponse.json(
     {
@@ -81,8 +84,19 @@ async function publicHealth() {
       dbOk,
       dbError: dbOk ? null : dbError,
       env,
+      gcs: {
+        configured: gcs.configured,
+        credentialSource: gcs.credentialSource,
+        privateKeyCryptoOk: gcs.privateKeyCryptoOk,
+        privateKeyCryptoError: gcs.privateKeyCryptoError,
+        privateKeyLength: gcs.privateKeyLength,
+        privateKeyProbe: gcs.privateKeyProbe,
+        bucketName: gcs.bucketName,
+      },
       hint: requiredOk
-        ? null
+        ? gcs.configured
+          ? null
+          : "GCS credentials present but unusable. Set GCP_SERVICE_ACCOUNT_JSON_BASE64 (base64 of key json) and Restart Node."
         : "Missing or placeholder env vars in hPanel. Set real values → Save and redeploy. Check env.* above (true = injected).",
     },
     {
