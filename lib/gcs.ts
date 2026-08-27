@@ -8,16 +8,71 @@ function getBucketName(): string {
   return process.env.GCS_BUCKET_NAME?.trim() || DEFAULT_BUCKET;
 }
 
+/**
+ * Hostinger / .env often wrap the PEM in quotes or keep literal `\n`.
+ * Normalize to a usable PKCS8 PEM string.
+ */
+export function normalizeGcpPrivateKey(raw: string | undefined): string | null {
+  if (!raw?.trim()) return null;
+
+  let key = raw.trim();
+
+  // Strip wrapping quotes (once or twice)
+  for (let i = 0; i < 2; i++) {
+    if (
+      (key.startsWith('"') && key.endsWith('"')) ||
+      (key.startsWith("'") && key.endsWith("'"))
+    ) {
+      key = key.slice(1, -1).trim();
+    }
+  }
+
+  // JSON-escaped newlines → real newlines
+  key = key.replace(/\\n/g, "\n").replace(/\r\n/g, "\n");
+
+  if (!key.includes("BEGIN") || !key.includes("PRIVATE KEY")) {
+    return null;
+  }
+
+  return key;
+}
+
+export function getGcsEnvStatus() {
+  const projectId = process.env.GCP_PROJECT_ID?.trim() || "";
+  const clientEmail = process.env.GCP_CLIENT_EMAIL?.trim() || "";
+  const privateKeyRaw = process.env.GCP_PRIVATE_KEY?.trim() || "";
+  const privateKey = normalizeGcpPrivateKey(process.env.GCP_PRIVATE_KEY);
+  const bucket = getBucketName();
+
+  return {
+    projectIdSet: !!projectId && !projectId.includes("your-gcp"),
+    clientEmailSet:
+      !!clientEmail && clientEmail.includes("@") && !clientEmail.includes("your-project"),
+    privateKeySet: privateKeyRaw.length > 0,
+    privateKeyLooksValid: !!privateKey,
+    privateKeyLength: privateKeyRaw.length,
+    bucketName: bucket,
+    configured: !!(
+      projectId &&
+      !projectId.includes("your-gcp") &&
+      clientEmail.includes("@") &&
+      privateKey
+    ),
+  };
+}
+
 function getStorage(): Storage {
   if (storageClient) return storageClient;
 
   const projectId = process.env.GCP_PROJECT_ID?.trim();
   const clientEmail = process.env.GCP_CLIENT_EMAIL?.trim();
-  const privateKey = process.env.GCP_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const privateKey = normalizeGcpPrivateKey(process.env.GCP_PRIVATE_KEY);
 
   if (!projectId || !clientEmail || !privateKey) {
+    const status = getGcsEnvStatus();
     throw new Error(
-      "GCS is not configured. Set GCP_PROJECT_ID, GCP_CLIENT_EMAIL, and GCP_PRIVATE_KEY."
+      `GCS is not configured correctly (project=${status.projectIdSet}, email=${status.clientEmailSet}, keyValid=${status.privateKeyLooksValid}, keyLen=${status.privateKeyLength}). ` +
+        "On Hostinger, paste the PEM with \\n escapes, Save, then Restart the Node app."
     );
   }
 

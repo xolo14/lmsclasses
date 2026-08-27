@@ -32,14 +32,33 @@ export async function resolvePlayableVideoUrl(
   );
 
   if (!res.ok) {
+    let serverError = "";
+    try {
+      const body = (await res.json()) as {
+        error?: string;
+        detail?: string;
+        code?: string;
+      };
+      serverError = body.detail || body.error || "";
+    } catch {
+      // ignore
+    }
+
     if (res.status === 401 || res.status === 403) {
-      throw new PlayableVideoError("You do not have permission to view this video.", res.status);
+      throw new PlayableVideoError(
+        serverError || "You do not have permission to view this video.",
+        res.status
+      );
     }
     if (res.status === 400) {
-      throw new PlayableVideoError("Invalid video path for this bucket.", 400);
+      throw new PlayableVideoError(
+        serverError || "Invalid video path for this bucket.",
+        400
+      );
     }
     throw new PlayableVideoError(
-      "Could not load video (GCS signing failed). Check GCP env vars on the server.",
+      serverError ||
+        "Could not load video (GCS signing failed). Check GCP env vars and Restart the Node app.",
       res.status
     );
   }

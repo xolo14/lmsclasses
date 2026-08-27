@@ -22,6 +22,7 @@ import {
   type SmtpVerifyResult,
 } from "@/lib/mail";
 import { auth } from "@/lib/auth";
+import { getGcsEnvStatus } from "@/lib/gcs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,6 +67,10 @@ async function publicHealth() {
     SMTP_HOST: present("SMTP_HOST"),
     UPLOADS_DIR: present("UPLOADS_DIR"),
     CRON_SECRET: present("CRON_SECRET"),
+    GCP_PROJECT_ID: present("GCP_PROJECT_ID"),
+    GCP_CLIENT_EMAIL: present("GCP_CLIENT_EMAIL"),
+    GCP_PRIVATE_KEY: present("GCP_PRIVATE_KEY"),
+    GCS_BUCKET_NAME: present("GCS_BUCKET_NAME"),
   };
 
   const requiredOk = env.DATABASE_URL && env.AUTH_SECRET && env.AUTH_URL;
@@ -186,6 +191,7 @@ async function diagnosticsHealth() {
       cron: {
         secretSet: !!process.env.CRON_SECRET?.trim(),
       },
+      gcs: getGcsEnvStatus(),
     },
     { headers: { "Cache-Control": "no-store" } }
   );

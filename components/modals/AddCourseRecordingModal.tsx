@@ -50,6 +50,7 @@ export function AddCourseRecordingModal({
   const [previewEmbed, setPreviewEmbed] = useState<ResolvedVideoEmbed | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(false);
+  const [previewErrorMessage, setPreviewErrorMessage] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(courseRecordingSchema),
@@ -97,12 +98,14 @@ export function AddCourseRecordingModal({
       setPreviewEmbed(null);
       setPreviewLoading(false);
       setPreviewError(false);
+      setPreviewErrorMessage(null);
       return;
     }
 
     let cancelled = false;
     setPreviewLoading(true);
     setPreviewError(false);
+    setPreviewErrorMessage(null);
     setPreviewUrl("");
     setPreviewEmbed(null);
 
@@ -115,9 +118,11 @@ export function AddCourseRecordingModal({
       } catch (err) {
         if (!cancelled) {
           setPreviewError(true);
-          if (err instanceof PlayableVideoError && err.status >= 500) {
-            // Keep previewError; save can still succeed once GCP is configured.
-          }
+          setPreviewErrorMessage(
+            err instanceof PlayableVideoError
+              ? err.message
+              : "Preview unavailable. Check GCS env vars and Restart the Node app."
+          );
         }
       } finally {
         if (!cancelled) setPreviewLoading(false);
@@ -224,7 +229,8 @@ export function AddCourseRecordingModal({
                   </div>
                 ) : previewError ? (
                   <div className="flex h-full items-center justify-center p-4 text-center text-sm text-white/80">
-                    Preview unavailable. You can still save if the key is correct and GCS env vars are set on the server.
+                    {previewErrorMessage ||
+                      "Preview unavailable. You can still save if the key is correct and GCS env vars are set on the server."}
                   </div>
                 ) : (
                   <EmbeddedVideoPlayer
