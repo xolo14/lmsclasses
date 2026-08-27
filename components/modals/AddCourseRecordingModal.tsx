@@ -156,8 +156,15 @@ export function AddCourseRecordingModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="videoUrl">Video URL</Label>
-            <Input id="videoUrl" {...form.register("videoUrl")} placeholder="https://..." />
+            <Label htmlFor="videoUrl">Video path / URL</Label>
+            <Input
+              id="videoUrl"
+              {...form.register("videoUrl")}
+              placeholder="course-1/lesson-1-intro.mp4"
+            />
+            <p className="text-xs text-muted-foreground">
+              Prefer the GCS object key (e.g. course-1/lesson-1-intro.mp4). YouTube/Vimeo links also work.
+            </p>
             {previewUrl && (
               <div className="aspect-video overflow-hidden rounded-lg border bg-black">
                 <EmbeddedVideoPlayer

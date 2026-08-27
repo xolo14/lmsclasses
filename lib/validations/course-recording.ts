@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { videoUrlFromApiInput } from "@/lib/api-url-transport";
+import { videoReferenceSchema } from "@/lib/validations/video-reference";
 
 export const courseRecordingSchema = z.object({
   courseId: z.string().uuid(),
   title: z.string().min(1).max(200),
-  videoUrl: z.preprocess(videoUrlFromApiInput, z.string().url()),
+  videoUrl: videoReferenceSchema,
   description: z.string().max(2000).optional(),
   duration: z.coerce.number().int().min(0).optional(),
   sortOrder: z.coerce.number().int().min(0).default(0),

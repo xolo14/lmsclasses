@@ -67,9 +67,15 @@ export function AddClassRecordingModal({
             {errors.topicName && <p className="text-sm text-destructive">{errors.topicName.message}</p>}
           </div>
           <div className="space-y-2">
-            <Label>Video URL</Label>
-            <Input {...register("videoUrl")} placeholder="https://youtube.com/... or storage URL" />
+            <Label>Video path / URL</Label>
+            <Input
+              {...register("videoUrl")}
+              placeholder="course-1/lesson-1-intro.mp4"
+            />
             {errors.videoUrl && <p className="text-sm text-destructive">{errors.videoUrl.message}</p>}
+            <p className="text-xs text-muted-foreground">
+              Prefer the GCS object key. YouTube/Vimeo links also work.
+            </p>
           </div>
           <p className="text-xs text-muted-foreground">
             Paste a link to your recorded video (YouTube, Vimeo, Google Drive, S3, etc.).

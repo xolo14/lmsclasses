@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { videoReferenceSchema } from "@/lib/validations/video-reference";
 
 /** Form fields often submit "" — treat as missing for optional values. */
 function emptyToUndefined(val: unknown) {
@@ -125,7 +126,7 @@ export const classRecordingSchema = z.object({
   batchId: z.string().uuid("Select a batch"),
   weekName: z.string().min(1, "Week name is required"),
   topicName: z.string().min(1, "Topic name is required"),
-  videoUrl: z.string().url("Valid video URL is required"),
+  videoUrl: videoReferenceSchema,
 });
 
 export const studentSchema = z
