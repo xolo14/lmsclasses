@@ -4,25 +4,25 @@
  * YouTube, Vimeo, and other public URLs pass through unchanged.
  */
 
-function looksLikeGcsReference(value: string): boolean {
-  const v = value.trim();
-  if (!v) return false;
-  if (v.startsWith("gs://")) return true;
-  if (/storage\.(googleapis|cloud\.google)\.com/i.test(v)) return true;
-  // Bare object path (no scheme) — treat as GCS key when it has a video extension
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(v) && !v.includes("://")) {
-    return /\.(mp4|webm|ogg|mov|m4v)(?:\?.*)?$/i.test(v);
+import { looksLikeGcsVideoReference } from "@/lib/gcs-video-ref";
+
+export class PlayableVideoError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "PlayableVideoError";
+    this.status = status;
   }
-  return false;
 }
 
 export async function resolvePlayableVideoUrl(
   videoKeyOrUrl: string
 ): Promise<string> {
   const raw = videoKeyOrUrl.trim();
-  if (!raw) throw new Error("Missing video URL");
+  if (!raw) throw new PlayableVideoError("Missing video URL", 400);
 
-  if (!looksLikeGcsReference(raw)) {
+  if (!looksLikeGcsVideoReference(raw)) {
     return raw;
   }
 
@@ -32,14 +32,21 @@ export async function resolvePlayableVideoUrl(
   );
 
   if (!res.ok) {
-    throw new Error(
-      res.status === 401 || res.status === 403
-        ? "Unauthorized"
-        : "Failed to resolve video URL"
+    if (res.status === 401 || res.status === 403) {
+      throw new PlayableVideoError("You do not have permission to view this video.", res.status);
+    }
+    if (res.status === 400) {
+      throw new PlayableVideoError("Invalid video path for this bucket.", 400);
+    }
+    throw new PlayableVideoError(
+      "Could not load video (GCS signing failed). Check GCP env vars on the server.",
+      res.status
     );
   }
 
   const data = (await res.json()) as { url?: string };
-  if (!data.url) throw new Error("Missing signed URL in response");
+  if (!data.url) {
+    throw new PlayableVideoError("Missing signed URL in response", 500);
+  }
   return data.url;
 }

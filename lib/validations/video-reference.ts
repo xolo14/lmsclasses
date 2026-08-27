@@ -52,3 +52,21 @@ export const videoReferenceSchema = z
     message:
       "Use a GCS key (e.g. aiml/video1.mp4), gs:// URI, storage.googleapis.com URL, or YouTube/Vimeo link",
   });
+
+/** Optional field: empty string, or a valid video reference. */
+export const optionalVideoReferenceSchema = z
+  .string()
+  .optional()
+  .or(z.literal(""))
+  .transform((v) => (v == null ? "" : decodeIfTransported(String(v))))
+  .refine((v) => v === "" || isValidVideoReference(v), {
+    message:
+      "Use a GCS key (e.g. aiml/video1.mp4), YouTube/Vimeo link, or leave blank",
+  });
+
+/**
+ * Public marketing demos may use private GCS keys (signed via /api/video when
+ * the key matches an active course demo). Prefer YouTube for zero config.
+ * @deprecated Use optionalVideoReferenceSchema — kept for any external imports.
+ */
+export const publicDemoVideoSchema = optionalVideoReferenceSchema;

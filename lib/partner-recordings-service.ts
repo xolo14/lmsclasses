@@ -17,6 +17,8 @@ export type PartnerRecordingCourse = {
     videoUrl: string;
     /** Present when videoUrl is a short-lived GCS signed URL. */
     videoUrlExpiresAt?: string;
+    /** Present when signing failed for this row (videoUrl left as stored). */
+    videoUrlError?: string;
     durationMinutes: number | null;
     sortOrder: number;
   }[];
@@ -81,12 +83,28 @@ export async function getRecordingsForApiKey(
 
   const expiresAt = new Date(Date.now() + PARTNER_SIGNED_URL_TTL_MS).toISOString();
 
-  const playableById = new Map<string, { url: string; signed: boolean }>();
+  const playableById = new Map<
+    string,
+    { url: string; signed: boolean; error?: string }
+  >();
   await Promise.all(
     rows.map(async (r) => {
       const stored = r.videoUrl;
-      const url = await toPlayableVideoUrl(stored, PARTNER_SIGNED_URL_TTL_MS);
-      playableById.set(r.id, { url, signed: url !== stored.trim() });
+      try {
+        const url = await toPlayableVideoUrl(stored, PARTNER_SIGNED_URL_TTL_MS);
+        playableById.set(r.id, { url, signed: url !== stored.trim() });
+      } catch (err) {
+        console.error(
+          `[partner-recordings] failed to sign video for recording ${r.id}:`,
+          err
+        );
+        // Keep the stored value so the rest of the catalog still returns.
+        playableById.set(r.id, {
+          url: stored,
+          signed: false,
+          error: "SIGN_FAILED",
+        });
+      }
     })
   );
 
@@ -103,6 +121,7 @@ export async function getRecordingsForApiKey(
           description: r.description,
           videoUrl: playable.url,
           ...(playable.signed ? { videoUrlExpiresAt: expiresAt } : {}),
+          ...(playable.error ? { videoUrlError: playable.error } : {}),
           durationMinutes: r.duration,
           sortOrder: r.sortOrder,
         };

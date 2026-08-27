@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { classRecordingSchema, type ClassRecordingInput } from "@/lib/validations";
+import { encodeUrlForApiTransport } from "@/lib/api-url-transport";
 import {
   Dialog,
   DialogContent,
@@ -34,10 +35,17 @@ export function AddClassRecordingModal({
 
   const mutation = useMutation({
     mutationFn: async (data: ClassRecordingInput) => {
+      const parsed = classRecordingSchema.safeParse({ ...data, courseId, batchId });
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues[0]?.message ?? "Invalid recording data");
+      }
       const res = await fetch("/api/class-recordings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, courseId, batchId }),
+        body: JSON.stringify({
+          ...parsed.data,
+          videoUrl: encodeUrlForApiTransport(parsed.data.videoUrl),
+        }),
       });
       if (!res.ok) throw new Error("Failed to upload recording");
       return res.json();
@@ -67,19 +75,16 @@ export function AddClassRecordingModal({
             {errors.topicName && <p className="text-sm text-destructive">{errors.topicName.message}</p>}
           </div>
           <div className="space-y-2">
-            <Label>Video path / URL</Label>
+            <Label>Video path (GCS key)</Label>
             <Input
               {...register("videoUrl")}
-              placeholder="course-1/lesson-1-intro.mp4"
+              placeholder="aiml/video1.mp4"
             />
             {errors.videoUrl && <p className="text-sm text-destructive">{errors.videoUrl.message}</p>}
             <p className="text-xs text-muted-foreground">
-              Prefer the GCS object key. YouTube/Vimeo links also work.
+              Paste the object key only (e.g. <code>aiml/video1.mp4</code>). YouTube/Vimeo links also work.
             </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Paste a link to your recorded video (YouTube, Vimeo, Google Drive, S3, etc.).
-          </p>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={mutation.isPending}>

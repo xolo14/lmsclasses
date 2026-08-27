@@ -10,7 +10,10 @@ import {
 import { Play } from "lucide-react";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
-import { resolvePlayableVideoUrl } from "@/lib/resolve-playable-video-url";
+import {
+  PlayableVideoError,
+  resolvePlayableVideoUrl,
+} from "@/lib/resolve-playable-video-url";
 
 interface WatchRecordingModalProps {
   open: boolean;
@@ -23,20 +26,20 @@ export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: Wat
   const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
   const [playableUrl, setPlayableUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !videoUrl) {
       setEmbed(null);
       setPlayableUrl(null);
       setLoading(false);
-      setError(false);
+      setError(null);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
-    setError(false);
+    setError(null);
     setEmbed(null);
     setPlayableUrl(null);
 
@@ -46,8 +49,13 @@ export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: Wat
         if (cancelled) return;
         setPlayableUrl(url);
         setEmbed(resolveVideoEmbed(url, true));
-      } catch {
-        if (!cancelled) setError(true);
+      } catch (err) {
+        if (cancelled) return;
+        setError(
+          err instanceof PlayableVideoError
+            ? err.message
+            : "Could not load this video."
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -72,9 +80,7 @@ export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: Wat
           {loading ? (
             <p className="text-sm text-slate-400">Loading course video…</p>
           ) : error ? (
-            <p className="p-6 text-center text-sm text-slate-400">
-              You do not have permission to view this video.
-            </p>
+            <p className="p-6 text-center text-sm text-slate-400">{error}</p>
           ) : (
             <EmbeddedVideoPlayer
               embed={embed}

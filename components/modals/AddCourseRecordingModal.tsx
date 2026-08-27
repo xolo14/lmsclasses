@@ -17,7 +17,10 @@ import { Button } from "@/components/ui/button";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { courseRecordingSchema } from "@/lib/validations/course-recording";
 import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
-import { resolvePlayableVideoUrl } from "@/lib/resolve-playable-video-url";
+import {
+  PlayableVideoError,
+  resolvePlayableVideoUrl,
+} from "@/lib/resolve-playable-video-url";
 import { encodeUrlForApiTransport } from "@/lib/api-url-transport";
 import type { CourseRecording } from "@/lib/db/schema";
 import { z } from "zod";
@@ -109,8 +112,13 @@ export function AddCourseRecordingModal({
         if (cancelled) return;
         setPreviewUrl(playable);
         setPreviewEmbed(resolveVideoEmbed(playable));
-      } catch {
-        if (!cancelled) setPreviewError(true);
+      } catch (err) {
+        if (!cancelled) {
+          setPreviewError(true);
+          if (err instanceof PlayableVideoError && err.status >= 500) {
+            // Keep previewError; save can still succeed once GCP is configured.
+          }
+        }
       } finally {
         if (!cancelled) setPreviewLoading(false);
       }

@@ -5,8 +5,7 @@ import { format } from "date-fns";
 import { Check, Lock } from "lucide-react";
 import { getPublicCourseBySlug } from "@/lib/public-courses";
 import { EnrollmentCard } from "@/components/public/CourseDetailClient";
-import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
-import { resolveVideoEmbed } from "@/lib/video-embed";
+import { ResolvedVideoPlayer } from "@/components/ui/resolved-video-player";
 import { LandingCell, LandingSection, landingLayout } from "@/components/public/landing/landing-grid";
 
 /** Hostinger hbuild has no DATABASE_URL at compile time — never ISR-prerender DB pages. */
@@ -38,7 +37,6 @@ export default async function CourseDetailPage({
 
   const price = parseFloat(course.price);
   const demoUrl = course.demoVideoUrl;
-  const demoEmbed = demoUrl ? resolveVideoEmbed(demoUrl) : null;
 
   return (
     <>
@@ -106,7 +104,7 @@ export default async function CourseDetailPage({
             <p className={landingLayout.label}>Preview</p>
             <h2 className="mt-2 mb-6 text-2xl font-bold text-swiss-black">Course Preview</h2>
             <div className="aspect-video overflow-hidden border border-swiss-black/10 bg-swiss-black">
-              <EmbeddedVideoPlayer embed={demoEmbed} videoUrl={demoUrl} title="Course preview" />
+              <ResolvedVideoPlayer videoUrl={demoUrl} title="Course preview" />
             </div>
           </LandingCell>
         </LandingSection>

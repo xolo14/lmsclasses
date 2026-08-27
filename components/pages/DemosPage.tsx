@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Play, AlertCircle, Link2, Check } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
-import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
+import { ResolvedVideoPlayer } from "@/components/ui/resolved-video-player";
 
 type Course = {
   id: string;
@@ -37,7 +36,6 @@ function getDemoShareUrl(courseId: string) {
 
 export function DemosPage({ liveOnly = false }: DemosPageProps) {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const { data: courses = [], isLoading } = useQuery<Course[]>({
@@ -72,14 +70,6 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
       setSelectedCourse(demoCourses[0]);
     }
   }, [demoCourses, selectedCourse]);
-
-  useEffect(() => {
-    if (!selectedCourse?.demoUrl) {
-      setEmbed(null);
-      return;
-    }
-    setEmbed(resolveVideoEmbed(selectedCourse.demoUrl, true));
-  }, [selectedCourse]);
 
   const copyShareLink = async (courseId: string) => {
     const url = getDemoShareUrl(courseId);
@@ -126,10 +116,9 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
           <div className="space-y-4 lg:col-span-3">
             <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-xl">
-              {selectedCourse ? (
-                <EmbeddedVideoPlayer
-                  embed={embed}
-                  videoUrl={selectedCourse.demoUrl || ""}
+              {selectedCourse?.demoUrl ? (
+                <ResolvedVideoPlayer
+                  videoUrl={selectedCourse.demoUrl}
                   title={`Demo video for ${selectedCourse.title}`}
                   autoPlay
                 />

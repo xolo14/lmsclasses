@@ -91,9 +91,15 @@ export function isGcsVideoReference(videoKeyOrUrl: string): boolean {
   return parseGcsObjectKey(videoKeyOrUrl) !== null;
 }
 
+/** Default TTL for logged-in LMS players (long enough for a full lesson). */
+export const LMS_SIGNED_URL_TTL_MS = 4 * 60 * 60 * 1000;
+
+/** Default TTL for partner API batch responses (players may not start immediately). */
+export const PARTNER_SIGNED_URL_TTL_MS = 60 * 60 * 1000;
+
 export async function getSignedReadUrl(
   videoKeyOrUrl: string,
-  expiresMs = 15 * 60 * 1000
+  expiresMs = LMS_SIGNED_URL_TTL_MS
 ): Promise<string> {
   const bucketName = getBucketName();
   const objectKey = parseGcsObjectKey(videoKeyOrUrl, bucketName);
@@ -115,12 +121,9 @@ export async function getSignedReadUrl(
 /** Partner / player responses: sign private GCS refs; leave YouTube and public URLs as-is. */
 export async function toPlayableVideoUrl(
   storedUrl: string,
-  expiresMs = 15 * 60 * 1000
+  expiresMs = LMS_SIGNED_URL_TTL_MS
 ): Promise<string> {
   const trimmed = storedUrl.trim();
   if (!trimmed || !isGcsVideoReference(trimmed)) return trimmed;
   return getSignedReadUrl(trimmed, expiresMs);
 }
-
-/** Default TTL for partner API batch responses (players may not start immediately). */
-export const PARTNER_SIGNED_URL_TTL_MS = 60 * 60 * 1000;

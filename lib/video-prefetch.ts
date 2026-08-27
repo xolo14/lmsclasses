@@ -4,20 +4,10 @@
  * GCS keys / private URLs are resolved to short-lived signed URLs first.
  */
 
+import { looksLikeGcsVideoReference } from "@/lib/gcs-video-ref";
 import { resolvePlayableVideoUrl } from "@/lib/resolve-playable-video-url";
 
 const warmed = new Set<string>();
-
-function looksLikeGcsReference(value: string): boolean {
-  const v = value.trim();
-  if (!v) return false;
-  if (v.startsWith("gs://")) return true;
-  if (/storage\.(googleapis|cloud\.google)\.com/i.test(v)) return true;
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(v) && !v.includes("://")) {
-    return /\.(mp4|webm|ogg|mov|m4v)(?:\?.*)?$/i.test(v);
-  }
-  return false;
-}
 
 function warmDirectUrl(src: string) {
   if (warmed.has(src)) return;
@@ -53,7 +43,7 @@ export function prefetchVideoUrl(url: string | null | undefined) {
   if (!src || warmed.has(src)) return;
   if (typeof window === "undefined") return;
 
-  if (looksLikeGcsReference(src) && !/^https?:\/\/storage\.googleapis\.com\/.*[?&]X-Goog-/i.test(src)) {
+  if (looksLikeGcsVideoReference(src) && !/[?&]X-Goog-/i.test(src)) {
     // Mark the key as in-flight so hover doesn't spam /api/video
     warmed.add(src);
     resolvePlayableVideoUrl(src)

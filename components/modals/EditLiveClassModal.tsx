@@ -155,7 +155,10 @@ export function EditLiveClassModal({
           </div>
           <div className="space-y-2">
             <Label>Recording URL</Label>
-            <Input {...register("recordingUrl")} placeholder="https://..." />
+            <Input {...register("recordingUrl")} placeholder="aiml/video1.mp4 or https://youtube.com/..." />
+            <p className="text-xs text-muted-foreground">
+              Prefer a GCS object key for private videos. YouTube/Vimeo also work.
+            </p>
           </div>
           <div className="space-y-2">
             <Label>Scheduled At</Label>

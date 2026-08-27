@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPublicDemoCourseById } from "@/lib/public-demo";
-import { resolveVideoEmbed } from "@/lib/video-embed";
-import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
+import { ResolvedVideoPlayer } from "@/components/ui/resolved-video-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -37,7 +36,6 @@ export default async function PublicCourseDemoPage({
   const course = await getPublicDemoCourseById(id);
   if (!course) notFound();
 
-  const embed = resolveVideoEmbed(course.demoUrl, true);
   const enrollHref =
     course.courseType === "record" && course.slug
       ? `/courses/${course.slug}`
@@ -56,8 +54,7 @@ export default async function PublicCourseDemoPage({
       />
 
       <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-xl">
-        <EmbeddedVideoPlayer
-          embed={embed}
+        <ResolvedVideoPlayer
           videoUrl={course.demoUrl}
           title={`Demo video for ${course.title}`}
           autoPlay

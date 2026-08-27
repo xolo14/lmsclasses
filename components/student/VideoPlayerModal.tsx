@@ -9,7 +9,10 @@ import {
 } from "@/components/ui/dialog";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
-import { resolvePlayableVideoUrl } from "@/lib/resolve-playable-video-url";
+import {
+  PlayableVideoError,
+  resolvePlayableVideoUrl,
+} from "@/lib/resolve-playable-video-url";
 import { prefetchVideoUrl } from "@/lib/video-prefetch";
 
 interface VideoPlayerModalProps {
@@ -23,20 +26,20 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
   const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
   const [playableUrl, setPlayableUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen || !videoUrl) {
       setEmbed(null);
       setPlayableUrl(null);
       setLoading(false);
-      setError(false);
+      setError(null);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
-    setError(false);
+    setError(null);
     setEmbed(null);
     setPlayableUrl(null);
 
@@ -47,8 +50,13 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
         setPlayableUrl(url);
         prefetchVideoUrl(url);
         setEmbed(resolveVideoEmbed(url, true));
-      } catch {
-        if (!cancelled) setError(true);
+      } catch (err) {
+        if (cancelled) return;
+        setError(
+          err instanceof PlayableVideoError
+            ? err.message
+            : "Could not load this video."
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -62,7 +70,7 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
   const handleClose = () => {
     setEmbed(null);
     setPlayableUrl(null);
-    setError(false);
+    setError(null);
     onClose();
   };
 
@@ -80,7 +88,7 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
               </div>
             ) : error ? (
               <div className="flex h-full items-center justify-center p-6 text-center text-sm text-white/80">
-                You do not have permission to view this video.
+                {error}
               </div>
             ) : (
               <EmbeddedVideoPlayer

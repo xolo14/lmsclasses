@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { videoReferenceSchema } from "@/lib/validations/video-reference";
+import {
+  optionalVideoReferenceSchema,
+  videoReferenceSchema,
+} from "@/lib/validations/video-reference";
 
 /** Form fields often submit "" — treat as missing for optional values. */
 function emptyToUndefined(val: unknown) {
@@ -16,7 +19,7 @@ export const courseSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
   price: z.coerce.number().min(0, "Price must be positive"),
-  demoUrl: z.string().url().optional().or(z.literal("")),
+  demoUrl: optionalVideoReferenceSchema,
   duration: z.string().optional().or(z.literal("")),
   courseType: z.enum(["live", "record"]).default("live"),
 });
@@ -118,7 +121,7 @@ export const liveClassSchema = z.object({
   scheduledAt: z.string().min(1, "Schedule date is required"),
   duration: z.coerce.number().min(15).optional(),
   status: z.enum(["scheduled", "live", "completed", "cancelled"]).optional(),
-  recordingUrl: z.string().url().optional().or(z.literal("")),
+  recordingUrl: optionalVideoReferenceSchema,
 });
 
 export const classRecordingSchema = z.object({

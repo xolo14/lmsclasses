@@ -126,15 +126,15 @@ export default function BatchRecordingsPage() {
         onOpenChange={setImportModalOpen}
         title="Bulk Import Class Recordings"
         description="Upload an Excel or CSV file containing recording details for this batch. The table below shows a preview of parsed records."
-        templateHeaders={["Week Name", "Topic Name", "Video URL"]}
+        templateHeaders={["Week Name", "Topic Name", "Video path"]}
         templateSampleRows={[
-          ["Week 1", "Introduction to React and JSX", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
-          ["Week 2", "React Hooks & State Management", "https://vimeo.com/83949210"]
+          ["Week 1", "Introduction to React and JSX", "aiml/week1-intro.mp4"],
+          ["Week 2", "React Hooks & State Management", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"]
         ]}
         headerMapping={{
           weekName: "Week Name",
           topicName: "Topic Name",
-          videoUrl: "Video URL"
+          videoUrl: "Video path"
         }}
         onImport={async (data) => {
           const res = await fetch("/api/class-recordings/bulk", {

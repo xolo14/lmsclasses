@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
-import { getSignedReadUrl, parseGcsObjectKey } from "@/lib/gcs";
+import { auth } from "@/lib/auth";
+import {
+  LMS_SIGNED_URL_TTL_MS,
+  getSignedReadUrl,
+  parseGcsObjectKey,
+} from "@/lib/gcs";
+import { isPublicCourseDemoReference } from "@/lib/public-demo-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
  * Returns a short-lived V4 signed URL for a private GCS object.
- * Auth: any logged-in LMS user (students play enrolled content; staff preview).
+ * Auth: logged-in LMS user, OR anonymous when videoKey is a published course demo.
  * Query: ?videoKey=<object path | gs:// | storage.googleapis.com URL>
  */
 export async function GET(request: Request) {
-  const { error } = await requireAuth();
-  if (error) return error;
-
   try {
     const { searchParams } = new URL(request.url);
     const videoKey = searchParams.get("videoKey")?.trim();
@@ -32,8 +34,19 @@ export async function GET(request: Request) {
       );
     }
 
-    const url = await getSignedReadUrl(videoKey);
-    return NextResponse.json({ url });
+    const session = await auth();
+    if (!session?.user) {
+      const isDemo = await isPublicCourseDemoReference(videoKey);
+      if (!isDemo) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
+    const url = await getSignedReadUrl(videoKey, LMS_SIGNED_URL_TTL_MS);
+    return NextResponse.json({
+      url,
+      expiresAt: new Date(Date.now() + LMS_SIGNED_URL_TTL_MS).toISOString(),
+    });
   } catch (err) {
     console.error("[api/video] signed URL error:", err);
     return NextResponse.json(

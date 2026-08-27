@@ -276,8 +276,11 @@ export function AddCourseModal({ open, onOpenChange, type, course }: AddCourseMo
                 Shown only on the course detail page (not on listing cards).
               </p>
             )}
-            <Input {...register("demoUrl")} placeholder="https://youtube.com/... or video URL" />
+            <Input {...register("demoUrl")} placeholder="aiml/demo.mp4 or https://youtube.com/..." />
             {errors.demoUrl && <p className="text-sm text-destructive">{errors.demoUrl.message}</p>}
+            <p className="text-xs text-muted-foreground">
+              GCS object key (e.g. <code>aiml/demo.mp4</code>) or YouTube/Vimeo. Private GCS demos are signed for public viewers.
+            </p>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
