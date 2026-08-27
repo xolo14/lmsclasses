@@ -1,0 +1,19 @@
+[
+  {
+    "origin": [
+      "https://lmsclasses.com",
+      "https://www.lmsclasses.com",
+      "http://localhost:3000"
+    ],
+    "method": ["GET", "HEAD", "OPTIONS"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "Content-Range",
+      "Accept-Ranges",
+      "Range",
+      "Access-Control-Allow-Origin"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

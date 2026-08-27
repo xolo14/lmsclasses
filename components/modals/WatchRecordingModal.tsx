@@ -10,6 +10,7 @@ import {
 import { Play } from "lucide-react";
 import { EmbeddedVideoPlayer } from "@/components/ui/embedded-video-player";
 import { resolveVideoEmbed, type ResolvedVideoEmbed } from "@/lib/video-embed";
+import { resolvePlayableVideoUrl } from "@/lib/resolve-playable-video-url";
 
 interface WatchRecordingModalProps {
   open: boolean;
@@ -20,14 +21,42 @@ interface WatchRecordingModalProps {
 
 export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: WatchRecordingModalProps) {
   const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
+  const [playableUrl, setPlayableUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!videoUrl) {
+    if (!open || !videoUrl) {
       setEmbed(null);
+      setPlayableUrl(null);
+      setLoading(false);
+      setError(false);
       return;
     }
-    setEmbed(resolveVideoEmbed(videoUrl, true));
-  }, [videoUrl]);
+
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    setEmbed(null);
+    setPlayableUrl(null);
+
+    (async () => {
+      try {
+        const url = await resolvePlayableVideoUrl(videoUrl);
+        if (cancelled) return;
+        setPlayableUrl(url);
+        setEmbed(resolveVideoEmbed(url, true));
+      } catch {
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, videoUrl]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -40,7 +69,20 @@ export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: Wat
         </DialogHeader>
 
         <div className="relative aspect-video w-full bg-black flex items-center justify-center">
-          <EmbeddedVideoPlayer embed={embed} videoUrl={videoUrl} title={`Class recording: ${title}`} autoPlay />
+          {loading ? (
+            <p className="text-sm text-slate-400">Loading course video…</p>
+          ) : error ? (
+            <p className="p-6 text-center text-sm text-slate-400">
+              You do not have permission to view this video.
+            </p>
+          ) : (
+            <EmbeddedVideoPlayer
+              embed={embed}
+              videoUrl={playableUrl ?? undefined}
+              title={`Class recording: ${title}`}
+              autoPlay
+            />
+          )}
         </div>
       </DialogContent>
     </Dialog>

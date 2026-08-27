@@ -12,6 +12,7 @@ const ENDPOINT = "/api/external/recordings";
  * Partner API: all published videos for the record courses on this key.
  * Auth: Authorization: Bearer <api_key> (get_recordings only — no enroll form/link).
  * Query: ?courseId=<uuid> optional filter to one allowed course.
+ * GCS videos are returned as ~60m signed URLs (see videoUrlExpiresAt); re-fetch before expiry.
  */
 export async function OPTIONS(request: Request) {
   return widgetOptionsResponse(null, request);
