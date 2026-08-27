@@ -44,12 +44,58 @@ function sanitizePemAscii(value: string): string {
 }
 
 function chunkBase64(body: string): string {
-  const compact = body.replace(/\s+/g, "").replace(/\\n/g, "");
+  let compact = body
+    .replace(/\\n/g, "")
+    // Hostinger/forms often turn base64 `+` into spaces — restore before stripping WS
+    .replace(/ /g, "+")
+    .replace(/\s+/g, "")
+    .replace(/[^A-Za-z0-9+/=]/g, "");
+
+  // Fix padding
+  const pad = compact.length % 4;
+  if (pad === 1) {
+    // truncated — unrecoverable
+    return "";
+  }
+  if (pad > 0) {
+    compact += "=".repeat(4 - pad);
+  }
+
+  // Verify it actually decodes
+  try {
+    Buffer.from(compact, "base64");
+  } catch {
+    return "";
+  }
+
   const lines: string[] = [];
   for (let i = 0; i < compact.length; i += 64) {
     lines.push(compact.slice(i, i + 64));
   }
   return lines.join("\n");
+}
+
+/** Pull private_key out of mangled JSON text when JSON.parse fails. */
+function extractPrivateKeyFromJsonText(text: string): string | null {
+  const m = text.match(/"private_key"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if (!m?.[1]) return null;
+  try {
+    // Re-parse as a JSON string to undo \n \u escapes
+    return JSON.parse(`"${m[1]}"`) as string;
+  } catch {
+    return m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+  }
+}
+
+function extractJsonField(text: string, field: string): string | null {
+  const re = new RegExp(`"${field}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`);
+  const m = text.match(re);
+  if (!m?.[1]) return null;
+  try {
+    return JSON.parse(`"${m[1]}"`) as string;
+  } catch {
+    return m[1];
+  }
 }
 
 /** Safe probe of raw env (never returns key material). */
@@ -170,16 +216,32 @@ export function resolveGcpCredentials(): GcpCredentials | null {
     jsonText: string,
     source: GcpCredentials["source"]
   ): GcpCredentials | null => {
+    const cleaned = stripWrappingQuotes(jsonText);
+    let projectId = "";
+    let clientEmail = "";
+    let privateKeyRaw: string | undefined;
+
     try {
-      const parsed = JSON.parse(stripWrappingQuotes(unescapeNewlines(jsonText))) as {
+      const parsed = JSON.parse(cleaned) as {
         project_id?: string;
         client_email?: string;
         private_key?: string;
       };
-      const privateKey = normalizeGcpPrivateKey(parsed.private_key);
-      const projectId = (parsed.project_id || process.env.GCP_PROJECT_ID || "").trim();
-      const clientEmail = (parsed.client_email || process.env.GCP_CLIENT_EMAIL || "").trim();
-      if (!projectId || !clientEmail || !privateKey) return null;
+      projectId = (parsed.project_id || "").trim();
+      clientEmail = (parsed.client_email || "").trim();
+      privateKeyRaw = parsed.private_key;
+    } catch {
+      // Hostinger may break JSON by inserting real newlines into private_key
+      projectId = (extractJsonField(cleaned, "project_id") || "").trim();
+      clientEmail = (extractJsonField(cleaned, "client_email") || "").trim();
+      privateKeyRaw = extractPrivateKeyFromJsonText(cleaned) || undefined;
+    }
+
+    projectId = projectId || process.env.GCP_PROJECT_ID?.trim() || "";
+    clientEmail = clientEmail || process.env.GCP_CLIENT_EMAIL?.trim() || "";
+    const privateKey = normalizeGcpPrivateKey(privateKeyRaw);
+    if (!projectId || !clientEmail.includes("@") || !privateKey) return null;
+    try {
       assertPrivateKeyUsable(privateKey);
       return { projectId, clientEmail, privateKey, source };
     } catch {
