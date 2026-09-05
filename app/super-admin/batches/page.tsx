@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
 import { AddBatchModal } from "@/components/modals/AddBatchModal";
 import { EditBatchModal } from "@/components/modals/EditBatchModal";
+import { BulkImportModal } from "@/components/modals/BulkImportModal";
 import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 
@@ -25,6 +26,7 @@ type Batch = {
 export default function BatchesPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [editBatch, setEditBatch] = useState<Batch | undefined>();
 
   const { data: batches = [], isLoading } = useQuery<Batch[]>({
@@ -66,9 +68,14 @@ export default function BatchesPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Batches">
-        <Button onClick={() => setModalOpen(true)} className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" /> Add Batch
-        </Button>
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          <Button variant="outline" onClick={() => setImportModalOpen(true)} className="w-full sm:w-auto">
+            <Upload className="h-4 w-4 mr-2" /> Import
+          </Button>
+          <Button onClick={() => setModalOpen(true)} className="w-full sm:w-auto">
+            <Plus className="h-4 w-4 mr-2" /> Add Batch
+          </Button>
+        </div>
       </PageHeader>
       <DataTable columns={columns} data={batches} searchPlaceholder="Search batches..." />
       <AddBatchModal open={modalOpen} onOpenChange={setModalOpen} />
@@ -76,6 +83,40 @@ export default function BatchesPage() {
         open={!!editBatch}
         onOpenChange={(o) => !o && setEditBatch(undefined)}
         batch={editBatch}
+      />
+      <BulkImportModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        title="Bulk Import Batches"
+        description="Upload an Excel or CSV file containing batch details. The table below shows a preview of parsed records."
+        templateHeaders={["Batch Name", "Course Title", "Organisation Name", "Start Date", "End Date", "Max Slots"]}
+        templateSampleRows={[
+          ["Batch 2026-A", "Full Stack Web Development", "TechCorp Solutions", "2026-10-01", "2027-01-31", "30"],
+          ["Batch 2026-B", "Python for Beginners", "", "2026-11-01", "2027-02-28", "25"]
+        ]}
+        headerMapping={{
+          name: "Batch Name",
+          courseTitle: "Course Title",
+          orgName: "Organisation Name",
+          startDate: "Start Date",
+          endDate: "End Date",
+          maxSlots: "Max Slots"
+        }}
+        onImport={async (data) => {
+          const res = await fetch("/api/batches/bulk", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            return { successCount: 0, error: json.error || "Failed to bulk import batches." };
+          }
+          return { successCount: json.successCount };
+        }}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["batches"] });
+        }}
       />
     </div>
   );

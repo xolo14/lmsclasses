@@ -51,11 +51,13 @@ export function DemoVideoModal({ open, onOpenChange, videoUrl, courseTitle }: De
         setEmbed(resolveVideoEmbed(url, true));
       } catch (err) {
         if (cancelled) return;
-        setError(
-          err instanceof PlayableVideoError
+        const msg =
+          err instanceof Error
             ? err.message
-            : "Could not load this demo video."
-        );
+            : typeof err === "string"
+            ? err
+            : "Could not load this demo video.";
+        setError(msg);
       } finally {
         if (!cancelled) setLoading(false);
       }

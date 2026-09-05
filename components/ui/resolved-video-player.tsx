@@ -52,11 +52,13 @@ export function ResolvedVideoPlayer({
         setEmbed(resolveVideoEmbed(url, autoPlay));
       } catch (err) {
         if (cancelled) return;
-        setError(
-          err instanceof PlayableVideoError
+        const msg =
+          err instanceof Error
             ? err.message
-            : "Could not load this video."
-        );
+            : typeof err === "string"
+            ? err
+            : "Could not load this video.";
+        setError(msg);
       } finally {
         if (!cancelled) setLoading(false);
       }

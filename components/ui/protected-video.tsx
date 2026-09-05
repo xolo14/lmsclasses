@@ -63,6 +63,10 @@ export const ProtectedVideo = forwardRef<HTMLVideoElement, ProtectedVideoProps>(
             setBuffering(false);
             onCanPlay?.(e);
           }}
+          onError={(e) => {
+            setBuffering(false);
+            props.onError?.(e);
+          }}
           onContextMenu={(e) => {
             e.preventDefault();
             onContextMenu?.(e);
