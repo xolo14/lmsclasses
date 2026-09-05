@@ -122,9 +122,18 @@ export function AddCourseModal({ open, onOpenChange, type, course }: AddCourseMo
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/uploads/course-thumbnail", { method: "POST", body: fd });
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(typeof json.error === "string" ? json.error : "Upload failed");
+      const contentType = res.headers.get("content-type") || "";
+      let json: any = null;
+      if (contentType.includes("application/json")) {
+        try {
+          json = await res.json();
+        } catch {
+          // ignore parse error
+        }
+      }
+      if (!res.ok || !json?.url) {
+        const msg = typeof json?.error === "string" ? json.error : `Upload failed (HTTP ${res.status})`;
+        throw new Error(msg);
       }
       recordForm.setValue("thumbnailUrl", json.url, { shouldValidate: true });
     } catch (err) {
@@ -143,11 +152,25 @@ export function AddCourseModal({ open, onOpenChange, type, course }: AddCourseMo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(typeof json.error === "string" ? json.error : "Failed to save course");
+      const contentType = res.headers.get("content-type") || "";
+      let json: any = null;
+      if (contentType.includes("application/json")) {
+        try {
+          json = await res.json();
+        } catch {
+          // ignore parse error
+        }
       }
-      return json;
+      if (!res.ok) {
+        const errorMsg =
+          typeof json?.error === "string"
+            ? json.error
+            : typeof json?.error === "object"
+            ? JSON.stringify(json.error)
+            : `Failed to save course (HTTP ${res.status})`;
+        throw new Error(errorMsg);
+      }
+      return json || {};
     },
     onSuccess: () => {
       const targetKey = type === "live" ? "live-courses" : "record-courses";
@@ -201,7 +224,7 @@ export function AddCourseModal({ open, onOpenChange, type, course }: AddCourseMo
           </div>
           <div className="space-y-2">
             <Label>Price (₹)</Label>
-            <Input type="number" {...register("price")} />
+            <Input type="number" {...register("price", { valueAsNumber: true })} />
             {errors.price && <p className="text-sm text-destructive">{errors.price.message}</p>}
           </div>
           <div className="space-y-2">
