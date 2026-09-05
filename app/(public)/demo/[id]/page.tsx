@@ -70,7 +70,7 @@ export default async function PublicCourseDemoPage({
         <ResolvedVideoPlayer
           videoUrl={course.demoUrl}
           title={`Demo video for ${course.title}`}
-          autoPlay
+          autoPlay={false}
         />
       </div>
 

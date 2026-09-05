@@ -50,6 +50,7 @@ export default auth((req) => {
     publicPaths.some((p) => pathname === p) ||
     pathname.startsWith("/courses") ||
     pathname.startsWith("/demo") ||
+    pathname.startsWith("/api/video") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/public") ||
     pathname.startsWith("/api/cron") ||
