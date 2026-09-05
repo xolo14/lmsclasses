@@ -63,6 +63,7 @@ export function EmbeddedVideoPlayer({
     return (
       <ProtectedVideo
         key={directSrc}
+        src={directSrc}
         controls
         autoPlay={autoPlay}
         preload={autoPlay ? "auto" : "metadata"}

@@ -51,6 +51,10 @@ export const ProtectedVideo = forwardRef<HTMLVideoElement, ProtectedVideoProps>(
             setBuffering(true);
             onLoadStart?.(e);
           }}
+          onLoadedMetadata={(e) => {
+            setBuffering(false);
+            props.onLoadedMetadata?.(e);
+          }}
           onWaiting={(e) => {
             setBuffering(true);
             onWaiting?.(e);
@@ -62,6 +66,14 @@ export const ProtectedVideo = forwardRef<HTMLVideoElement, ProtectedVideoProps>(
           onCanPlay={(e) => {
             setBuffering(false);
             onCanPlay?.(e);
+          }}
+          onPlay={(e) => {
+            setBuffering(false);
+            props.onPlay?.(e);
+          }}
+          onPause={(e) => {
+            setBuffering(false);
+            props.onPause?.(e);
           }}
           onError={(e) => {
             setBuffering(false);
