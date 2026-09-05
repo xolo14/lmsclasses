@@ -18,7 +18,7 @@ function mapDemoUrl(demoVideoUrl: string | null, demoUrl: string | null) {
   return (demoVideoUrl || demoUrl || "").trim();
 }
 
-/** Active course with a demo video — live or record — for public share links. */
+/** Active or shared course with a demo video — live or record — for public share links. */
 export async function getPublicDemoCourseById(id: string): Promise<PublicDemoCourse | null> {
   const [live] = await db
     .select({
@@ -37,7 +37,7 @@ export async function getPublicDemoCourseById(id: string): Promise<PublicDemoCou
 
   if (live) {
     const demoUrl = mapDemoUrl(live.demoVideoUrl, live.demoUrl);
-    if (!demoUrl || !live.isActive) return null;
+    if (!demoUrl) return null;
 
     const [enrollmentRow] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -75,7 +75,7 @@ export async function getPublicDemoCourseById(id: string): Promise<PublicDemoCou
   if (!record) return null;
 
   const demoUrl = mapDemoUrl(record.demoVideoUrl, record.demoUrl);
-  if (!demoUrl || !record.isActive) return null;
+  if (!demoUrl) return null;
 
   const [enrollmentRow] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -100,7 +100,7 @@ export async function listPublicDemoCourseIds(): Promise<string[]> {
     db
       .select({ id: liveCourses.id, demoUrl: liveCourses.demoUrl, demoVideoUrl: liveCourses.demoVideoUrl })
       .from(liveCourses)
-      .where(and(eq(liveCourses.isActive, true), isNull(liveCourses.deletedAt))),
+      .where(isNull(liveCourses.deletedAt)),
     db
       .select({
         id: recordCourses.id,
@@ -108,7 +108,7 @@ export async function listPublicDemoCourseIds(): Promise<string[]> {
         demoVideoUrl: recordCourses.demoVideoUrl,
       })
       .from(recordCourses)
-      .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt))),
+      .where(isNull(recordCourses.deletedAt)),
   ]);
 
   return [...liveRows, ...recordRows]

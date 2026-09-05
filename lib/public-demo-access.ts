@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { liveCourses, recordCourses } from "@/lib/db/schema";
 import { parseGcsObjectKey } from "@/lib/gcs";
@@ -22,7 +22,7 @@ function demoRefsMatch(stored: string, requested: string): boolean {
 }
 
 /**
- * True when `videoKey` matches an active course's public demo field.
+ * True when `videoKey` matches a course's public demo field.
  * Used so anonymous visitors can play marketing demos stored as private GCS keys.
  */
 export async function isPublicCourseDemoReference(videoKey: string): Promise<boolean> {
@@ -36,14 +36,14 @@ export async function isPublicCourseDemoReference(videoKey: string): Promise<boo
         demoVideoUrl: liveCourses.demoVideoUrl,
       })
       .from(liveCourses)
-      .where(and(eq(liveCourses.isActive, true), isNull(liveCourses.deletedAt))),
+      .where(isNull(liveCourses.deletedAt)),
     db
       .select({
         demoUrl: recordCourses.demoUrl,
         demoVideoUrl: recordCourses.demoVideoUrl,
       })
       .from(recordCourses)
-      .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt))),
+      .where(isNull(recordCourses.deletedAt)),
   ]);
 
   for (const row of [...liveRows, ...recordRows]) {
