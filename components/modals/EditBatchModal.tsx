@@ -24,9 +24,18 @@ type Batch = {
   maxSlots?: number;
 };
 
+const editBatchSchema = batchSchema.partial();
+type EditBatchInput = Partial<BatchInput>;
+
 function toDateInput(value?: string | null) {
   if (!value) return "";
-  return new Date(value).toISOString().slice(0, 10);
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "";
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
 }
 
 export function EditBatchModal({
@@ -39,15 +48,14 @@ export function EditBatchModal({
   batch?: Batch;
 }) {
   const queryClient = useQueryClient();
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<BatchInput>({
-    resolver: zodResolver(batchSchema),
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<EditBatchInput>({
+    resolver: zodResolver(editBatchSchema),
   });
 
   useEffect(() => {
     if (batch) {
       reset({
         name: batch.name,
-        courseId: "",
         startDate: toDateInput(batch.startDate),
         endDate: toDateInput(batch.endDate),
         maxSlots: batch.maxSlots ?? 30,
@@ -56,18 +64,21 @@ export function EditBatchModal({
   }, [batch, reset]);
 
   const mutation = useMutation({
-    mutationFn: async (data: BatchInput) => {
+    mutationFn: async (data: EditBatchInput) => {
       const res = await fetch(`/api/batches/${batch!.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: data.name,
-          startDate: data.startDate,
-          endDate: data.endDate,
+          startDate: data.startDate || null,
+          endDate: data.endDate || null,
           maxSlots: data.maxSlots,
         }),
       });
-      if (!res.ok) throw new Error("Failed to update batch");
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || "Failed to update batch");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -102,8 +113,16 @@ export function EditBatchModal({
           </div>
           <div className="space-y-2">
             <Label>Max Slots</Label>
-            <Input type="number" {...register("maxSlots")} />
+            <Input type="number" {...register("maxSlots", { valueAsNumber: true })} />
+            {errors.maxSlots && <p className="text-sm text-destructive">{errors.maxSlots.message}</p>}
           </div>
+
+          {mutation.isError && (
+            <p className="text-sm text-destructive">
+              {(mutation.error as Error)?.message || "Failed to save batch updates."}
+            </p>
+          )}
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={mutation.isPending}>
