@@ -368,24 +368,22 @@ function getStorage(): Storage {
  * Returns null when the value is not a GCS object in our configured bucket
  * (or any bucket when the key is a bare path).
  */
-export function parseGcsObjectKey(
+export function parseGcsBucketAndKey(
   videoKeyOrUrl: string,
-  bucketName = getBucketName()
-): string | null {
+  defaultBucket = getBucketName()
+): { bucket: string; key: string } | null {
   const raw = videoKeyOrUrl.trim();
   if (!raw) return null;
 
   // Bare object path: lessons/module1-intro.mp4
   if (!/^[a-z][a-z0-9+.-]*:/i.test(raw) && !raw.includes("://")) {
-    return raw.replace(/^\/+/, "");
+    return { bucket: defaultBucket, key: raw.replace(/^\/+/, "") };
   }
 
   // gs://bucket/object
   const gsMatch = raw.match(/^gs:\/\/([^/]+)\/(.+)$/i);
   if (gsMatch) {
-    const [, bucket, objectKey] = gsMatch;
-    if (bucket !== bucketName) return null;
-    return objectKey;
+    return { bucket: gsMatch[1], key: gsMatch[2] };
   }
 
   try {
@@ -399,16 +397,19 @@ export function parseGcsObjectKey(
       host === "storage.cloud.google.com"
     ) {
       const parts = url.pathname.replace(/^\/+/, "").split("/");
-      const [bucket, ...rest] = parts;
-      if (!bucket || rest.length === 0) return null;
-      if (bucket !== bucketName) return null;
-      return decodeURIComponent(rest.join("/"));
+      if (parts.length >= 2) {
+        return { bucket: parts[0], key: decodeURIComponent(parts.slice(1).join("/")) };
+      }
+      if (parts.length === 1 && parts[0]) {
+        return { bucket: defaultBucket, key: decodeURIComponent(parts[0]) };
+      }
     }
 
     // https://bucket.storage.googleapis.com/object
-    if (host === `${bucketName.toLowerCase()}.storage.googleapis.com`) {
+    if (host.endsWith(".storage.googleapis.com")) {
+      const bucket = host.replace(/\.storage\.googleapis\.com$/, "");
       const key = url.pathname.replace(/^\/+/, "");
-      return key ? decodeURIComponent(key) : null;
+      if (key) return { bucket, key: decodeURIComponent(key) };
     }
   } catch {
     return null;
@@ -417,9 +418,20 @@ export function parseGcsObjectKey(
   return null;
 }
 
+/**
+ * Extract a GCS object key from a stored videoKey, gs:// URI, or https URL.
+ */
+export function parseGcsObjectKey(
+  videoKeyOrUrl: string,
+  bucketName = getBucketName()
+): string | null {
+  const parsed = parseGcsBucketAndKey(videoKeyOrUrl, bucketName);
+  return parsed?.key ?? null;
+}
+
 /** True when the URL/key should be played via a short-lived signed URL. */
 export function isGcsVideoReference(videoKeyOrUrl: string): boolean {
-  return parseGcsObjectKey(videoKeyOrUrl) !== null;
+  return parseGcsBucketAndKey(videoKeyOrUrl) !== null;
 }
 
 /** Default TTL for logged-in LMS players (long enough for a full lesson). */
@@ -432,14 +444,13 @@ export async function getSignedReadUrl(
   videoKeyOrUrl: string,
   expiresMs = LMS_SIGNED_URL_TTL_MS
 ): Promise<string> {
-  const bucketName = getBucketName();
-  const objectKey = parseGcsObjectKey(videoKeyOrUrl, bucketName);
-  if (!objectKey) {
+  const parsed = parseGcsBucketAndKey(videoKeyOrUrl);
+  if (!parsed) {
     throw new Error("Invalid or non-GCS video key");
   }
 
   const storage = getStorage();
-  const file = storage.bucket(bucketName).file(objectKey);
+  const file = storage.bucket(parsed.bucket).file(parsed.key);
   const [signedUrl] = await file.getSignedUrl({
     version: "v4",
     action: "read",

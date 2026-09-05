@@ -14,14 +14,13 @@ export function getConfiguredGcsBucket(): string {
 
 /** True when value should be resolved via /api/video signed URLs. */
 export function looksLikeGcsVideoReference(
-  value: string,
-  bucketName = getConfiguredGcsBucket()
+  value: string
 ): boolean {
   const v = value.trim();
   if (!v) return false;
 
   if (v.startsWith("gs://")) {
-    return new RegExp(`^gs:\\/\\/${escapeRegExp(bucketName)}\\/.+`, "i").test(v);
+    return true;
   }
 
   // Bare object path with a video extension
@@ -32,20 +31,16 @@ export function looksLikeGcsVideoReference(
   try {
     const url = new URL(v);
     const host = url.hostname.toLowerCase();
-    if (host === "storage.googleapis.com" || host === "storage.cloud.google.com") {
-      const [bucket] = url.pathname.replace(/^\/+/, "").split("/");
-      return bucket === bucketName;
-    }
-    if (host === `${bucketName.toLowerCase()}.storage.googleapis.com`) {
-      return url.pathname.replace(/^\/+/, "").length > 0;
+    if (
+      host === "storage.googleapis.com" ||
+      host === "storage.cloud.google.com" ||
+      host.endsWith(".storage.googleapis.com")
+    ) {
+      return true;
     }
   } catch {
     return false;
   }
 
   return false;
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
