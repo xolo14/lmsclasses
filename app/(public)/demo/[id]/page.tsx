@@ -21,9 +21,22 @@ export async function generateMetadata({
   const { id } = await params;
   const course = await getPublicDemoCourseById(id);
   if (!course) return { title: "Demo Not Found" };
+  const description = course.description ?? `Watch the free demo for ${course.title}`;
   return {
     title: `${course.title} Demo | LMS Classes`,
-    description: course.description ?? `Watch the free demo for ${course.title}`,
+    description,
+    openGraph: {
+      title: `${course.title} Demo | LMS Classes`,
+      description,
+      url: `https://lmsclasses.com/demo/${course.id}`,
+      siteName: "LMS Classes",
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${course.title} Demo | LMS Classes`,
+      description,
+    },
   };
 }
 

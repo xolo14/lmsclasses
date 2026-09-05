@@ -8,7 +8,7 @@ const { auth } = NextAuth(authConfig);
 const AUTH_PAGES = ["/login", "/hr/login", "/hr/register"] as const;
 
 function withSecurityHeaders(response: NextResponse) {
-  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Frame-Options", "SAMEORIGIN");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set(
