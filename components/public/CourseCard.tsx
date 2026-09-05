@@ -80,11 +80,6 @@ export function CourseCard({
             <p className="text-[0.625rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">
               {badgeLabel}
             </p>
-            {hasPrice ? (
-              <p className="text-lg font-bold tabular-nums text-neutral-950">
-                ₹{price.toLocaleString("en-IN")}
-              </p>
-            ) : null}
           </div>
 
           <h3 className="mt-4 text-lg font-bold leading-snug tracking-[-0.02em] text-neutral-950">
@@ -141,11 +136,6 @@ export function CourseCard({
             >
               {badgeLabel}
             </span>
-            {hasPrice ? (
-              <p className="font-display text-xl italic text-gold md:text-2xl">
-                ₹{price.toLocaleString("en-IN")}
-              </p>
-            ) : null}
           </div>
 
           <h3 className="font-display text-xl leading-snug text-swiss-black">{title}</h3>
@@ -242,11 +232,6 @@ export function CourseCard({
         </div>
 
         <div className="mt-auto flex flex-col gap-3 pt-2">
-          {hasPrice ? (
-            <p className="text-2xl font-bold text-swiss-red">
-              ₹{price.toLocaleString("en-IN")}
-            </p>
-          ) : null}
           <button
             type="button"
             onClick={requestView}
