@@ -5,7 +5,7 @@ const DEFAULT_BUCKET = "lmsclasses-videos";
 
 let storageClient: Storage | null = null;
 
-function getBucketName(): string {
+export function getBucketName(): string {
   return process.env.GCS_BUCKET_NAME?.trim() || DEFAULT_BUCKET;
 }
 
@@ -340,7 +340,7 @@ export function getGcsEnvStatus() {
   };
 }
 
-function getStorage(): Storage {
+export function getStorage(): Storage {
   if (storageClient) return storageClient;
 
   const creds = resolveGcpCredentials();
@@ -468,4 +468,28 @@ export async function toPlayableVideoUrl(
   const trimmed = storedUrl.trim();
   if (!trimmed || !isGcsVideoReference(trimmed)) return trimmed;
   return getSignedReadUrl(trimmed, expiresMs);
+}
+
+/** Generate a signed upload URL for browser-direct upload to GCS. */
+export async function getSignedUploadUrl({
+  bucketName = getBucketName(),
+  objectKey,
+  contentType = "video/mp4",
+  expiresMs = 2 * 60 * 60 * 1000, // 2 hours for large video uploads
+}: {
+  bucketName?: string;
+  objectKey: string;
+  contentType?: string;
+  expiresMs?: number;
+}): Promise<string> {
+  const storage = getStorage();
+  const file = storage.bucket(bucketName).file(objectKey);
+  const [signedUrl] = await file.getSignedUrl({
+    version: "v4",
+    action: "write",
+    expires: Date.now() + expiresMs,
+    contentType,
+  });
+
+  return signedUrl;
 }

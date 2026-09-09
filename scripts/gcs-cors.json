@@ -5,7 +5,7 @@
       "https://www.lmsclasses.com",
       "http://localhost:3000"
     ],
-    "method": ["GET", "HEAD", "OPTIONS"],
+    "method": ["GET", "HEAD", "OPTIONS", "PUT", "POST"],
     "responseHeader": [
       "Content-Type",
       "Content-Length",
