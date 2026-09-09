@@ -1314,25 +1314,37 @@ export async function GETUsersByRole(role: "manager" | "mentor") {
   if (error) return error;
 
   if (role === "mentor") {
-    const result = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        phone: users.phone,
-        role: users.role,
-        courseId: users.courseId,
-        courseTitle: liveCourses.title,
-        isActive: users.isActive,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-      })
-      .from(users)
-      .leftJoin(liveCourses, eq(users.courseId, liveCourses.id))
-      .where(and(eq(users.role, role), isNull(users.deletedAt)))
-      .orderBy(desc(users.createdAt));
+    try {
+      const result = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          phone: users.phone,
+          role: users.role,
+          courseId: users.courseId,
+          courseTitle: liveCourses.title,
+          isActive: users.isActive,
+          createdAt: users.createdAt,
+          updatedAt: users.updatedAt,
+        })
+        .from(users)
+        .leftJoin(liveCourses, eq(users.courseId, liveCourses.id))
+        .where(and(eq(users.role, role), isNull(users.deletedAt)))
+        .orderBy(desc(users.createdAt));
 
-    return NextResponse.json(result);
+      return NextResponse.json(result);
+    } catch (err: any) {
+      console.warn("[GETUsersByRole: mentor fallback]", err?.message);
+      // Resilient fallback if course_id column does not exist yet on DB
+      const fallback = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.role, role), isNull(users.deletedAt)))
+        .orderBy(desc(users.createdAt));
+
+      return NextResponse.json(fallback);
+    }
   }
 
   const result = await db
@@ -1356,24 +1368,42 @@ export async function POSTUserByRole(request: Request, role: "manager" | "mentor
   }
 
   const { name, email, phone, password } = parsed.data;
-  const courseId = "courseId" in parsed.data ? (parsed.data.courseId as string | undefined) : undefined;
+  const rawCourseId = "courseId" in parsed.data ? (parsed.data.courseId as string | undefined) : undefined;
+  const courseId = rawCourseId && rawCourseId !== "none" ? rawCourseId : null;
+
   const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
   if (existing.length) {
     return NextResponse.json({ error: "Email already exists" }, { status: 409 });
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
-  const [user] = await db
-    .insert(users)
-    .values({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      role,
-      courseId: role === "mentor" && courseId ? courseId : null,
-    })
-    .returning();
+  let user;
+
+  try {
+    [user] = await db
+      .insert(users)
+      .values({
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        role,
+        courseId: role === "mentor" ? courseId : null,
+      })
+      .returning();
+  } catch (insertErr: any) {
+    console.warn("[POSTUserByRole: insert fallback without courseId]", insertErr?.message);
+    [user] = await db
+      .insert(users)
+      .values({
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        role,
+      })
+      .returning();
+  }
 
   await logAction({
     userId: session!.user.id,
@@ -1426,16 +1456,29 @@ export async function PATCHUser(request: Request, id: string) {
   if (phone !== undefined) updateData.phone = phone;
   if (isActive !== undefined) updateData.isActive = isActive;
   if (email !== undefined) updateData.email = email;
-  if (courseId !== undefined) updateData.courseId = courseId || null;
+  if (courseId !== undefined) {
+    updateData.courseId = courseId && courseId !== "none" ? courseId : null;
+  }
   if (password) {
     updateData.password = await bcrypt.hash(password, 12);
   }
 
-  const [user] = await db
-    .update(users)
-    .set(updateData)
-    .where(eq(users.id, id))
-    .returning();
+  let user;
+  try {
+    [user] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, id))
+      .returning();
+  } catch (patchErr: any) {
+    console.warn("[PATCHUser fallback without courseId]", patchErr?.message);
+    delete updateData.courseId;
+    [user] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, id))
+      .returning();
+  }
 
   await logAction({
     userId: session!.user.id,

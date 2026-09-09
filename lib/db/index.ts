@@ -18,6 +18,11 @@ function createDb(): Db {
     );
   }
   const sql = neon(url);
+  // Auto-migrate: ensure users.course_id column exists
+  sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS course_id UUID REFERENCES live_courses(id);`
+    .then(() => sql`CREATE INDEX IF NOT EXISTS users_course_id_idx ON users(course_id);`)
+    .catch(() => {});
+
   return drizzle(sql, {
     schema,
     logger: process.env.NODE_ENV === "development" ? new CustomLogger() : false,

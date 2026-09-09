@@ -180,13 +180,13 @@ export function AddMentorModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Assign Course</Label>
+            <Label>Assign Course (Optional)</Label>
             <Select
               value={selectedCourseId || "none"}
               onValueChange={(val) => setValue("courseId", val === "none" ? "" : val, { shouldValidate: true })}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select a Live Course to assign" />
+                <SelectValue placeholder="Select a Live Course (Optional)" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">-- No Course Assigned --</SelectItem>
@@ -198,7 +198,7 @@ export function AddMentorModal({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Select the live course that this mentor will teach and manage recordings for.
+              Optional: Select a live course to assign to this mentor, or leave unassigned.
             </p>
             {errors.courseId && <p className="text-sm text-destructive">{errors.courseId.message}</p>}
           </div>

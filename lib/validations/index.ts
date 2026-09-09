@@ -86,7 +86,7 @@ export const mentorSchema = z
     name: z.string().min(1, "Name is required"),
     email: z.string().email("Invalid email"),
     phone: z.string().optional(),
-    courseId: z.string().uuid("Invalid course").optional().nullable().or(z.literal("")),
+    courseId: z.string().optional().nullable(),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(1, "Confirm password is required"),
   })
@@ -100,7 +100,7 @@ export const editMentorSchema = z
     name: z.string().min(1, "Name is required"),
     email: z.string().email("Invalid email"),
     phone: z.string().optional(),
-    courseId: z.string().uuid("Invalid course").optional().nullable().or(z.literal("")),
+    courseId: z.string().optional().nullable(),
     password: z
       .string()
       .min(6, "Password must be at least 6 characters")

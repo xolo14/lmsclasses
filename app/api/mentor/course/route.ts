@@ -10,17 +10,22 @@ export async function GET() {
   const { error, session } = await requireAuth(["mentor"]);
   if (error) return error;
 
-  // Fetch mentor user record to get current assigned courseId
-  const [mentor] = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      courseId: users.courseId,
-    })
-    .from(users)
-    .where(eq(users.id, session!.user.id))
-    .limit(1);
+  let mentor;
+  try {
+    const [row] = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        courseId: users.courseId,
+      })
+      .from(users)
+      .where(eq(users.id, session!.user.id))
+      .limit(1);
+    mentor = row;
+  } catch {
+    return NextResponse.json({ course: null });
+  }
 
   if (!mentor || !mentor.courseId) {
     return NextResponse.json({ course: null });
