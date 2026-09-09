@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/tables/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/utils";
-import { Copy, ExternalLink } from "lucide-react";
+import { Copy, ExternalLink, Plus } from "lucide-react";
+import { AddMentorLiveClassModal } from "@/components/modals/AddMentorLiveClassModal";
 
 type LiveClass = {
   id: string;
@@ -19,7 +22,22 @@ type LiveClass = {
   status: string;
 };
 
+type MentorCourseResponse = {
+  course: {
+    id: string;
+    title: string;
+  } | null;
+};
+
 export default function MentorLiveClassesPage() {
+  const { data: session } = useSession();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: courseData } = useQuery<MentorCourseResponse>({
+    queryKey: ["mentor-course"],
+    queryFn: () => fetch("/api/mentor/course").then((r) => r.json()),
+  });
+
   const { data: classes = [], isLoading } = useQuery<LiveClass[]>({
     queryKey: ["live-classes", "mentor", "active"],
     queryFn: async () => {
@@ -28,6 +46,8 @@ export default function MentorLiveClassesPage() {
       return Array.isArray(data) ? data : [];
     },
   });
+
+  const assignedCourse = courseData?.course;
 
   const columns: ColumnDef<LiveClass>[] = [
     { accessorKey: "title", header: "Title" },
@@ -77,12 +97,37 @@ export default function MentorLiveClassesPage() {
     },
   ];
 
-  if (isLoading) return <div className="text-muted-foreground">Loading...</div>;
+  if (isLoading) return <div className="text-muted-foreground p-6">Loading live classes...</div>;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">My Live Classes</h1>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">My Live Classes</h1>
+          <p className="text-sm text-muted-foreground">
+            Schedule and manage live sessions for your course batches.
+          </p>
+        </div>
+
+        {assignedCourse && session?.user && (
+          <Button onClick={() => setModalOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Add Live Class
+          </Button>
+        )}
+      </div>
+
       <DataTable columns={columns} data={classes} searchPlaceholder="Search classes..." />
+
+      {assignedCourse && session?.user && (
+        <AddMentorLiveClassModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          courseId={assignedCourse.id}
+          courseTitle={assignedCourse.title}
+          mentorId={session.user.id}
+          mentorName={session.user.name || "Mentor"}
+        />
+      )}
     </div>
   );
 }

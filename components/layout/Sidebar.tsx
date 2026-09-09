@@ -182,6 +182,7 @@ export function OrgAdminSidebar(props: Omit<SidebarProps, "items" | "title">) {
 
 export function MentorSidebar(props: Omit<SidebarProps, "items" | "title">) {
   const items: NavItem[] = [
+    { label: "Dashboard", href: "/mentor/dashboard", icon: LayoutDashboard },
     { label: "Live Classes", href: "/mentor/live-classes", icon: Video },
     { label: "Settings", href: "/mentor/settings", icon: Settings },
   ];

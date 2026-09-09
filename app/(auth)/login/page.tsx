@@ -32,37 +32,45 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const result = await signIn("credentials", {
-      email: data.email,
-      password: data.password,
-      redirect: false,
-    });
+    try {
+      const result = await signIn("credentials", {
+        email: data.email,
+        password: data.password,
+        redirect: false,
+      });
 
-    if (result?.error || result?.ok === false) {
-      setError("Invalid email or password.");
-      setLoading(false);
-      return;
-    }
+      if (result?.error || result?.ok === false) {
+        setError("Invalid email or password.");
+        setLoading(false);
+        return;
+      }
 
-    const session = await getSession();
-    const role = session?.user?.role;
+      const session = await getSession();
+      const role = session?.user?.role;
 
-    if (!role) {
+      if (!role) {
+        setError(
+          "Signed in but no session cookie. Set NEXTAUTH_URL to your exact site URL (http:// or https://), AUTH_TRUST_HOST=true, and AUTH_SECRET, then redeploy."
+        );
+        setLoading(false);
+        return;
+      }
+
+      if (role === "mentor") {
+        window.location.href = "/mentor/dashboard";
+      } else if (role === "student") {
+        window.location.href = "/student/courses";
+      } else if (role && ROLE_ROUTES[role]) {
+        window.location.href = `${ROLE_ROUTES[role]}/dashboard`;
+      } else {
+        window.location.href = "/login";
+      }
+    } catch (err: any) {
+      console.error("[Login Error]", err);
       setError(
-        "Signed in but no session cookie. Set NEXTAUTH_URL to your exact site URL (http:// or https://), AUTH_TRUST_HOST=true, and AUTH_SECRET, then redeploy."
+        "Too many sign-in attempts or network issue. Please wait 15 minutes or try from a different network."
       );
       setLoading(false);
-      return;
-    }
-
-    if (role === "mentor") {
-      window.location.href = "/mentor/live-classes";
-    } else if (role === "student") {
-      window.location.href = "/student/courses";
-    } else if (role && ROLE_ROUTES[role]) {
-      window.location.href = `${ROLE_ROUTES[role]}/dashboard`;
-    } else {
-      window.location.href = "/login";
     }
   };
 

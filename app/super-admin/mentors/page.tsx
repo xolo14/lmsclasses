@@ -1,6 +1,6 @@
 "use client";
 
-import { AddMentorModal } from "@/components/modals/AddManagerModal";
+import { AddMentorModal } from "@/components/modals/AddMentorModal";
 import { UsersListPage } from "@/components/pages/UsersListPage";
 
 export default function MentorsPage() {

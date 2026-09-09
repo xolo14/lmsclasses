@@ -71,7 +71,7 @@ export default auth((req) => {
     if (role && (pathname === "/login" || pathname === "/")) {
       let dest = "/login";
       if (role === "mentor") {
-        dest = "/mentor/live-classes";
+        dest = "/mentor/dashboard";
       } else if (role === "student") {
         dest = "/student/courses";
       } else if (role === "hr") {

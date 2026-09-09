@@ -40,6 +40,7 @@ export const authConfig = {
       if (user) {
         token.role = user.role;
         token.organisationId = user.organisationId;
+        token.courseId = user.courseId;
         token.lmsId = user.lmsId;
         token.companyId = user.companyId;
       }
@@ -50,6 +51,7 @@ export const authConfig = {
         session.user.id = token.sub!;
         session.user.role = token.role as Role;
         session.user.organisationId = token.organisationId as string | null;
+        session.user.courseId = token.courseId as string | null;
         session.user.lmsId = token.lmsId as string | null;
         session.user.companyId = token.companyId as string | null;
       }

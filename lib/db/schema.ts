@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   pgTable,
   uuid,
   text,
@@ -173,6 +174,7 @@ export const users = pgTable("users", {
   lmsId: text("lms_id").unique(),
   collegeName: text("college_name"),
   organisationId: uuid("organisation_id").references(() => organisations.id),
+  courseId: uuid("course_id").references((): AnyPgColumn => liveCourses.id),
   isActive: boolean("is_active").default(true),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -184,6 +186,7 @@ export const users = pgTable("users", {
   index("users_org_id_idx").on(table.organisationId),
   // PERF: Role-based queries used in middleware and admin pages
   index("users_role_idx").on(table.role),
+  index("users_course_id_idx").on(table.courseId),
 ]);
 
 export const liveCourses = pgTable("live_courses", {

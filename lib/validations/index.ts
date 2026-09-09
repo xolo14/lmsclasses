@@ -81,7 +81,37 @@ export const managerSchema = z
     path: ["confirmPassword"],
   });
 
-export const mentorSchema = managerSchema;
+export const mentorSchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    email: z.string().email("Invalid email"),
+    phone: z.string().optional(),
+    courseId: z.string().uuid("Invalid course").optional().nullable().or(z.literal("")),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirmPassword: z.string().min(1, "Confirm password is required"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export const editMentorSchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    email: z.string().email("Invalid email"),
+    phone: z.string().optional(),
+    courseId: z.string().uuid("Invalid course").optional().nullable().or(z.literal("")),
+    password: z
+      .string()
+      .min(6, "Password must be at least 6 characters")
+      .optional()
+      .or(z.literal("")),
+    confirmPassword: z.string().optional().or(z.literal("")),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 export const editManagerSchema = z
   .object({
@@ -236,6 +266,8 @@ export type CourseInput = z.infer<typeof courseSchema>;
 export type RecordCourseInput = z.infer<typeof recordCourseSchema>;
 export type OrganisationInput = z.infer<typeof organisationSchema>;
 export type ManagerInput = z.infer<typeof managerSchema>;
+export type MentorInput = z.infer<typeof mentorSchema>;
+export type EditMentorInput = z.infer<typeof editMentorSchema>;
 export type BatchInput = z.infer<typeof batchSchema>;
 export type LiveClassInput = z.infer<typeof liveClassSchema>;
 export type StudentInput = z.infer<typeof studentSchema>;

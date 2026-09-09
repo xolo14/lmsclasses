@@ -270,7 +270,7 @@ export async function GETClassRecordings(request: Request) {
 }
 
 export async function POSTClassRecording(request: Request) {
-  const { error, session } = await requireAuth(["super_admin", "manager"]);
+  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
   const body = await request.json();
@@ -301,7 +301,7 @@ export async function POSTClassRecording(request: Request) {
 }
 
 export async function PATCHClassRecording(request: Request, id: string) {
-  const { error, session } = await requireAuth(["super_admin", "manager"]);
+  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
   const body = await request.json();
@@ -329,7 +329,7 @@ export async function PATCHClassRecording(request: Request, id: string) {
 }
 
 export async function DELETEClassRecording(request: Request, id: string) {
-  const { error, session } = await requireAuth(["super_admin", "manager"]);
+  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
   await db

@@ -20,6 +20,8 @@ import { AddManagerModal, type UserRow } from "@/components/modals/AddManagerMod
 type User = UserRow & {
   isActive: boolean;
   createdAt: string;
+  courseId?: string | null;
+  courseTitle?: string | null;
 };
 
 export function UsersListPage({
@@ -31,12 +33,13 @@ export function UsersListPage({
   apiPath: string;
   title: string;
   addTitle: string;
-  ModalComponent: typeof AddManagerModal;
+  ModalComponent: React.ComponentType<any>;
 }) {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editUser, setEditUser] = useState<User | undefined>();
   const queryKey = apiPath.includes("mentor") ? "mentors" : "managers";
+  const isMentorList = apiPath.includes("mentor");
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: [queryKey],
@@ -62,6 +65,22 @@ export function UsersListPage({
     { accessorKey: "name", header: "Name" },
     { accessorKey: "email", header: "Email" },
     { accessorKey: "phone", header: "Phone" },
+    ...(isMentorList
+      ? [
+          {
+            accessorKey: "courseTitle",
+            header: "Assigned Course",
+            cell: ({ row }: { row: { original: User } }) =>
+              row.original.courseTitle ? (
+                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                  {row.original.courseTitle}
+                </Badge>
+              ) : (
+                <span className="text-xs text-muted-foreground italic">Not Assigned</span>
+              ),
+          },
+        ]
+      : []),
     {
       accessorKey: "createdAt",
       header: "Joined",
@@ -139,7 +158,7 @@ export function UsersListPage({
       />
       <ModalComponent
         open={modalOpen}
-        onOpenChange={(open) => {
+        onOpenChange={(open: boolean) => {
           setModalOpen(open);
           if (!open) setEditUser(undefined);
         }}

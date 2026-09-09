@@ -1313,6 +1313,28 @@ export async function GETUsersByRole(role: "manager" | "mentor") {
   const { error } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
+  if (role === "mentor") {
+    const result = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        role: users.role,
+        courseId: users.courseId,
+        courseTitle: liveCourses.title,
+        isActive: users.isActive,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      })
+      .from(users)
+      .leftJoin(liveCourses, eq(users.courseId, liveCourses.id))
+      .where(and(eq(users.role, role), isNull(users.deletedAt)))
+      .orderBy(desc(users.createdAt));
+
+    return NextResponse.json(result);
+  }
+
   const result = await db
     .select()
     .from(users)
@@ -1334,6 +1356,7 @@ export async function POSTUserByRole(request: Request, role: "manager" | "mentor
   }
 
   const { name, email, phone, password } = parsed.data;
+  const courseId = "courseId" in parsed.data ? (parsed.data.courseId as string | undefined) : undefined;
   const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
   if (existing.length) {
     return NextResponse.json({ error: "Email already exists" }, { status: 409 });
@@ -1342,7 +1365,14 @@ export async function POSTUserByRole(request: Request, role: "manager" | "mentor
   const hashedPassword = await bcrypt.hash(password, 12);
   const [user] = await db
     .insert(users)
-    .values({ name, email, phone, password: hashedPassword, role })
+    .values({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+      role,
+      courseId: role === "mentor" && courseId ? courseId : null,
+    })
     .returning();
 
   await logAction({
@@ -1369,7 +1399,7 @@ export async function PATCHUser(request: Request, id: string) {
   if (error) return error;
 
   const body = await request.json();
-  const { name, phone, isActive, email, password } = body;
+  const { name, phone, isActive, email, password, courseId } = body;
 
   if (email) {
     const [existing] = await db
@@ -1388,6 +1418,7 @@ export async function PATCHUser(request: Request, id: string) {
     isActive?: boolean;
     email?: string;
     password?: string;
+    courseId?: string | null;
     updatedAt: Date;
   } = { updatedAt: new Date() };
 
@@ -1395,6 +1426,7 @@ export async function PATCHUser(request: Request, id: string) {
   if (phone !== undefined) updateData.phone = phone;
   if (isActive !== undefined) updateData.isActive = isActive;
   if (email !== undefined) updateData.email = email;
+  if (courseId !== undefined) updateData.courseId = courseId || null;
   if (password) {
     updateData.password = await bcrypt.hash(password, 12);
   }
@@ -1440,7 +1472,7 @@ export async function DELETEUser(request: Request, id: string) {
 
 // ============ BATCHES ============
 export async function GETBatches(request: Request) {
-  const { error, session } = await requireAuth(["super_admin", "manager", "org_admin"]);
+  const { error, session } = await requireAuth(["super_admin", "manager", "org_admin", "mentor"]);
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
@@ -1653,13 +1685,20 @@ export async function GETLiveClasses(request: Request) {
 }
 
 export async function POSTLiveClass(request: Request) {
-  const { error, session } = await requireAuth(["super_admin", "manager"]);
+  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
   const body = await request.json();
   const parsed = liveClassSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  if (session!.user.role === "mentor" && parsed.data.mentorId !== session!.user.id) {
+    return NextResponse.json(
+      { error: "You can only schedule live classes for yourself." },
+      { status: 403 }
+    );
   }
 
   const [liveClass] = await db
