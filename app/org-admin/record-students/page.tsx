@@ -62,6 +62,14 @@ export default function OrgAdminRecordStudentsPage() {
     enabled: !!selectedCourse,
   });
 
+  const { data: selectedCourseSlots } = useQuery<{ totalSlots: number; usedSlots: number; remaining: number }>({
+    queryKey: ["slots", selectedCourse?.id, "record"],
+    queryFn: () => fetch(`/api/slots/${selectedCourse!.id}?type=record`).then((r) => r.json()),
+    enabled: !!selectedCourse,
+  });
+
+  const remainingSeats = selectedCourseSlots?.remaining ?? selectedCourse?.remaining ?? 0;
+
   const deleteStudent = useMutation({
     mutationFn: (id: string) => fetch(`/api/students/${id}`, { method: "DELETE" }),
     onSuccess: () => {
@@ -178,18 +186,18 @@ export default function OrgAdminRecordStudentsPage() {
             <div className="space-y-4 mt-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-sm text-muted-foreground">
-                  {selectedCourse.remaining} seat{selectedCourse.remaining === 1 ? "" : "s"} remaining
+                  {remainingSeats} seat{remainingSeats === 1 ? "" : "s"} remaining
                 </p>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setAssignOpen(true)}
-                    disabled={selectedCourse.remaining <= 0}
+                    disabled={remainingSeats <= 0}
                   >
                     <Layers className="h-4 w-4 mr-2" /> Assign Course
                   </Button>
-                  <Button size="sm" onClick={() => setStudentModalOpen(true)} disabled={selectedCourse.remaining <= 0}>
+                  <Button size="sm" onClick={() => setStudentModalOpen(true)} disabled={remainingSeats <= 0}>
                     <Plus className="h-4 w-4 mr-2" /> Add Student
                   </Button>
                 </div>

@@ -13,6 +13,7 @@ type EnrollmentRow = {
   courseTitle: string;
   courseSlug: string | null;
   courseThumbnail: string | null;
+  courseType?: "live" | "record";
   accessType: string;
   liveAccess: boolean;
   recordedAccess: boolean;
@@ -51,6 +52,7 @@ export default function StudentCoursesPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {enrollments.map((e) => {
             const row = e as unknown as EnrollmentRow;
+            const isLiveCourse = row.courseType === "live" || (row.liveAccess && !row.courseType);
             return (
             <article
               key={row.enrollmentId}
@@ -64,10 +66,9 @@ export default function StudentCoursesPage() {
                   <img src={row.courseThumbnail} alt="" className="h-full w-full object-cover" />
                 ) : null}
                 <div className="absolute top-2 left-2 flex gap-1">
-                  {row.liveAccess && (
+                  {isLiveCourse ? (
                     <Badge className="bg-swiss-red text-white text-[10px]">LIVE</Badge>
-                  )}
-                  {row.recordedAccess && (
+                  ) : (
                     <Badge className="bg-amber-600 text-white text-[10px]">REC</Badge>
                   )}
                 </div>
@@ -86,13 +87,13 @@ export default function StudentCoursesPage() {
                     />
                   </div>
                 </div>
-                {row.liveAccess && row.nextLiveClassAt && (
+                {isLiveCourse && row.nextLiveClassAt && (
                   <p className="text-xs text-swiss-muted flex items-center gap-1">
                     <Video className="h-3.5 w-3.5 text-swiss-red" />
                     Next live: {formatDateTime(row.nextLiveClassAt)}
                   </p>
                 )}
-                {row.recordedAccess && (
+                {!isLiveCourse && row.recordedAccess && (
                   <p className="text-xs text-swiss-muted flex items-center gap-1">
                     <Film className="h-3.5 w-3.5" />
                     {row.recordedModulesWatched}/{row.totalModules || "—"} modules

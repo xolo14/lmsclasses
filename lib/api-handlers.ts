@@ -764,7 +764,12 @@ export async function GETStudents(request: Request) {
     .from(users)
     .leftJoin(
       studentCourses,
-      and(eq(studentCourses.studentId, users.id), eq(studentCourses.isActive, true))
+      and(
+        eq(studentCourses.studentId, users.id),
+        eq(studentCourses.isActive, true),
+        courseId ? or(eq(studentCourses.liveCourseId, courseId), eq(studentCourses.recordCourseId, courseId)) : undefined,
+        batchId ? eq(studentCourses.batchId, batchId) : undefined
+      )
     )
     .leftJoin(organisations, eq(users.organisationId, organisations.id))
     .leftJoin(liveCourses, eq(studentCourses.liveCourseId, liveCourses.id))
@@ -773,59 +778,57 @@ export async function GETStudents(request: Request) {
     .where(inArray(users.id, pageStudentIds))
     .orderBy(users.id);
 
-  // BUG FIX: Super admin — one row per student with course count (not per enrollment)
-  if (session!.user.role === "super_admin" && !courseId && !batchId) {
-    const byStudent = new Map<
-      string,
-      (typeof students)[number] & { courseTitles: string[]; enrollmentSources: Set<string> }
-    >();
+  // Deduplicate: Each student appears exactly once in the returned list
+  const byStudent = new Map<
+    string,
+    (typeof students)[number] & { courseTitles: string[]; enrollmentSources: Set<string> }
+  >();
 
-    for (const row of students) {
-      const existing = byStudent.get(row.id);
-      if (!existing) {
-        byStudent.set(row.id, {
-          ...row,
-          courseTitles: row.courseTitle ? [row.courseTitle] : [],
-          enrollmentSources: new Set(row.enrollmentSource ? [row.enrollmentSource] : []),
-        });
-      } else {
-        if (row.courseTitle && !existing.courseTitles.includes(row.courseTitle)) {
-          existing.courseTitles.push(row.courseTitle);
-        }
-        if (row.enrollmentSource) existing.enrollmentSources.add(row.enrollmentSource);
+  for (const row of students) {
+    const existing = byStudent.get(row.id);
+    if (!existing) {
+      byStudent.set(row.id, {
+        ...row,
+        courseTitles: row.courseTitle ? [row.courseTitle] : [],
+        enrollmentSources: new Set(row.enrollmentSource ? [row.enrollmentSource] : []),
+      });
+    } else {
+      if (row.courseTitle && !existing.courseTitles.includes(row.courseTitle)) {
+        existing.courseTitles.push(row.courseTitle);
       }
+      if (row.enrollmentSource) existing.enrollmentSources.add(row.enrollmentSource);
+      if (!existing.batchName && row.batchName) existing.batchName = row.batchName;
+      if (!existing.courseTitle && row.courseTitle) existing.courseTitle = row.courseTitle;
     }
-
-    const finalData = Array.from(byStudent.values()).map((r) => {
-      const source =
-         r.enrollmentSources.has("public")
-          ? "public"
-          : r.enrollmentSources.has("super_admin") || !r.organisationId
-            ? "super_admin"
-            : "org_admin";
-      return {
-        id: r.id,
-        name: r.name,
-        email: r.email,
-        phone: r.phone,
-        lmsId: r.lmsId,
-        collegeName: r.collegeName,
-        isActive: r.isActive,
-        createdAt: r.createdAt,
-        organisationId: r.organisationId,
-        orgName: r.orgName,
-        enrollmentSource: source,
-        source,
-        courseTitles: r.courseTitles,
-        courseTitle: r.courseTitles.length > 0 ? r.courseTitles.join(", ") : "—",
-        batchName: "—",
-      };
-    });
-
-    return NextResponse.json({ data: finalData, nextCursor, hasNextPage });
   }
 
-  return NextResponse.json({ data: students, nextCursor, hasNextPage });
+  const finalData = Array.from(byStudent.values()).map((r) => {
+    const source =
+      r.enrollmentSources.has("public")
+        ? "public"
+        : r.enrollmentSources.has("super_admin") || !r.organisationId
+          ? "super_admin"
+          : "org_admin";
+    return {
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      phone: r.phone,
+      lmsId: r.lmsId,
+      collegeName: r.collegeName,
+      isActive: r.isActive,
+      createdAt: r.createdAt,
+      organisationId: r.organisationId,
+      orgName: r.orgName,
+      enrollmentSource: source,
+      source,
+      courseTitles: r.courseTitles,
+      courseTitle: r.courseTitles.length > 0 ? r.courseTitles.join(", ") : (r.courseTitle || "—"),
+      batchName: r.batchName || "—",
+    };
+  });
+
+  return NextResponse.json({ data: finalData, nextCursor, hasNextPage });
 }
 
 export async function POSTStudent(request: Request) {

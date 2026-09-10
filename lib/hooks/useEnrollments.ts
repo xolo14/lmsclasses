@@ -51,6 +51,10 @@ export function useAssignCoursesMutation(studentId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["student-enrollments", studentId] });
       qc.invalidateQueries({ queryKey: ["enrollments-list"] });
+      qc.invalidateQueries({ queryKey: ["slots"] });
+      qc.invalidateQueries({ queryKey: ["purchased-record-courses"] });
+      qc.invalidateQueries({ queryKey: ["purchased-live-courses"] });
+      qc.invalidateQueries({ queryKey: ["students"] });
     },
   });
 }
