@@ -11,8 +11,8 @@ function AssignContent() {
   return (
     <StudentCoursesAssignView
       studentId={studentId}
-      backHref="/super-admin/students"
-      backLabel="← Students"
+      backHref="/super-admin/enrollments"
+      backLabel="← Enrollment"
       directStudentsOnly
     />
   );

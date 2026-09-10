@@ -1,1 +1,5 @@
-export { default } from "@/app/super-admin/enrollments/page";
+import { redirect } from "next/navigation";
+
+export default function OrgAdminEnrollmentsPage() {
+  redirect("/super-admin/enrollments?tab=enrollments");
+}
