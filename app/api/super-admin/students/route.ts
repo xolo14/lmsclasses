@@ -116,6 +116,11 @@ export async function POST(request: Request) {
         batchId: isLive ? (batchId ?? null) : null,
         organisationId: null,
         enrollmentSource: "super_admin",
+        accessType: isLive ? "live" : "recorded",
+        liveAccess: isLive,
+        recordedAccess: !isLive,
+        status: "active",
+        isActive: true,
       });
     }
 

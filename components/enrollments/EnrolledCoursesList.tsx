@@ -44,7 +44,10 @@ export function EnrolledCoursesList({ enrollments, onEdit }: Props) {
         </thead>
         <tbody>
           {enrollments.map((e) => {
-            const badge = accessBadge[e.accessType] ?? accessBadge.recorded;
+            const isLive = e.courseType === "live" || e.accessType === "live";
+            const isBoth = e.accessType === "both";
+            const badgeKey = isBoth ? "both" : isLive ? "live" : (e.accessType || "recorded");
+            const badge = accessBadge[badgeKey] ?? accessBadge.recorded;
             return (
               <tr key={e.id} className="border-t border-swiss-black/10">
                 <td className="p-3 font-medium">{e.courseTitle}</td>

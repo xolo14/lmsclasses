@@ -1009,6 +1009,12 @@ export async function POSTStudent(request: Request) {
         batchId: isLive ? (batchId || null) : null,
         organisationId,
         enrollmentSource,
+        accessType: isLive ? "live" : "recorded",
+        liveAccess: isLive,
+        recordedAccess: !isLive,
+        slotConsumed: true,
+        status: "active",
+        isActive: true,
       });
 
       if (isLive) {

@@ -13,6 +13,7 @@ type Row = {
   studentName: string;
   studentEmail: string;
   courseTitle: string;
+  courseType?: "live" | "record";
   orgName: string | null;
   accessType: string;
   status: string;
@@ -34,7 +35,25 @@ export default function SuperAdminEnrollmentsPage() {
     {
       accessorKey: "accessType",
       header: "Type",
-      cell: ({ row }) => <Badge variant="outline">{row.original.accessType.toUpperCase()}</Badge>,
+      cell: ({ row }) => {
+        const isLive = row.original.courseType === "live" || row.original.accessType?.toLowerCase() === "live";
+        const isBoth = row.original.accessType?.toLowerCase() === "both";
+        const label = isBoth ? "BOTH" : isLive ? "LIVE" : "RECORDED";
+        return (
+          <Badge
+            variant="outline"
+            className={
+              isLive
+                ? "bg-swiss-red/15 text-swiss-red border-swiss-red/30 font-semibold"
+                : isBoth
+                ? "bg-violet-500/15 text-violet-700 border-violet-500/30 font-semibold"
+                : "bg-amber-500/15 text-amber-700 border-amber-500/30 font-semibold"
+            }
+          >
+            {label}
+          </Badge>
+        );
+      },
     },
     {
       accessorKey: "status",

@@ -35,23 +35,29 @@ export async function GET(request: Request) {
     limit,
   });
 
-  const data = rows.map((r) => ({
-    id: r.enrollment.id,
-    studentId: r.enrollment.studentId,
-    studentName: r.studentName,
-    studentEmail: r.studentEmail,
-    orgName: r.orgName,
-    courseTitle: r.liveTitle ?? r.recordTitle,
-    courseId: r.enrollment.liveCourseId ?? r.enrollment.recordCourseId,
-    courseType: r.enrollment.liveCourseId ? "live" : "record",
-    accessType: r.enrollment.accessType,
-    status: r.enrollment.status,
-    completionPercentage: r.enrollment.completionPercentage,
-    liveClassesAttended: r.enrollment.liveClassesAttended,
-    recordedModulesWatched: r.enrollment.recordedModulesWatched,
-    enrolledAt: r.enrollment.enrolledAt,
-    lastAccessedAt: r.enrollment.lastAccessedAt,
-  }));
+  const data = rows.map((r) => {
+    const isLive = Boolean(r.enrollment.liveCourseId);
+    const rawAccess = r.enrollment.accessType;
+    const accessType = isLive && rawAccess !== "both" ? "live" : rawAccess || (isLive ? "live" : "recorded");
+
+    return {
+      id: r.enrollment.id,
+      studentId: r.enrollment.studentId,
+      studentName: r.studentName,
+      studentEmail: r.studentEmail,
+      orgName: r.orgName,
+      courseTitle: r.liveTitle ?? r.recordTitle,
+      courseId: r.enrollment.liveCourseId ?? r.enrollment.recordCourseId,
+      courseType: isLive ? "live" : "record",
+      accessType,
+      status: r.enrollment.status,
+      completionPercentage: r.enrollment.completionPercentage,
+      liveClassesAttended: r.enrollment.liveClassesAttended,
+      recordedModulesWatched: r.enrollment.recordedModulesWatched,
+      enrolledAt: r.enrollment.enrolledAt,
+      lastAccessedAt: r.enrollment.lastAccessedAt,
+    };
+  });
 
   return NextResponse.json({ data });
 }

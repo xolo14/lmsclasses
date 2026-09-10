@@ -232,10 +232,13 @@ export async function assignCoursesToStudent(
   const [student] = await db
     .select()
     .from(users)
-    .where(and(eq(users.id, input.studentId), eq(users.role, "student"), isNull(users.deletedAt)))
+    .where(and(eq(users.id, input.studentId), eq(users.role, "student")))
     .limit(1);
   if (!student) {
     return { enrolled: [], skipped: [], errors: ["Student not found"] };
+  }
+  if (student.deletedAt) {
+    await db.update(users).set({ deletedAt: null, isActive: true }).where(eq(users.id, student.id));
   }
 
   if (actor.role === "super_admin" && !isDirectPlatformStudent(student)) {
@@ -544,7 +547,6 @@ export async function getStudentEnrollmentsRich(
     .where(
       and(
         eq(studentCourses.studentId, studentId),
-        eq(studentCourses.isActive, true),
         or(eq(studentCourses.status, "active"), eq(studentCourses.status, "completed"))
       )
     )
@@ -593,9 +595,9 @@ export async function getStudentEnrollmentsRich(
       courseTitle: (isLive ? row.liveTitle : row.recordTitle)!,
       courseSlug: isLive ? row.liveSlug : row.recordSlug,
       courseThumbnail: isLive ? row.liveThumb : row.recordThumb,
-      accessType: e.accessType,
-      liveAccess: e.liveAccess,
-      recordedAccess: e.recordedAccess,
+      accessType: isLive && e.accessType !== "both" ? "live" : (e.accessType || (isLive ? "live" : "recorded")),
+      liveAccess: isLive ? true : e.liveAccess,
+      recordedAccess: isLive && e.accessType !== "both" ? false : e.recordedAccess,
       batchId: e.batchId,
       organisationId: e.organisationId,
       status: e.status,
