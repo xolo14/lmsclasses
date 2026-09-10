@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAssignCoursesMutation } from "@/lib/hooks/useEnrollments";
+import { formatDate } from "@/lib/utils";
 import type { EnrollmentAccessType } from "@/lib/db/schema";
 
 type CourseOption = {
@@ -50,6 +51,37 @@ export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }
   });
 
   const mutation = useAssignCoursesMutation(studentId);
+
+  // Automatically align accessType to preselected course type (live vs recorded)
+  useEffect(() => {
+    if (!preselectedCourseIds?.length || !courses.length) return;
+    const target = courses.find((c) => preselectedCourseIds.includes(c.id));
+    if (target) {
+      if (target.type === "live" || (target.hasLive && !target.hasRecorded)) {
+        setAccessType("live");
+      } else if (target.type === "record" || (!target.hasLive && target.hasRecorded)) {
+        setAccessType("recorded");
+      }
+    }
+  }, [preselectedCourseIds, courses]);
+
+  const activeLiveCourseId =
+    selected.find((id) => courses.find((c) => c.id === id && c.hasLive)) ||
+    preselectedCourseIds?.find((id) => courses.find((c) => c.id === id && c.hasLive)) ||
+    preselectedCourseIds?.[0];
+
+  type BatchOption = { id: string; name: string; startDate?: string | null };
+  const { data: batches = [], isLoading: batchesLoading } = useQuery<BatchOption[]>({
+    queryKey: ["batches-for-assign-form", activeLiveCourseId],
+    queryFn: async () => {
+      if (!activeLiveCourseId) return [];
+      const res = await fetch(`/api/batches?courseId=${activeLiveCourseId}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    enabled: !!activeLiveCourseId && (accessType === "live" || accessType === "both"),
+  });
 
   const visibleCourses = useMemo(
     () => courses.filter((c) => courseMatchesAccessType(c, accessType)),
@@ -126,13 +158,31 @@ export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }
         </div>
         {(accessType === "live" || accessType === "both") && (
           <div>
-            <Label>Batch ID (live courses)</Label>
-            <input
-              className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 px-3 text-sm"
-              placeholder="Optional — required for org admin live"
-              value={batchId}
-              onChange={(e) => setBatchId(e.target.value)}
-            />
+            <Label>Batch (live courses)</Label>
+            {batches.length > 0 ? (
+              <select
+                className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 bg-swiss-white px-3 text-sm"
+                value={batchId}
+                onChange={(e) => setBatchId(e.target.value)}
+              >
+                <option value="">-- Select batch --</option>
+                {batches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} {b.startDate ? `(${formatDate(b.startDate)})` : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 px-3 text-sm"
+                placeholder={batchesLoading ? "Loading batches..." : "Enter Batch ID or select course first"}
+                value={batchId}
+                onChange={(e) => setBatchId(e.target.value)}
+              />
+            )}
+            <p className="text-xs text-swiss-muted mt-1">
+              Required for organisation live enrollments.
+            </p>
           </div>
         )}
       </div>

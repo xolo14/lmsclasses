@@ -38,6 +38,8 @@ interface AddStudentModalProps {
   requireOrganisation?: boolean;
   /** Let user pick course inside the modal (super admin) */
   showCourseSelect?: boolean;
+  /** Callback to switch to assign course to existing student */
+  onAssignExisting?: () => void;
 }
 
 export function AddStudentModal({
@@ -48,6 +50,7 @@ export function AddStudentModal({
   courseType = "live",
   requireOrganisation,
   showCourseSelect,
+  onAssignExisting,
 }: AddStudentModalProps) {
   const queryClient = useQueryClient();
   const [slotExceeded, setSlotExceeded] = useState(false);
@@ -214,6 +217,23 @@ export function AddStudentModal({
           <DialogHeader>
             <DialogTitle>Add Student</DialogTitle>
           </DialogHeader>
+          {onAssignExisting && (
+            <div className="flex items-center justify-between gap-2 p-2.5 rounded-md border border-primary/20 bg-primary/5 text-xs">
+              <span className="text-muted-foreground">Adding an already existing student?</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs font-semibold text-primary border-primary/30 hover:bg-primary/10"
+                onClick={() => {
+                  onOpenChange(false);
+                  onAssignExisting();
+                }}
+              >
+                Assign Course Instead
+              </Button>
+            </div>
+          )}
           {emailNotice ? (
             <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3">
               {emailNotice}
@@ -390,7 +410,24 @@ export function AddStudentModal({
               mutation.error?.message !== "SLOT_EXCEEDED" &&
               mutation.error?.message !== "Select an organisation" &&
               mutation.error?.message !== "Select a course" && (
-                <p className="text-sm text-destructive">{mutation.error.message}</p>
+                <div className="space-y-2">
+                  <p className="text-sm text-destructive">{mutation.error.message}</p>
+                  {onAssignExisting &&
+                    mutation.error?.message?.toLowerCase().includes("email already in use") && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs"
+                        onClick={() => {
+                          onOpenChange(false);
+                          onAssignExisting();
+                        }}
+                      >
+                        Assign course to this existing student instead →
+                      </Button>
+                    )}
+                </div>
               )}
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

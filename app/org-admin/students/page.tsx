@@ -150,11 +150,16 @@ export default function OrgAdminStudentsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Live Students</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage students for live courses you have purchased slots for.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Live Students</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage students for live courses you have purchased slots for.
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => { setSelectedCourse(null); setAssignOpen(true); }}>
+          <Layers className="h-4 w-4 mr-2" /> Assign Course
+        </Button>
       </div>
 
       {courses.length === 0 ? (
@@ -250,8 +255,13 @@ export default function OrgAdminStudentsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-lg font-semibold">{selectedCourse.title} — Students</h2>
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setAssignOpen(true)}>
-                      <Layers className="h-4 w-4 mr-2" /> Assign Courses
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAssignOpen(true)}
+                      disabled={selectedCourseSlots ? selectedCourseSlots.remaining <= 0 : false}
+                    >
+                      <Layers className="h-4 w-4 mr-2" /> Assign Course
                     </Button>
                     <Button size="sm" onClick={() => setStudentModalOpen(true)}>
                       <Plus className="h-4 w-4 mr-2" /> Add Student
@@ -265,16 +275,17 @@ export default function OrgAdminStudentsPage() {
         </DialogContent>
       </Dialog>
 
+      <SelectStudentForAssignModal
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        assignBasePath="/org-admin/students"
+        courseId={selectedCourse?.id}
+        title="Assign courses to org student"
+        description="Select one of your organisation's students to assign additional courses. Only students linked to your organisation are shown."
+      />
+
       {selectedCourse && (
         <>
-          <SelectStudentForAssignModal
-            open={assignOpen}
-            onOpenChange={setAssignOpen}
-            assignBasePath="/org-admin/students"
-            courseId={selectedCourse.id}
-            title="Assign courses to org student"
-            description="Select one of your organisation's students to assign additional courses. Only students linked to your organisation are shown."
-          />
           <AddStudentModal
             key={selectedCourse.id}
             open={studentModalOpen}
@@ -283,6 +294,10 @@ export default function OrgAdminStudentsPage() {
             courseName={selectedCourse.title}
             courseType="live"
             showCourseSelect={false}
+            onAssignExisting={() => {
+              setStudentModalOpen(false);
+              setAssignOpen(true);
+            }}
           />
           <EditStudentModal
             open={!!editStudent}
