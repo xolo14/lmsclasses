@@ -343,7 +343,7 @@ export const studentCourses = pgTable("student_courses", {
   batchId: uuid("batch_id").references(() => batches.id),
   organisationId: uuid("organisation_id").references(() => organisations.id),
   assignedBy: uuid("assigned_by").references(() => users.id),
-  enrollmentSource: text("enrollment_source").notNull().default("org_admin"),
+  enrollmentSource: text("enrollment_source").notNull(),
 
   accessType: enrollmentAccessTypeEnum("access_type").notNull().default("recorded"),
   liveAccess: boolean("live_access").notNull().default(false),
@@ -778,6 +778,7 @@ export const widgetLeads = pgTable("widget_leads", {
   index("idx_widget_lead_status").on(table.status),
   index("idx_widget_lead_email").on(table.email),
   index("idx_widget_lead_payment").on(table.paymentStatus),
+	uniqueIndex("uq_widget_lead_converted_email_course").on(table.email, table.courseId).where(sql`${table.convertedToStudent} = true`),
 ]);
 
 export const widgetEvents = pgTable("widget_events", {
