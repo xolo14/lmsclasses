@@ -34,6 +34,10 @@ export function EmbeddedVideoPlayer({
 }: EmbeddedVideoPlayerProps) {
   const [videoFailed, setVideoFailed] = useState(false);
 
+ useEffect(() => {
+ setVideoFailed(false);
+ }, [embed, videoUrl]);
+
   if (
     embed &&
     (embed.type === "youtube" ||
