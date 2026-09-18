@@ -479,6 +479,7 @@ export const liveClasses = pgTable("live_classes", {
 }, (table) => [
   // PERF: Mentor portal — "show me my classes" — runs on every mentor page load
   index("lc_mentor_id_idx").on(table.mentorId),
+  index("lc_course_id_idx").on(table.courseId),
   // PERF: Student portal — "show me classes for my batch"
   index("lc_batch_id_idx").on(table.batchId),
   // PERF: Composite — status filter + batch — used by student live class tab
@@ -503,6 +504,7 @@ export const classRecordings = pgTable("class_recordings", {
   // PERF: "show me class recordings for this course/batch"
   index("clr_course_id_idx").on(table.courseId),
   index("clr_batch_id_idx").on(table.batchId),
+  index("clr_batch_deleted_idx").on(table.batchId, table.deletedAt),
 ]);
 
 export const auditLogs = pgTable("audit_logs", {
@@ -558,7 +560,9 @@ export const hrEmailVerifications = pgTable("hr_email_verifications", {
   verifiedAt: timestamp("verified_at"),
   attempts: integer("attempts").default(0),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("hr_otp_email_idx").on(table.email),
+]);
 
 export const jobPostings = pgTable("job_postings", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -587,7 +591,10 @@ export const jobPostings = pgTable("job_postings", {
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("job_postings_hr_id_idx").on(table.hrId),
+  index("job_postings_status_idx").on(table.status),
+]);
 
 export const jobApplications = pgTable("job_applications", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -607,7 +614,10 @@ export const jobApplications = pgTable("job_applications", {
   status: applicationStatusEnum("status").default("pending"),
   appliedAt: timestamp("applied_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("job_applications_job_id_idx").on(table.jobId),
+  index("job_applications_student_id_idx").on(table.studentId),
+]);
 
 export const systemSettings = pgTable("system_settings", {
   key: text("key").primaryKey(),

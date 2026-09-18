@@ -8,6 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
+function csvCell(value: unknown): string {
+  if (value == null) return '""';
+  const text = typeof value === "object" ? JSON.stringify(value) : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
 export default function HistoryPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["history"],
@@ -19,7 +25,7 @@ export default function HistoryPage() {
     if (!items?.length) return;
     const headers = Object.keys(items[0]);
     const csv = [headers, ...items.map((i: Record<string, unknown>) => headers.map((h) => i[h]))]
-      .map((r) => r.join(","))
+      .map((r) => r.map(csvCell).join(","))
       .join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const a = document.createElement("a");

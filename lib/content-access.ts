@@ -8,6 +8,46 @@ import {
 } from "@/lib/db/schema";
 import { eq, and, isNotNull, isNull, asc } from "drizzle-orm";
 
+export type AccessEnrollment = {
+  isActive?: boolean | null;
+  status?: string | null;
+  liveAccess?: boolean | null;
+  recordedAccess?: boolean | null;
+  liveAccessFrom?: Date | string | null;
+  liveAccessUntil?: Date | string | null;
+  recordedAccessFrom?: Date | string | null;
+  recordedAccessUntil?: Date | string | null;
+};
+
+function inAccessWindow(
+  from: Date | string | null | undefined,
+  until: Date | string | null | undefined,
+  now: Date
+) {
+  if (from && new Date(from).getTime() > now.getTime()) return false;
+  if (until && new Date(until).getTime() <= now.getTime()) return false;
+  return true;
+}
+
+function enrollmentStillValid(enrollment: AccessEnrollment) {
+  const status = enrollment.status ?? null;
+  if (status === "revoked" || status === "expired" || status === "paused") return false;
+  if (status === "active" || status === "completed") return true;
+  return enrollment.isActive !== false;
+}
+
+export function hasLiveAccess(enrollment: AccessEnrollment, now = new Date()) {
+  if (!enrollmentStillValid(enrollment)) return false;
+  if (enrollment.liveAccess === false) return false;
+  return inAccessWindow(enrollment.liveAccessFrom, enrollment.liveAccessUntil, now);
+}
+
+export function hasRecordedAccess(enrollment: AccessEnrollment, now = new Date()) {
+  if (!enrollmentStillValid(enrollment)) return false;
+  if (enrollment.recordedAccess === false) return false;
+  return inAccessWindow(enrollment.recordedAccessFrom, enrollment.recordedAccessUntil, now);
+}
+
 /**
  * Returns all courses a student is enrolled in, with batchId and enrollmentSource.
  */

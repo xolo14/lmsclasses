@@ -1,5 +1,6 @@
 import { and, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { freeOneSlot, resolveCourse } from "@/lib/enrollment-service";
 import {
   organisations,
   users,
@@ -94,17 +95,8 @@ export async function softDeleteOrganisationCascade(orgId: string, now = new Dat
     if (e.slotConsumed && e.organisationId) {
       const courseId = e.liveCourseId ?? e.recordCourseId;
       if (courseId) {
-        const live = !!e.liveCourseId;
-        await db
-          .update(slots)
-          .set({ usedSlots: sql`GREATEST(COALESCE(${slots.usedSlots}, 0) - 1, 0)` })
-          .where(
-            and(
-              eq(slots.organisationId, e.organisationId),
-              live ? eq(slots.courseId, courseId) : eq(slots.recordCourseId, courseId),
-              sql`COALESCE(${slots.usedSlots}, 0) > 0`
-            )
-          );
+        const course = await resolveCourse(courseId);
+        if (course) await freeOneSlot(e.organisationId, course);
       }
     }
   }

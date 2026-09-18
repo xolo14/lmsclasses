@@ -56,6 +56,9 @@ export async function GET(request: Request) {
       recordedModulesWatched: r.enrollment.recordedModulesWatched,
       enrolledAt: r.enrollment.enrolledAt,
       lastAccessedAt: r.enrollment.lastAccessedAt,
+      batchId: r.enrollment.batchId,
+      liveAccessUntil: r.enrollment.liveAccessUntil,
+      recordedAccessUntil: r.enrollment.recordedAccessUntil,
     };
   });
 

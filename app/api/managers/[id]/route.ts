@@ -5,7 +5,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  return PATCHUser(request, id);
+  return PATCHUser(request, id, "manager");
 }
 
 export async function DELETE(
@@ -13,5 +13,5 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  return DELETEUser(request, id);
+  return DELETEUser(request, id, "manager");
 }

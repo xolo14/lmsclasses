@@ -1,3 +1,4 @@
+import { createHash, randomInt, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -75,7 +76,18 @@ function verifyCompanyBasic(companyName: string, email: string) {
 }
 
 function generateOtp() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100000, 1000000).toString();
+}
+
+function hashOtp(email: string, otp: string) {
+  return createHash("sha256").update(`hr-otp:${email}:${otp}`).digest("hex");
+}
+
+function otpHashesEqual(stored: string, computed: string) {
+  const a = Buffer.from(stored, "utf8");
+  const b = Buffer.from(computed, "utf8");
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 export async function POSTHrRequestOtp(request: Request) {
@@ -126,7 +138,7 @@ export async function POSTHrRequestOtp(request: Request) {
     const otp = generateOtp();
     await db.insert(hrEmailVerifications).values({
       email,
-      otp,
+      otp: hashOtp(email, otp),
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     });
 
@@ -181,11 +193,22 @@ export async function POSTHrVerifyOtp(request: Request) {
       .orderBy(desc(hrEmailVerifications.createdAt))
       .limit(1);
     if (!otpRow) return NextResponse.json({ error: "OTP not found" }, { status: 404 });
+    if ((otpRow.attempts ?? 0) >= 5) {
+      return NextResponse.json(
+        { error: "Too many invalid OTP attempts. Request a new code." },
+        { status: 429 }
+      );
+    }
     if (otpRow.verifiedAt) return NextResponse.json({ success: true, verified: true });
     if (otpRow.expiresAt < new Date()) {
       return NextResponse.json({ error: "OTP expired" }, { status: 400 });
     }
-    if (otpRow.otp !== parsed.data.otp) {
+    const computed = hashOtp(email, parsed.data.otp);
+    const matches =
+      otpRow.otp.length === 6
+        ? otpHashesEqual(otpRow.otp, parsed.data.otp)
+        : otpHashesEqual(otpRow.otp, computed);
+    if (!matches) {
       const attempts = (otpRow.attempts ?? 0) + 1;
       await db
         .update(hrEmailVerifications)
@@ -237,6 +260,13 @@ export async function POSTHrCompleteRegistration(request: Request) {
     if (!verifiedOtp || !verifiedOtp.verifiedAt) {
       return NextResponse.json({ error: "Email OTP verification required." }, { status: 400 });
     }
+    if ((verifiedOtp.attempts ?? 0) >= 5) {
+      return NextResponse.json({ error: "OTP locked. Request a new code." }, { status: 429 });
+    }
+    const verifiedAgeMs = Date.now() - new Date(verifiedOtp.verifiedAt).getTime();
+    if (verifiedAgeMs > 15 * 60 * 1000) {
+      return NextResponse.json({ error: "OTP verification expired. Request a new code." }, { status: 400 });
+    }
 
     const existingUser = await db
       .select({ id: hrUsers.id })
@@ -286,12 +316,13 @@ export async function POSTHrCompleteRegistration(request: Request) {
       })
       .returning();
 
+    await db.delete(hrEmailVerifications).where(eq(hrEmailVerifications.email, email));
+
     await trySendWelcomeEmail("HR welcome", () =>
       sendHrWelcomeEmail({
         email,
         hrName: hr.name,
         companyName: company.companyName,
-        password: parsed.data.password,
       })
     );
     await logAction({

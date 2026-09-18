@@ -1,19 +1,25 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
-import { db } from "@/lib/db";
-import { batches } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { getSignedUploadUrl } from "@/lib/gcs";
+import { getSignedUploadUrl, UPLOAD_SIGNED_URL_TTL_MS } from "@/lib/gcs";
+import { MAX_VIDEO_UPLOAD_BYTES, getVideoSizeError } from "@/lib/video-upload";
+import { resolveBatchVideoObjectKey } from "@/lib/video-upload-server";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Legacy single-PUT signed URL flow. The recording modal now uses
+ * /api/uploads/video-resumable (chunked, retryable, no bucket CORS needed);
+ * this stays for callers that still rely on a plain signed PUT.
+ * Note: signed PUTs require CORS to be configured on the bucket.
+ */
 export async function POST(request: Request) {
   const { error } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
   try {
     const body = await request.json();
-    const { batchId, filename, contentType } = body;
+    const { batchId, filename, contentType, fileSize } = body ?? {};
 
     if (!batchId || !filename) {
       return NextResponse.json(
@@ -22,34 +28,24 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch batch to get its name for folder organization
-    const [batch] = await db
-      .select({ name: batches.name })
-      .from(batches)
-      .where(eq(batches.id, batchId))
-      .limit(1);
+    // fileSize is optional for backwards compatibility, but enforced when provided.
+    if (fileSize !== undefined && fileSize !== null) {
+      const sizeError = getVideoSizeError(Number(fileSize));
+      if (sizeError) {
+        return NextResponse.json({ error: sizeError }, { status: 413 });
+      }
+    }
 
-    // Sanitize folder name from batch name
-    const rawBatchName = batch?.name?.trim() || "batch";
-    const folderName = rawBatchName
-      .replace(/[/\\?%*:|"<>]/g, "-")
-      .replace(/\s+/g, "_");
+    const { objectKey, folderName, safeFilename } = await resolveBatchVideoObjectKey(
+      String(batchId),
+      String(filename)
+    );
 
-    // Sanitize file name and prefix with timestamp for uniqueness
-    const rawFilename = (filename as string).trim();
-    const cleanFilename = rawFilename
-      .replace(/[/\\?%*:|"<>]/g, "-")
-      .replace(/\s+/g, "_");
-    const safeFilename = `${Date.now()}_${cleanFilename}`;
-
-    // Object key in GCS bucket: {batchName}/{filename}
-    const objectKey = `${folderName}/${safeFilename}`;
-
-    const mimeType = (contentType as string) || "video/mp4";
+    const mimeType = (typeof contentType === "string" && contentType.trim()) || "video/mp4";
     const signedUrl = await getSignedUploadUrl({
       objectKey,
       contentType: mimeType,
-      expiresMs: 2 * 60 * 60 * 1000, // 2 hours for large video uploads
+      expiresMs: UPLOAD_SIGNED_URL_TTL_MS,
     });
 
     return NextResponse.json({
@@ -57,6 +53,7 @@ export async function POST(request: Request) {
       objectKey,
       folderName,
       safeFilename,
+      maxBytes: MAX_VIDEO_UPLOAD_BYTES,
     });
   } catch (err: any) {
     console.error("[video-signed-url error]", err);

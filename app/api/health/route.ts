@@ -1,5 +1,6 @@
 import { access, mkdir } from "fs/promises";
 import { constants } from "fs";
+import { timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -35,72 +36,31 @@ function hasDiagnosticsAccess(request: Request): boolean {
     const bearer = authHeader.toLowerCase().startsWith("bearer ")
       ? authHeader.slice(7).trim()
       : "";
-    const querySecret = new URL(request.url).searchParams.get("secret") ?? "";
-    if (bearer === secret || querySecret === secret) return true;
+    try {
+      const a = Buffer.from(bearer, "utf8");
+      const b = Buffer.from(secret, "utf8");
+      if (a.length === b.length && timingSafeEqual(a, b)) return true;
+    } catch {
+      /* ignore */
+    }
   }
   return false;
 }
 
-/** Public probe — DB reachability + which required env keys are present (never values). */
+/** Public probe — DB reachability only. */
 async function publicHealth() {
   let dbOk = false;
-  let dbError: string | null = null;
   try {
     await db.select({ id: users.id }).from(users).limit(1);
     dbOk = true;
-  } catch (err) {
+  } catch {
     dbOk = false;
-    dbError = err instanceof Error ? err.message.slice(0, 120) : "db_failed";
   }
 
-  const present = (key: string) => {
-    const v = process.env[key]?.trim();
-    return !!(v && !v.startsWith("REPLACE") && !v.includes("USER:PASSWORD") && v !== "your-secret");
-  };
-
-  const env = {
-    DATABASE_URL: present("DATABASE_URL"),
-    AUTH_SECRET: present("AUTH_SECRET") || present("NEXTAUTH_SECRET"),
-    AUTH_URL: present("AUTH_URL") || present("NEXTAUTH_URL"),
-    RAZORPAY_KEY_ID: present("RAZORPAY_KEY_ID"),
-    RAZORPAY_KEY_SECRET: present("RAZORPAY_KEY_SECRET"),
-    SMTP_HOST: present("SMTP_HOST"),
-    UPLOADS_DIR: present("UPLOADS_DIR"),
-    CRON_SECRET: present("CRON_SECRET"),
-    GCP_PROJECT_ID: present("GCP_PROJECT_ID"),
-    GCP_CLIENT_EMAIL: present("GCP_CLIENT_EMAIL"),
-    GCP_PRIVATE_KEY: present("GCP_PRIVATE_KEY"),
-    GCS_BUCKET_NAME: present("GCS_BUCKET_NAME"),
-    GCP_SERVICE_ACCOUNT_JSON_BASE64: present("GCP_SERVICE_ACCOUNT_JSON_BASE64"),
-    GCP_PRIVATE_KEY_BASE64: present("GCP_PRIVATE_KEY_BASE64"),
-  };
-
-  const requiredOk = env.DATABASE_URL && env.AUTH_SECRET && env.AUTH_URL;
-  const gcs = getGcsEnvStatus();
-
   return NextResponse.json(
+    { ok: dbOk, dbOk, timestamp: new Date().toISOString() },
     {
-      ok: dbOk && requiredOk,
-      dbOk,
-      dbError: dbOk ? null : dbError,
-      env,
-      gcs: {
-        configured: gcs.configured,
-        credentialSource: gcs.credentialSource,
-        privateKeyCryptoOk: gcs.privateKeyCryptoOk,
-        privateKeyCryptoError: gcs.privateKeyCryptoError,
-        privateKeyLength: gcs.privateKeyLength,
-        privateKeyProbe: gcs.privateKeyProbe,
-        bucketName: gcs.bucketName,
-      },
-      hint: requiredOk
-        ? gcs.configured
-          ? null
-          : "GCS credentials present but unusable. Set GCP_SERVICE_ACCOUNT_JSON_BASE64 (base64 of key json) and Restart Node."
-        : "Missing or placeholder env vars in hPanel. Set real values → Save and redeploy. Check env.* above (true = injected).",
-    },
-    {
-      status: dbOk && requiredOk ? 200 : 503,
+      status: dbOk ? 200 : 503,
       headers: { "Cache-Control": "no-store" },
     }
   );

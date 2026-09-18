@@ -65,8 +65,10 @@ export const bulkAssignSchema = z.object({
 export const moduleProgressSchema = z.object({
   enrollmentId: z.string().uuid(),
   moduleIndex: z.number().int().min(0),
-  watchedSeconds: z.number().int().min(0),
-  isCompleted: z.boolean(),
+  watchedSeconds: z.number().min(0),
+  durationSeconds: z.number().min(0).optional(),
+  moduleTitle: z.string().max(200).optional(),
+  isCompleted: z.boolean().optional(),
   notes: z.string().max(2000).optional(),
 });
 

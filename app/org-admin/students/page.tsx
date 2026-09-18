@@ -13,6 +13,7 @@ import { EditStudentModal } from "@/components/modals/EditStudentModal";
 import { AddBatchModal } from "@/components/modals/AddBatchModal";
 import { SelectStudentForAssignModal } from "@/components/modals/SelectStudentForAssignModal";
 import { ColumnDef } from "@tanstack/react-table";
+import { fetchAllStudents } from "@/lib/students-client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   Dialog,
@@ -65,18 +66,22 @@ export default function OrgAdminStudentsPage() {
 
   const { data: students = [] } = useQuery<Student[]>({
     queryKey: ["students", selectedCourse?.id],
-    queryFn: async () => {
-      const res = await fetch(`/api/students?courseId=${selectedCourse!.id}`);
-      const resData = await res.json();
-      if (!res.ok) return [];
-      return Array.isArray(resData?.data) ? resData.data : [];
-    },
+    queryFn: () => fetchAllStudents({ courseId: selectedCourse!.id }),
     enabled: !!selectedCourse,
   });
 
   const deleteStudent = useMutation({
-    mutationFn: (id: string) => fetch(`/api/students/${id}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["students"] }),
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/students/${id}`, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to delete student");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["slots"] });
+      queryClient.invalidateQueries({ queryKey: ["purchased-live-courses"] });
+      queryClient.invalidateQueries({ queryKey: ["org-admin-analytics"] });
+    },
   });
 
   const { data: batches = [], isLoading: batchesLoading } = useQuery<Batch[]>({

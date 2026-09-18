@@ -29,5 +29,6 @@ declare module "next-auth/jwt" {
     courseId?: string | null;
     lmsId?: string | null;
     companyId?: string | null;
+    checkedAt?: number;
   }
 }

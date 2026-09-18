@@ -449,8 +449,14 @@ export async function getSignedReadUrl(
     throw new Error("Invalid or non-GCS video key");
   }
 
+  // Never sign for a bucket the client named — only the configured LMS bucket.
+  const bucketName = getBucketName();
+  if (parsed.bucket !== bucketName) {
+    throw new Error("Video key is not in the configured storage bucket");
+  }
+
   const storage = getStorage();
-  const file = storage.bucket(parsed.bucket).file(parsed.key);
+  const file = storage.bucket(bucketName).file(parsed.key);
   const [signedUrl] = await file.getSignedUrl({
     version: "v4",
     action: "read",
@@ -458,6 +464,20 @@ export async function getSignedReadUrl(
   });
 
   return signedUrl;
+}
+
+/** Best-effort delete; ignores missing objects and non-GCS URLs. */
+export async function deleteGcsObjectIfExists(videoKeyOrUrl: string | null | undefined) {
+  if (!videoKeyOrUrl) return;
+  const parsed = parseGcsBucketAndKey(videoKeyOrUrl);
+  if (!parsed) return;
+  const bucketName = getBucketName();
+  if (parsed.bucket !== bucketName) return;
+  try {
+    await getStorage().bucket(bucketName).file(parsed.key).delete({ ignoreNotFound: true });
+  } catch (err) {
+    console.error("[gcs] object delete failed", parsed.key, err);
+  }
 }
 
 /** Partner / player responses: sign private GCS refs; leave YouTube and public URLs as-is. */
@@ -470,12 +490,115 @@ export async function toPlayableVideoUrl(
   return getSignedReadUrl(trimmed, expiresMs);
 }
 
+/** Signed upload URLs must outlive a multi-GB upload on a slow link (V4 max is 7 days). */
+export const UPLOAD_SIGNED_URL_TTL_MS = 12 * 60 * 60 * 1000;
+
+/** IAM permissions the service account needs for recorded-class upload + playback. */
+export const REQUIRED_VIDEO_BUCKET_PERMISSIONS = [
+  "storage.objects.create",
+  "storage.objects.get",
+] as const;
+
+export type VideoBucketPermissionCheck = {
+  bucketName: string;
+  serviceAccount: string | null;
+  /** True only when every required permission is granted. */
+  canUpload: boolean;
+  permissions: Record<(typeof REQUIRED_VIDEO_BUCKET_PERMISSIONS)[number], boolean>;
+  missing: string[];
+  error: string | null;
+  /** Ready-to-run gcloud command that grants what is missing. */
+  fixCommand: string | null;
+};
+
+/**
+ * Ask GCS which of the required permissions the configured service account
+ * actually holds on the bucket. `testIamPermissions` needs no special grant,
+ * so this works even when the account is otherwise locked out — it's how we
+ * turn "403 storage.objects.create denied" into an actionable message.
+ */
+export async function checkVideoBucketPermissions(
+  bucketName = getBucketName()
+): Promise<VideoBucketPermissionCheck> {
+  const creds = resolveGcpCredentials();
+  const serviceAccount = creds?.clientEmail ?? null;
+  const permissions = Object.fromEntries(
+    REQUIRED_VIDEO_BUCKET_PERMISSIONS.map((p) => [p, false])
+  ) as VideoBucketPermissionCheck["permissions"];
+
+  const fixCommand = serviceAccount
+    ? `gcloud storage buckets add-iam-policy-binding gs://${bucketName} --member="serviceAccount:${serviceAccount}" --role="roles/storage.objectAdmin"`
+    : null;
+
+  try {
+    const bucket = getStorage().bucket(bucketName);
+    const [granted] = await bucket.iam.testPermissions([...REQUIRED_VIDEO_BUCKET_PERMISSIONS]);
+    for (const p of REQUIRED_VIDEO_BUCKET_PERMISSIONS) {
+      permissions[p] = Boolean((granted as Record<string, boolean> | undefined)?.[p]);
+    }
+    const missing = REQUIRED_VIDEO_BUCKET_PERMISSIONS.filter((p) => !permissions[p]);
+    return {
+      bucketName,
+      serviceAccount,
+      canUpload: missing.length === 0,
+      permissions,
+      missing,
+      error: null,
+      fixCommand: missing.length ? fixCommand : null,
+    };
+  } catch (err) {
+    return {
+      bucketName,
+      serviceAccount,
+      canUpload: false,
+      permissions,
+      missing: [...REQUIRED_VIDEO_BUCKET_PERMISSIONS],
+      error: err instanceof Error ? err.message : String(err),
+      fixCommand,
+    };
+  }
+}
+
+/**
+ * Start a GCS resumable upload session on the server and hand the session URI
+ * to the browser, which then PUTs the bytes (in chunks) straight to GCS.
+ *
+ * Because the session is created with the app's `Origin`, GCS answers the
+ * browser's chunk requests with matching CORS headers — no bucket CORS config
+ * is required, unlike signed PUT URLs. Passing `contentLength` makes GCS
+ * reject any upload whose final size differs from what we authorised.
+ */
+export async function createResumableUploadSession({
+  bucketName = getBucketName(),
+  objectKey,
+  contentType = "video/mp4",
+  contentLength,
+  origin,
+}: {
+  bucketName?: string;
+  objectKey: string;
+  contentType?: string;
+  contentLength?: number;
+  origin?: string;
+}): Promise<string> {
+  const storage = getStorage();
+  const file = storage.bucket(bucketName).file(objectKey);
+  const [uri] = await file.createResumableUpload({
+    origin,
+    metadata: {
+      contentType,
+      ...(contentLength && contentLength > 0 ? { contentLength } : {}),
+    },
+  });
+  return uri;
+}
+
 /** Generate a signed upload URL for browser-direct upload to GCS. */
 export async function getSignedUploadUrl({
   bucketName = getBucketName(),
   objectKey,
   contentType = "video/mp4",
-  expiresMs = 2 * 60 * 60 * 1000, // 2 hours for large video uploads
+  expiresMs = UPLOAD_SIGNED_URL_TTL_MS,
 }: {
   bucketName?: string;
   objectKey: string;

@@ -6,7 +6,7 @@ import {
   getSignedReadUrl,
   parseGcsObjectKey,
 } from "@/lib/gcs";
-import { isPublicCourseDemoReference } from "@/lib/public-demo-access";
+import { assertVideoEntitlement } from "@/lib/video-entitlement";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,14 +47,12 @@ export async function GET(request: Request) {
     }
 
     const session = await auth();
-    if (!session?.user) {
-      const isDemo = await isPublicCourseDemoReference(videoKey);
-      if (!isDemo) {
-        return NextResponse.json(
-          { error: "Unauthorized", code: "UNAUTHORIZED" },
-          { status: 401 }
-        );
-      }
+    const entitled = await assertVideoEntitlement(session, videoKey);
+    if (!entitled) {
+      return NextResponse.json(
+        { error: session?.user ? "Forbidden" : "Unauthorized", code: session?.user ? "FORBIDDEN" : "UNAUTHORIZED" },
+        { status: session?.user ? 403 : 401 }
+      );
     }
 
     const gcs = getGcsEnvStatus();

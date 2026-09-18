@@ -10,17 +10,20 @@ export async function POST(request: Request) {
   const { error, session } = await requireAuth(["student"]);
   if (error) return error;
 
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
   const parsed = moduleProgressSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 422 });
   }
 
   const result = await updateModuleProgress({
-    ...parsed.data,
+    enrollmentId: parsed.data.enrollmentId,
     studentId: session!.user.id,
-    moduleTitle: body.moduleTitle ?? `Module ${parsed.data.moduleIndex + 1}`,
-    durationSeconds: body.durationSeconds ?? parsed.data.watchedSeconds,
+    moduleIndex: parsed.data.moduleIndex,
+    moduleTitle: parsed.data.moduleTitle ?? `Module ${parsed.data.moduleIndex + 1}`,
+    watchedSeconds: parsed.data.watchedSeconds,
+    durationSeconds: parsed.data.durationSeconds ?? parsed.data.watchedSeconds,
+    isCompleted: parsed.data.isCompleted ?? false,
     notes: parsed.data.notes,
   });
 

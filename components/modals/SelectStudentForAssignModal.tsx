@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { fetchAllStudents } from "@/lib/students-client";
 
 type StudentOption = {
   id: string;
@@ -47,14 +48,12 @@ export function SelectStudentForAssignModal({
   const [search, setSearch] = useState("");
 
   const { data: students = [], isLoading } = useQuery<StudentOption[]>({
-    queryKey: ["students-for-assign", directStudentsOnly],
+    queryKey: ["students-for-assign", directStudentsOnly, search],
     queryFn: async () => {
-      const params = new URLSearchParams({ limit: "100" });
-      if (directStudentsOnly) params.set("organisationId", "direct");
-      const res = await fetch(`/api/students?${params}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error("Failed to load students");
-      const rows: StudentOption[] = Array.isArray(json) ? json : json.data ?? [];
+      const rows = await fetchAllStudents({
+        organisationId: directStudentsOnly ? "direct" : undefined,
+        q: search.trim() || undefined,
+      });
       const byId = new Map<string, StudentOption>();
       for (const row of rows) {
         const existing = byId.get(row.id);

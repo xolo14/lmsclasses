@@ -17,8 +17,11 @@ import {
   certificateTemplates,
   apiKeys,
   courseRecordings,
+  widgetLeads,
+  partnerLeads,
 } from "@/lib/db/schema";
 import { hardDeleteOrganisations, hardDeleteUsers } from "@/lib/organisation-cascade";
+import { deleteGcsObjectIfExists } from "@/lib/gcs";
 
 export const TRASH_RETENTION_DAYS = 30;
 
@@ -38,6 +41,26 @@ export function trashCutoffDate(): Date {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - TRASH_RETENTION_DAYS);
   return cutoff;
+}
+
+async function deleteClassRecordingRows(ids: string[]) {
+  if (ids.length === 0) return;
+  const rows = await db
+    .select({ id: classRecordings.id, videoUrl: classRecordings.videoUrl })
+    .from(classRecordings)
+    .where(inArray(classRecordings.id, ids));
+  await Promise.all(rows.map((row) => deleteGcsObjectIfExists(row.videoUrl)));
+  await db.delete(classRecordings).where(inArray(classRecordings.id, ids));
+}
+
+async function deleteCourseRecordingRows(courseIds: string[]) {
+  if (courseIds.length === 0) return;
+  const rows = await db
+    .select({ id: courseRecordings.id, videoUrl: courseRecordings.videoUrl })
+    .from(courseRecordings)
+    .where(inArray(courseRecordings.recordCourseId, courseIds));
+  await Promise.all(rows.map((row) => deleteGcsObjectIfExists(row.videoUrl)));
+  await db.delete(courseRecordings).where(inArray(courseRecordings.recordCourseId, courseIds));
 }
 
 /** Remove FK dependents so trashed batches can be hard-deleted. */
@@ -60,7 +83,14 @@ async function hardDeleteBatches(batchIds: string[]) {
     await db.delete(liveClassAttendance).where(inArray(liveClassAttendance.liveClassId, classIds));
   }
 
-  await db.delete(classRecordings).where(inArray(classRecordings.batchId, batchIds));
+  await deleteClassRecordingRows(
+    (
+      await db
+        .select({ id: classRecordings.id })
+        .from(classRecordings)
+        .where(inArray(classRecordings.batchId, batchIds))
+    ).map((r) => r.id)
+  );
   await db.delete(liveClasses).where(inArray(liveClasses.batchId, batchIds));
   // Keep batchEndDate eligibility stable: freeze by leaving a snapshot is hard;
   // clear batchId but auto-issue ignores soft-deleted batch end dates already.
@@ -96,7 +126,16 @@ async function hardDeleteLiveCourses(courseIds: string[]) {
     .where(inArray(liveClasses.courseId, courseIds));
   await hardDeleteLiveClasses(classRows.map((r) => r.id));
 
-  await db.delete(classRecordings).where(inArray(classRecordings.courseId, courseIds));
+  await db.update(users).set({ courseId: null }).where(inArray(users.courseId, courseIds));
+
+  await deleteClassRecordingRows(
+    (
+      await db
+        .select({ id: classRecordings.id })
+        .from(classRecordings)
+        .where(inArray(classRecordings.courseId, courseIds))
+    ).map((r) => r.id)
+  );
   await db.delete(liveClassAttendance).where(inArray(liveClassAttendance.liveCourseId, courseIds));
   await db.delete(studentCourses).where(inArray(studentCourses.liveCourseId, courseIds));
   await db.delete(slots).where(inArray(slots.courseId, courseIds));
@@ -111,7 +150,12 @@ async function hardDeleteRecordCourses(courseIds: string[]) {
   await db.delete(issuedCertificates).where(inArray(issuedCertificates.courseId, courseIds));
   await db.delete(certificateTemplates).where(inArray(certificateTemplates.courseId, courseIds));
 
-  await db.delete(courseRecordings).where(inArray(courseRecordings.recordCourseId, courseIds));
+  await deleteCourseRecordingRows(courseIds);
+  await db
+    .update(partnerLeads)
+    .set({ recordCourseId: null })
+    .where(inArray(partnerLeads.recordCourseId, courseIds));
+  await db.delete(widgetLeads).where(inArray(widgetLeads.courseId, courseIds));
   await db.delete(studentCourses).where(inArray(studentCourses.recordCourseId, courseIds));
   await db.delete(slots).where(inArray(slots.recordCourseId, courseIds));
   await db
@@ -175,9 +219,7 @@ export async function purgeExpiredTrash() {
     .from(classRecordings)
     .where(and(isNotNull(classRecordings.deletedAt), lt(classRecordings.deletedAt, cutoff)));
   if (expiredRecordings.length > 0) {
-    await db
-      .delete(classRecordings)
-      .where(inArray(classRecordings.id, expiredRecordings.map((r) => r.id)));
+    await deleteClassRecordingRows(expiredRecordings.map((r) => r.id));
   }
 
   const expiredClasses = await db
@@ -215,7 +257,11 @@ export async function clearAllTrashImmediate() {
     .where(isNotNull(organisations.deletedAt));
   await hardDeleteOrganisations(trashedOrgs.map((o) => o.id));
 
-  await db.delete(classRecordings).where(isNotNull(classRecordings.deletedAt));
+  const trashedRecordings = await db
+    .select({ id: classRecordings.id })
+    .from(classRecordings)
+    .where(isNotNull(classRecordings.deletedAt));
+  await deleteClassRecordingRows(trashedRecordings.map((r) => r.id));
 
   const trashedClasses = await db
     .select({ id: liveClasses.id })

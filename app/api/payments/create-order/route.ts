@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { eq, and, sql, isNull, gte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { liveCourses, recordCourses, payments, coupons } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { buySlotsSchema } from "@/lib/validations";
 import { getClientIp } from "@/lib/audit";
 import { fulfillSlotPurchase } from "@/lib/payments-fulfill";
@@ -12,14 +12,26 @@ import {
   getRazorpayKeyId,
   getRazorpayKeySecret,
 } from "@/lib/razorpay";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
 
     if (body.source === "public") {
+      const ip = getClientIp(request) ?? "unknown";
+      const limited = checkRateLimit(`public-order:${ip}`, 10, 10 * 60 * 1000);
+      if (!limited.allowed) {
+        return NextResponse.json(
+          { error: "Too many requests. Try again later." },
+          { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } }
+        );
+      }
       const courseId = body.courseId as string | undefined;
       const amount = Number(body.amount);
       if (!courseId || !Number.isFinite(amount) || amount <= 0) {
@@ -66,18 +78,25 @@ export async function POST(request: Request) {
     const { courseId, slotsCount } = parsed.data;
     const couponCode = (body.couponCode as string | undefined)?.trim();
     const courseType = (body.courseType as string | undefined) === "record" ? "record" : "live";
-    const organisationId = session!.user.organisationId!;
+    const organisationId = await resolveOrganisationId(session!);
+    if (!organisationId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const [liveCourse] =
       courseType === "live"
-        ? await db.select().from(liveCourses).where(eq(liveCourses.id, courseId)).limit(1)
+        ? await db
+            .select()
+            .from(liveCourses)
+            .where(and(eq(liveCourses.id, courseId), eq(liveCourses.isActive, true), isNull(liveCourses.deletedAt)))
+            .limit(1)
         : [undefined];
     const [recordCourse] =
       courseType === "record"
         ? await db
             .select()
             .from(recordCourses)
-            .where(and(eq(recordCourses.id, courseId), isNull(recordCourses.deletedAt)))
+            .where(and(eq(recordCourses.id, courseId), eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)))
             .limit(1)
         : [undefined];
     const course = liveCourse ?? recordCourse;

@@ -22,16 +22,19 @@ export async function fulfillSlotPurchase(
 > {
  let payment: typeof payments.$inferSelect;
 
- if (opts.skipClaim) {
- const [reRead] = await db.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
- if (!reRead) return { ok: false, error: "Payment not found" };
- payment = reRead;
- if (payment.status === "success") {
- await ensureSlotsForPayment(payment);
- return { ok: true, alreadyProcessed: true };
- }
- // If still pending/failed, something went wrong — proceed with claim below
- } else {
+  if (opts.skipClaim) {
+    // Caller already won the CAS to status=success. Treat that as the claim
+    // and continue into coupon/invoice/email/audit — do not return early.
+    const [reRead] = await db.select().from(payments).where(eq(payments.id, paymentId)).limit(1);
+    if (!reRead) return { ok: false, error: "Payment not found" };
+    payment = reRead;
+    if (payment.status !== "success") {
+      return { ok: false, error: "Payment is not pending" };
+    }
+    if (!payment.organisationId || !payment.adminId) {
+      return { ok: true, ignored: true };
+    }
+  } else {
  const [existing] = await db
  .select()
  .from(payments)

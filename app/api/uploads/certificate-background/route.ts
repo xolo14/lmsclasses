@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
+import { sniffImage } from "@/lib/image-sniff";
 import { saveUploadFile } from "@/lib/uploads";
 import {
   CERTIFICATE_BACKGROUND_MAX_BYTES,
@@ -11,15 +12,6 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const MAX_SIZE = CERTIFICATE_BACKGROUND_MAX_BYTES;
-const ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-
-function extensionFor(type: string) {
-  if (type === "image/png") return "png";
-  if (type === "image/jpeg") return "jpg";
-  if (type === "image/webp") return "webp";
-  if (type === "image/gif") return "gif";
-  return "";
-}
 
 export async function POST(request: Request) {
   try {
@@ -37,13 +29,14 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    if (!ALLOWED_TYPES.has(file.type)) {
+
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const sniffed = sniffImage(bytes);
+    if (!sniffed) {
       return NextResponse.json({ error: "Only PNG, JPG, WEBP and GIF files are allowed." }, { status: 400 });
     }
 
-    const ext = extensionFor(file.type);
-    const safeName = `bg-${Date.now()}-${randomUUID()}.${ext}`;
-    const bytes = Buffer.from(await file.arrayBuffer());
+    const safeName = `bg-${Date.now()}-${randomUUID()}.${sniffed.ext}`;
     const { url } = await saveUploadFile("certificate-backgrounds", safeName, bytes);
 
     return NextResponse.json({ url });

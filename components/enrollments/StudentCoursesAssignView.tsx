@@ -29,11 +29,10 @@ export function StudentCoursesAssignView({
   const { data: student } = useQuery({
     queryKey: ["student-detail", studentId],
     queryFn: async () => {
-      const res = await fetch("/api/students");
+      const res = await fetch(`/api/students/${studentId}`);
       const json = await res.json();
-      if (!res.ok) throw new Error("Failed");
-      const list = Array.isArray(json) ? json : json.data ?? [];
-      return list.find((s: { id: string }) => s.id === studentId) ?? null;
+      if (!res.ok) throw new Error(json.error ?? "Failed");
+      return json;
     },
     enabled: !!studentId,
   });

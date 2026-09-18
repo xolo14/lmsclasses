@@ -18,6 +18,7 @@ import {
 } from "@/lib/db/schema";
 import type { AssignCoursesInput, UpdateEnrollmentInput } from "@/lib/validations/enrollment";
 import { logAction } from "@/lib/audit";
+import { hasRecordedAccess } from "@/lib/content-access";
 
 /** Super admin may assign extra courses only to direct/platform students (no organisation). */
 export function isDirectPlatformStudent(student: { organisationId: string | null }): boolean {
@@ -126,7 +127,7 @@ export async function getSlotSummary(
   return { total, used, remaining: Math.max(0, total - used), slotRows };
 }
 
-async function consumeOneSlot(slotRows: (typeof slots.$inferSelect)[]): Promise<boolean> {
+export async function consumeOneSlot(slotRows: (typeof slots.$inferSelect)[]): Promise<boolean> {
   for (const row of slotRows) {
     const [updated] = await db
       .update(slots)
@@ -140,7 +141,7 @@ async function consumeOneSlot(slotRows: (typeof slots.$inferSelect)[]): Promise<
   return false;
 }
 
-async function freeOneSlot(
+export async function freeOneSlot(
   organisationId: string,
   course: ResolvedCourse
 ): Promise<void> {
@@ -198,7 +199,8 @@ async function findActiveEnrollment(studentId: string, course: ResolvedCourse) {
         course.type === "live"
           ? eq(studentCourses.liveCourseId, course.id)
           : eq(studentCourses.recordCourseId, course.id),
-        or(eq(studentCourses.status, "active"), eq(studentCourses.status, "paused"))
+        or(eq(studentCourses.status, "active"), eq(studentCourses.status, "paused")),
+        eq(studentCourses.isActive, true)
       )
     )
     .limit(1);
@@ -238,7 +240,7 @@ export async function assignCoursesToStudent(
     return { enrolled: [], skipped: [], errors: ["Student not found"] };
   }
   if (student.deletedAt) {
-    await db.update(users).set({ deletedAt: null, isActive: true }).where(eq(users.id, student.id));
+    return { enrolled: [], skipped: [], errors: ["Student is in trash; restore first"] };
   }
 
   if (actor.role === "super_admin" && !isDirectPlatformStudent(student)) {
@@ -281,6 +283,34 @@ export async function assignCoursesToStudent(
     }
 
     const { liveAccess, recordedAccess } = deriveAccessFlags(input.accessType, course);
+
+    if (input.batchId) {
+      const [batch] = await db
+        .select({
+          id: batches.id,
+          courseId: batches.courseId,
+          organisationId: batches.organisationId,
+          deletedAt: batches.deletedAt,
+        })
+        .from(batches)
+        .where(eq(batches.id, input.batchId))
+        .limit(1);
+      if (!batch || batch.deletedAt) {
+        errors.push(`${course.title}: batch not found`);
+        continue;
+      }
+      if (batch.courseId !== course.id) {
+        errors.push(`${course.title}: batch does not belong to this course`);
+        continue;
+      }
+      if (actor.role === "org_admin") {
+        const orgOk = batch.organisationId == null || batch.organisationId === actor.organisationId;
+        if (!orgOk) {
+          errors.push(`${course.title}: batch is not visible to your organisation`);
+          continue;
+        }
+      }
+    }
 
     if (liveAccess && course.type === "live" && !input.batchId && actor.role === "org_admin") {
       errors.push(`${course.title}: batch required for live access`);
@@ -347,7 +377,7 @@ export async function assignCoursesToStudent(
             recordedAccessFrom: recordedAccess ? recordedFrom : null,
             recordedAccessUntil: recordedAccess ? input.recordedAccessUntil ?? null : null,
             slotConsumed,
-            isFree: input.isFree,
+            isFree: treatAsFree,
             adminNotes: input.adminNotes ?? null,
             status: "active",
             isActive: true,
@@ -399,7 +429,7 @@ export async function assignCoursesToStudent(
           recordedAccessFrom: recordedAccess ? recordedFrom : null,
           recordedAccessUntil: recordedAccess ? input.recordedAccessUntil ?? null : null,
           slotConsumed,
-          isFree: input.isFree,
+          isFree: treatAsFree,
           adminNotes: input.adminNotes ?? null,
           status: "active",
           isActive: true,
@@ -469,7 +499,36 @@ export async function updateEnrollment(
   const recordedAccess = input.recordedAccess ?? flags.recordedAccess;
 
   const status = input.status ?? existing.status;
-  const isActive = status === "active";
+  const isActive = status === "active" || status === "completed";
+
+  if (input.batchId) {
+    const [batch] = await db
+      .select({
+        courseId: batches.courseId,
+        organisationId: batches.organisationId,
+        deletedAt: batches.deletedAt,
+      })
+      .from(batches)
+      .where(eq(batches.id, input.batchId))
+      .limit(1);
+    if (!batch || batch.deletedAt || batch.courseId !== course.id) {
+      return { success: false, error: "Batch does not belong to this course" };
+    }
+    if (actor.role === "org_admin") {
+      const orgOk = batch.organisationId == null || batch.organisationId === actor.organisationId;
+      if (!orgOk) return { success: false, error: "Batch is not visible to your organisation" };
+    }
+  }
+
+  const wasInactive = existing.status === "revoked" || existing.status === "expired" || existing.status === "paused";
+  if (status === "active" && wasInactive && existing.organisationId && !existing.slotConsumed && !existing.isFree) {
+    const { remaining, slotRows } = await getSlotSummary(existing.organisationId, course);
+    if (remaining <= 0 || slotRows.length === 0) {
+      return { success: false, error: "No slots available to reactivate this enrollment" };
+    }
+    const ok = await consumeOneSlot(slotRows);
+    if (!ok) return { success: false, error: "Failed to consume a slot for reactivation" };
+  }
 
   if (status === "revoked" && existing.slotConsumed && existing.organisationId) {
     // CAS: free seat only if still marked slotConsumed
@@ -498,6 +557,9 @@ export async function updateEnrollment(
       ...(input.batchId !== undefined && { batchId: input.batchId }),
       status,
       isActive,
+      ...(status === "active" && wasInactive && existing.organisationId && !existing.slotConsumed && !existing.isFree
+        ? { slotConsumed: true }
+        : {}),
       ...(status === "paused" && { pausedAt: new Date(), pauseReason: input.pauseReason ?? null }),
       ...(status === "revoked" && {
         revokedAt: new Date(),
@@ -622,7 +684,7 @@ export async function updateModuleProgress(input: {
   moduleTitle: string;
   watchedSeconds: number;
   durationSeconds: number;
-  isCompleted: boolean;
+  isCompleted?: boolean;
   notes?: string;
 }): Promise<{ completionPercentage: number; certificateUnlocked: boolean }> {
   const [enrollment] = await db
@@ -632,10 +694,29 @@ export async function updateModuleProgress(input: {
       and(eq(studentCourses.id, input.enrollmentId), eq(studentCourses.studentId, input.studentId))
     )
     .limit(1);
-  if (!enrollment?.recordedAccess) {
+  if (!enrollment || !hasRecordedAccess(enrollment)) {
     return { completionPercentage: 0, certificateUnlocked: false };
   }
 
+  if (!enrollment.recordCourseId) {
+    return { completionPercentage: enrollment.completionPercentage ?? 0, certificateUnlocked: false };
+  }
+
+  const published = await db
+    .select({ id: courseRecordings.id })
+    .from(courseRecordings)
+    .where(
+      and(eq(courseRecordings.recordCourseId, enrollment.recordCourseId), eq(courseRecordings.isPublished, true))
+    )
+    .orderBy(asc(courseRecordings.sortOrder), asc(courseRecordings.createdAt));
+  const total = published.length;
+  if (total === 0 || input.moduleIndex >= total) {
+    return { completionPercentage: enrollment.completionPercentage ?? 0, certificateUnlocked: false };
+  }
+
+  const duration = input.durationSeconds;
+  const derivedCompleted =
+    duration > 0 ? input.watchedSeconds >= 0.9 * duration : Boolean(input.isCompleted && input.watchedSeconds > 0);
   const now = new Date();
   await db
     .insert(recordedModuleProgress)
@@ -648,8 +729,8 @@ export async function updateModuleProgress(input: {
       moduleTitle: input.moduleTitle,
       watchedSeconds: input.watchedSeconds,
       durationSeconds: input.durationSeconds,
-      isCompleted: input.isCompleted,
-      completedAt: input.isCompleted ? now : null,
+      isCompleted: derivedCompleted,
+      completedAt: derivedCompleted ? now : null,
       lastWatchedAt: now,
       notes: input.notes ?? null,
     })
@@ -657,8 +738,8 @@ export async function updateModuleProgress(input: {
       target: [recordedModuleProgress.enrollmentId, recordedModuleProgress.moduleIndex],
       set: {
         watchedSeconds: input.watchedSeconds,
-        isCompleted: input.isCompleted,
-        completedAt: input.isCompleted ? now : null,
+        isCompleted: derivedCompleted,
+        completedAt: derivedCompleted ? now : null,
         lastWatchedAt: now,
         notes: input.notes ?? null,
       },
@@ -670,14 +751,6 @@ export async function updateModuleProgress(input: {
     .where(
       and(eq(recordedModuleProgress.enrollmentId, input.enrollmentId), eq(recordedModuleProgress.isCompleted, true))
     );
-  const total = enrollment.recordCourseId
-    ? (
-        await db
-          .select({ c: sql<number>`count(*)::int` })
-          .from(courseRecordings)
-          .where(eq(courseRecordings.recordCourseId, enrollment.recordCourseId))
-      )[0]?.c ?? 1
-    : 1;
 
   const pct = Math.min(100, Math.round(((completed[0]?.c ?? 0) / Math.max(total, 1)) * 100));
   const certificateUnlocked = pct >= 100;

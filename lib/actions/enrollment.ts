@@ -124,10 +124,14 @@ export async function updateModuleProgressAction(input: unknown) {
     return { success: false as const, error: parsed.error.flatten().fieldErrors };
   }
   const result = await updateModuleProgress({
-    ...parsed.data,
+    enrollmentId: parsed.data.enrollmentId,
     studentId: session.user.id,
-    moduleTitle: `Module ${parsed.data.moduleIndex + 1}`,
-    durationSeconds: parsed.data.watchedSeconds,
+    moduleIndex: parsed.data.moduleIndex,
+    moduleTitle: parsed.data.moduleTitle ?? `Module ${parsed.data.moduleIndex + 1}`,
+    watchedSeconds: parsed.data.watchedSeconds,
+    durationSeconds: parsed.data.durationSeconds ?? parsed.data.watchedSeconds,
+    isCompleted: parsed.data.isCompleted ?? false,
+    notes: parsed.data.notes,
   });
   return { success: true as const, ...result };
 }

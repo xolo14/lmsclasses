@@ -10,8 +10,26 @@ function emptyToUndefined(val: unknown) {
   return val;
 }
 
+function emailField(message = "Invalid email") {
+  return z
+    .string()
+    .trim()
+    .email(message)
+    .transform((e) => e.toLowerCase());
+}
+
+const httpUrl = z
+  .string()
+  .url()
+  .refine((u) => /^https?:\/\//i.test(u), "URL must start with http:// or https://");
+
+const optionalHttpUrl = z.preprocess(
+  emptyToUndefined,
+  httpUrl.optional().or(z.literal(""))
+);
+
 export const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: emailField("Invalid email address"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -39,7 +57,7 @@ export const organisationSchema = z
   .object({
     orgName: z.string().min(1, "Organisation name is required"),
     adminName: z.string().min(1, "Admin name is required"),
-    email: z.string().email("Invalid email"),
+    email: emailField("Invalid email"),
     phone: z.preprocess(emptyToUndefined, z.string().optional()),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(1, "Confirm password is required"),
@@ -55,7 +73,7 @@ export const editOrganisationSchema = z
   .object({
     orgName: z.string().min(1, "Organisation name is required"),
     adminName: z.string().min(1, "Admin name is required"),
-    email: z.string().email("Invalid email"),
+    email: emailField("Invalid email"),
     phone: z.preprocess(emptyToUndefined, z.string().optional()),
     password: z.preprocess(emptyToUndefined, z.string().min(6, "Password must be at least 6 characters").optional()),
     confirmPassword: z.preprocess(emptyToUndefined, z.string().optional()),
@@ -71,7 +89,7 @@ export const editOrganisationSchema = z
 export const managerSchema = z
   .object({
     name: z.string().min(1, "Name is required"),
-    email: z.string().email("Invalid email"),
+    email: emailField("Invalid email"),
     phone: z.string().optional(),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(1, "Confirm password is required"),
@@ -84,7 +102,7 @@ export const managerSchema = z
 export const mentorSchema = z
   .object({
     name: z.string().min(1, "Name is required"),
-    email: z.string().email("Invalid email"),
+    email: emailField("Invalid email"),
     phone: z.string().optional(),
     courseId: z.string().optional().nullable(),
     password: z.string().min(6, "Password must be at least 6 characters"),
@@ -98,7 +116,7 @@ export const mentorSchema = z
 export const editMentorSchema = z
   .object({
     name: z.string().min(1, "Name is required"),
-    email: z.string().email("Invalid email"),
+    email: emailField("Invalid email"),
     phone: z.string().optional(),
     courseId: z.string().optional().nullable(),
     password: z
@@ -116,7 +134,7 @@ export const editMentorSchema = z
 export const editManagerSchema = z
   .object({
     name: z.string().min(1, "Name is required"),
-    email: z.string().email("Invalid email"),
+    email: emailField("Invalid email"),
     phone: z.string().optional(),
     password: z
       .string()
@@ -147,7 +165,7 @@ export const liveClassSchema = z.object({
   courseId: z.string().uuid("Select a course"),
   batchId: z.string().uuid().optional(),
   mentorId: z.string().uuid("Select a mentor"),
-  meetingLink: z.string().url().optional().or(z.literal("")),
+  meetingLink: optionalHttpUrl,
   scheduledAt: z.string().min(1, "Schedule date is required"),
   duration: z.coerce.number().min(15).optional(),
   status: z.enum(["scheduled", "live", "completed", "cancelled"]).optional(),
@@ -165,10 +183,10 @@ export const classRecordingSchema = z.object({
 export const studentSchema = z
   .object({
     name: z.string().min(1, "Name is required"),
-    email: z.string().email("Invalid email"),
+    email: emailField("Invalid email"),
     phone: z.preprocess(emptyToUndefined, z.string().optional()),
     lmsId: z.preprocess(emptyToUndefined, z.string().optional()),
-    password: z.preprocess(emptyToUndefined, z.string().optional()),
+    password: z.preprocess(emptyToUndefined, z.string().min(6, "Password must be at least 6 characters").optional()),
     confirmPassword: z.preprocess(emptyToUndefined, z.string().optional()),
     collegeName: z.preprocess(emptyToUndefined, z.string().optional()),
     courseId: z.string().uuid("Select a course"),
@@ -181,12 +199,12 @@ export const studentSchema = z
 
 export const buySlotsSchema = z.object({
   courseId: z.string().uuid(),
-  slotsCount: z.coerce.number().min(1, "Minimum 1 slot required"),
+  slotsCount: z.coerce.number().int().min(1, "Minimum 1 slot required").max(1000, "Maximum 1000 slots per purchase"),
 });
 
 export const profileSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address"),
+  email: emailField("Invalid email address"),
   phone: z.string().optional(),
 });
 
@@ -202,17 +220,17 @@ export const changePasswordSchema = z
   });
 
 export const hrEmailSchema = z.object({
-  email: z.string().email("Enter a valid company email"),
+  email: emailField("Enter a valid company email"),
 });
 
 export const hrOtpSchema = z.object({
-  email: z.string().email("Enter a valid company email"),
+  email: emailField("Enter a valid company email"),
   otp: z.string().regex(/^\d{6}$/, "OTP must be 6 digits"),
 });
 
 export const hrRegistrationSchema = z
   .object({
-    email: z.string().email("Enter a valid company email"),
+    email: emailField("Enter a valid company email"),
     companyName: z.string().min(2, "Company name is required"),
     name: z.string().min(2, "HR name is required"),
     designation: z.string().optional(),
@@ -251,14 +269,19 @@ export const hrJobSchema = z.object({
 export const studentJobApplicationSchema = z.object({
   jobId: z.string().uuid("Invalid job id"),
   fullName: z.string().min(2, "Full name is required"),
-  email: z.string().email("Invalid email"),
+  email: emailField("Invalid email"),
   phone: z.string().min(6, "Phone is required"),
   collegeName: z.string().min(2, "College name is required"),
   yearOfStudy: z.string().min(1, "Current year is required"),
   passedOutYear: z.string().min(4, "Passed out year is required"),
-  resumeUrl: z.string().min(5, "Resume URL is required"),
-  linkedinUrl: z.string().url().optional().or(z.literal("")),
-  portfolioUrl: z.string().url().optional().or(z.literal("")),
+  resumeUrl: z
+    .string()
+    .regex(
+      /^\/uploads\/resumes\/[A-Za-z0-9._-]+\.(pdf|docx?)$/i,
+      "Upload a PDF or Word resume"
+    ),
+  linkedinUrl: optionalHttpUrl,
+  portfolioUrl: optionalHttpUrl,
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -301,3 +324,29 @@ export const couponSchema = z.object({
 });
 
 export type CouponInput = z.infer<typeof couponSchema>;
+
+export const verifyPaymentSchema = z.object({
+  paymentId: z.string().uuid(),
+  razorpayOrderId: z.string().min(1),
+  razorpayPaymentId: z.string().min(1),
+  razorpaySignature: z.string().min(1),
+});
+
+export const patchStudentSchema = z.object({
+  name: z.string().min(1).optional(),
+  phone: z.preprocess(emptyToUndefined, z.string().optional()),
+  email: emailField().optional(),
+  collegeName: z.preprocess(emptyToUndefined, z.string().optional()),
+  isActive: z.boolean().optional(),
+  restore: z.boolean().optional(),
+});
+
+export const patchStaffUserSchema = z.object({
+  name: z.string().min(1).optional(),
+  phone: z.preprocess(emptyToUndefined, z.string().optional()),
+  email: emailField().optional(),
+  password: z.preprocess(emptyToUndefined, z.string().min(6).optional()),
+  isActive: z.boolean().optional(),
+  courseId: z.preprocess(emptyToUndefined, z.string().uuid().nullable().optional()),
+});
+

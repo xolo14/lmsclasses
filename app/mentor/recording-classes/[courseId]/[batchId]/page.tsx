@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Trash2, ArrowLeft, Play } from "lucide-react";
+import { Plus, ArrowLeft, Play } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
 import { AddClassRecordingModal } from "@/components/modals/AddClassRecordingModal";
@@ -25,7 +25,6 @@ export default function MentorBatchRecordingsPage() {
   const params = useParams();
   const courseId = params.courseId as string;
   const batchId = params.batchId as string;
-  const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [watchRecording, setWatchRecording] = useState<{ url: string; title: string } | null>(null);
 
@@ -33,12 +32,6 @@ export default function MentorBatchRecordingsPage() {
     queryKey: ["class-recordings", batchId],
     queryFn: () =>
       fetch(`/api/class-recordings?batchId=${batchId}&courseId=${courseId}`).then((r) => r.json()),
-  });
-
-  const deleteRecording = useMutation({
-    mutationFn: (id: string) => fetch(`/api/class-recordings/${id}`, { method: "DELETE" }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["class-recordings", batchId] }),
   });
 
   const columns: ColumnDef<Recording>[] = [
@@ -72,22 +65,7 @@ export default function MentorBatchRecordingsPage() {
       header: "Uploaded",
       cell: ({ row }) => formatDateTime(row.original.createdAt),
     },
-    {
-      id: "actions",
-      cell: ({ row }) => (
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => {
-            if (confirm("Are you sure you want to delete this recording?")) {
-              deleteRecording.mutate(row.original.id);
-            }
-          }}
-        >
-          <Trash2 className="h-3 w-3" />
-        </Button>
-      ),
-    },
+    // Deleting recordings is reserved for super_admin / manager; mentors can only upload.
   ];
 
   if (isLoading) {

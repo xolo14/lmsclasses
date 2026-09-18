@@ -8,6 +8,55 @@ import { authConfig } from "@/lib/auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  callbacks: {
+    ...authConfig.callbacks,
+    async jwt({ token, user }) {
+      if (user) {
+        token.role = user.role;
+        token.organisationId = user.organisationId;
+        token.courseId = user.courseId;
+        token.lmsId = user.lmsId;
+        token.companyId = user.companyId;
+        token.checkedAt = Date.now();
+        return token;
+      }
+
+      const checkedAt = token.checkedAt ?? 0;
+      if (Date.now() - checkedAt < 5 * 60 * 1000) return token;
+      token.checkedAt = Date.now();
+
+      if (!token.sub) return token;
+
+      if (token.role === "hr") {
+        const [hr] = await db
+          .select({ isActive: hrUsers.isActive })
+          .from(hrUsers)
+          .where(eq(hrUsers.id, token.sub))
+          .limit(1);
+        if (!hr || hr.isActive === false) return null as unknown as typeof token;
+        return token;
+      }
+
+      const [row] = await db
+        .select({
+          isActive: users.isActive,
+          deletedAt: users.deletedAt,
+          role: users.role,
+          organisationId: users.organisationId,
+          courseId: users.courseId,
+        })
+        .from(users)
+        .where(eq(users.id, token.sub))
+        .limit(1);
+      if (!row || row.deletedAt || row.isActive === false) {
+        return null as unknown as typeof token;
+      }
+      token.role = row.role;
+      token.organisationId = row.organisationId;
+      token.courseId = row.courseId;
+      return token;
+    },
+  },
   providers: [
     Credentials({
       credentials: {

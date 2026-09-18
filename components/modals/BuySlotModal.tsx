@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,7 @@ export function BuySlotModal({
   assignStudentsHref = "/org-admin/students",
 }: BuySlotModalProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [slotsCount, setSlotsCount] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -99,6 +101,14 @@ export function BuySlotModal({
     }
     onOpenChange(false);
     setShowAssignPrompt(true);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["slots"] }),
+      queryClient.invalidateQueries({ queryKey: ["purchased-live-courses"] }),
+      queryClient.invalidateQueries({ queryKey: ["purchased-record-courses"] }),
+      queryClient.invalidateQueries({ queryKey: ["org-admin-analytics"] }),
+      queryClient.invalidateQueries({ queryKey: ["live-courses"] }),
+      queryClient.invalidateQueries({ queryKey: ["record-courses"] }),
+    ]);
     router.refresh();
   };
 
@@ -126,6 +136,14 @@ export function BuySlotModal({
         // Zero-amount checkout (coupon gave 100% discount)
         onOpenChange(false);
         setShowAssignPrompt(true);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["slots"] }),
+          queryClient.invalidateQueries({ queryKey: ["purchased-live-courses"] }),
+          queryClient.invalidateQueries({ queryKey: ["purchased-record-courses"] }),
+          queryClient.invalidateQueries({ queryKey: ["org-admin-analytics"] }),
+          queryClient.invalidateQueries({ queryKey: ["live-courses"] }),
+          queryClient.invalidateQueries({ queryKey: ["record-courses"] }),
+        ]);
         router.refresh();
         return;
       }
@@ -206,7 +224,7 @@ export function BuySlotModal({
                 min={1}
                 value={slotsCount}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value) || 1;
+                  const val = Math.min(1000, Math.max(1, parseInt(e.target.value, 10) || 1));
                   setSlotsCount(val);
                   // Reset applied coupon when count changes to force re-validation
                   setAppliedCoupon(null);

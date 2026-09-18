@@ -212,6 +212,68 @@ export async function fetchRazorpayOrder(orderId: string): Promise<FetchedRazorp
   };
 }
 
+export type FetchedRazorpayPayment = {
+  id: string;
+  orderId: string;
+  /** Paise */
+  amount: number;
+  currency: string;
+  status: string;
+};
+
+/** Fetch payment from Razorpay — source of truth for status, order_id and amount. */
+export async function fetchRazorpayPayment(paymentId: string): Promise<FetchedRazorpayPayment> {
+  assertRazorpayEnv();
+  const razorpay = getRazorpayInstance();
+  if (!razorpay) {
+    throw new Error("Razorpay is not configured");
+  }
+
+  const payment = await razorpay.payments.fetch(paymentId);
+  return {
+    id: String(payment.id),
+    orderId: String(payment.order_id ?? ""),
+    amount: Number(payment.amount),
+    currency: String(payment.currency ?? "INR"),
+    status: String(payment.status ?? ""),
+  };
+}
+
+export function rupeesToPaise(amountRupees: string | number): number {
+  return Math.round(Number(amountRupees) * 100);
+}
+
+/**
+ * Cross-check a Razorpay payment against what we expect from our DB row.
+ * Fails closed: any API error is reported as a mismatch so callers never
+ * fulfil on a payment Razorpay cannot confirm.
+ */
+export async function verifyRazorpayPaymentMatches(opts: {
+  razorpayPaymentId: string;
+  razorpayOrderId: string;
+  expectedAmountRupees: string | number;
+}): Promise<{ ok: true; payment: FetchedRazorpayPayment } | { ok: false; reason: string }> {
+  let payment: FetchedRazorpayPayment;
+  try {
+    payment = await fetchRazorpayPayment(opts.razorpayPaymentId);
+  } catch (err) {
+    console.error("[razorpay] payments.fetch failed:", err);
+    return { ok: false, reason: "Unable to confirm payment with Razorpay" };
+  }
+
+  if (payment.status !== "captured" && payment.status !== "authorized") {
+    return { ok: false, reason: `Payment status is ${payment.status || "unknown"}` };
+  }
+  if (payment.orderId !== opts.razorpayOrderId) {
+    return { ok: false, reason: "Payment does not belong to this order" };
+  }
+  const expectedPaise = rupeesToPaise(opts.expectedAmountRupees);
+  if (!Number.isFinite(payment.amount) || payment.amount !== expectedPaise) {
+    return { ok: false, reason: "Payment amount mismatch" };
+  }
+  return { ok: true, payment };
+}
+
 export function generatePassword(length = 8): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
   let password = "";

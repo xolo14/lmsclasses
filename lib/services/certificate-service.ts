@@ -1035,7 +1035,8 @@ export async function resendCertificateEmail(actor: CertActor, certificateId: st
   if (!canManageCerts(actor.role)) throw new Error("Unauthorized");
 
   const cert = await getCertificateForActor(actor, certificateId);
-  if (!cert.emailSentTo && !cert.studentId) throw new Error("No email on file");
+  if (cert.isLocked) throw new Error("Certificate is locked and cannot be emailed yet.");
+  if (cert.isRevoked) throw new Error("Certificate has been revoked.");
 
   const [student] = await db
     .select({ email: users.email, name: users.name })

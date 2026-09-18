@@ -51,8 +51,9 @@ const securityHeaders = [
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://www.googletagmanager.com https://www.google-analytics.com",
-      "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://www.google-analytics.com https://www.googletagmanager.com https://*.google-analytics.com",
-      "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com",
+      // storage.googleapis.com: browser-direct (resumable) recorded-class video uploads to GCS.
+      "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://www.google-analytics.com https://www.googletagmanager.com https://*.google-analytics.com https://storage.googleapis.com",
+      "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://drive.google.com",
       "media-src 'self' https: blob:",
       "upgrade-insecure-requests",
     ].join("; "),

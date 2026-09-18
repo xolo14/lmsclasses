@@ -4,10 +4,16 @@ import { db } from "@/lib/db";
 import { batches } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getStorage, getBucketName } from "@/lib/gcs";
+import { getVideoSizeError } from "@/lib/video-upload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Legacy server-proxied upload. The whole file is buffered through Node, so in
+ * practice it is capped by the Next.js/hosting body limit (~62 MB) — the
+ * recording modal uses /api/uploads/video-resumable for multi-GB files.
+ */
 export async function POST(request: Request) {
   const { error } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
@@ -22,6 +28,11 @@ export async function POST(request: Request) {
         { error: "File and batchId are required." },
         { status: 400 }
       );
+    }
+
+    const sizeError = getVideoSizeError(file.size);
+    if (sizeError) {
+      return NextResponse.json({ error: sizeError }, { status: 413 });
     }
 
     const [batch] = await db

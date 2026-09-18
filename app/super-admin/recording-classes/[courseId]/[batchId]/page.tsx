@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Trash2, ArrowLeft, Play, FileSpreadsheet } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, Play, FileSpreadsheet, AlertCircle } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
 import { AddClassRecordingModal } from "@/components/modals/AddClassRecordingModal";
@@ -29,8 +30,11 @@ export default function BatchRecordingsPage() {
   const courseId = params.courseId as string;
   const batchId = params.batchId as string;
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
+  const canDelete = session?.user?.role === "super_admin" || session?.user?.role === "manager";
   const [modalOpen, setModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [watchRecording, setWatchRecording] = useState<{ url: string; title: string } | null>(null);
 
   const { data: recordings = [], isLoading } = useQuery<Recording[]>({
@@ -40,10 +44,30 @@ export default function BatchRecordingsPage() {
   });
 
   const deleteRecording = useMutation({
-    mutationFn: (id: string) => fetch(`/api/class-recordings/${id}`, { method: "DELETE" }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["class-recordings", batchId] }),
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/class-recordings/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || "Failed to delete recording.");
+      }
+    },
+    onSuccess: () => {
+      setDeleteError("");
+      queryClient.invalidateQueries({ queryKey: ["class-recordings", batchId] });
+    },
+    onError: (err: Error) => setDeleteError(err.message),
   });
+
+  const confirmDelete = (recording: Recording) => {
+    setDeleteError("");
+    if (
+      confirm(
+        `Move "${recording.topicName}" (${recording.weekName}) to trash? Students will lose access; it can be restored from Trash within 30 days.`
+      )
+    ) {
+      deleteRecording.mutate(recording.id);
+    }
+  };
 
   const columns: ColumnDef<Recording>[] = [
     { accessorKey: "weekName", header: "Week" },
@@ -72,18 +96,26 @@ export default function BatchRecordingsPage() {
       header: "Uploaded",
       cell: ({ row }) => formatDateTime(row.original.createdAt),
     },
-    {
-      id: "actions",
-      cell: ({ row }) => (
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => deleteRecording.mutate(row.original.id)}
-        >
-          <Trash2 className="h-3 w-3" />
-        </Button>
-      ),
-    },
+    // Delete is restricted to super_admin / manager (enforced by the API as well).
+    ...(canDelete
+      ? [
+          {
+            id: "actions",
+            header: "Actions",
+            cell: ({ row }) => (
+              <Button
+                variant="destructive"
+                size="sm"
+                aria-label="Move recording to trash"
+                disabled={deleteRecording.isPending}
+                onClick={() => confirmDelete(row.original)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            ),
+          } satisfies ColumnDef<Recording>,
+        ]
+      : []),
   ];
 
   if (isLoading) return <div className="text-muted-foreground">Loading...</div>;
@@ -108,6 +140,12 @@ export default function BatchRecordingsPage() {
           </Button>
         </div>
       </div>
+      {deleteError && (
+        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{deleteError}</span>
+        </div>
+      )}
       <DataTable columns={columns} data={recordings} searchPlaceholder="Search recordings..." />
       <AddClassRecordingModal
         open={modalOpen}

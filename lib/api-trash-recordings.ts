@@ -12,10 +12,11 @@ import {
   studentCourses,
   coupons,
 } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { classRecordingSchema } from "@/lib/validations";
-import { purgeExpiredTrash, clearAllTrashImmediate, TRASH_RETENTION_DAYS, type TrashEntityType } from "@/lib/trash";
+import { clearAllTrashImmediate, TRASH_RETENTION_DAYS, type TrashEntityType } from "@/lib/trash";
+import { hasRecordedAccess } from "@/lib/content-access";
 
 const TRASH_TABLES = {
   organisation: { table: organisations, id: organisations.id, label: organisations.name },
@@ -30,12 +31,6 @@ const TRASH_TABLES = {
 export async function GETTrash() {
   const { error } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
-
-  try {
-    await purgeExpiredTrash();
-  } catch (err) {
-    console.error("[trash] purgeExpiredTrash failed:", err);
-  }
 
   const [orgs, liveCourseRows, recordCourseRows, batchRows, liveRows, recordingRows, students, managers, mentors, couponRows] =
     await Promise.all([
@@ -219,7 +214,7 @@ export async function GETOngoingCourses() {
 }
 
 export async function GETClassRecordings(request: Request) {
-  const { error, session } = await requireAuth();
+  const { error, session } = await requireAuth(["super_admin", "manager", "mentor", "student", "org_admin"]);
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
@@ -230,19 +225,48 @@ export async function GETClassRecordings(request: Request) {
     return NextResponse.json({ error: "batchId required" }, { status: 400 });
   }
 
-  if (session!.user.role === "student") {
+  const [batch] = await db
+    .select({
+      id: batches.id,
+      courseId: batches.courseId,
+      organisationId: batches.organisationId,
+      deletedAt: batches.deletedAt,
+    })
+    .from(batches)
+    .where(eq(batches.id, batchId))
+    .limit(1);
+  if (!batch || batch.deletedAt) {
+    return NextResponse.json({ error: "Batch not found" }, { status: 404 });
+  }
+
+  const role = session!.user.role;
+  if (role === "student") {
     const [enrollment] = await db
       .select()
       .from(studentCourses)
       .where(
         and(
           eq(studentCourses.studentId, session!.user.id),
-          eq(studentCourses.batchId, batchId),
-          eq(studentCourses.isActive, true)
+          eq(studentCourses.batchId, batchId)
         )
       )
       .limit(1);
-    if (!enrollment) {
+    if (!enrollment || !hasRecordedAccess(enrollment)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  } else if (role === "mentor") {
+    const [mentor] = await db
+      .select({ courseId: users.courseId })
+      .from(users)
+      .where(eq(users.id, session!.user.id))
+      .limit(1);
+    const mentorCourseId = mentor?.courseId ?? session!.user.courseId;
+    if (!mentorCourseId || batch.courseId !== mentorCourseId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  } else if (role === "org_admin") {
+    const orgId = await resolveOrganisationId(session!);
+    if (!orgId || (batch.organisationId && batch.organisationId !== orgId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   }
@@ -279,6 +303,27 @@ export async function POSTClassRecording(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  if (session!.user.role === "mentor") {
+    const [mentor] = await db
+      .select({ courseId: users.courseId })
+      .from(users)
+      .where(eq(users.id, session!.user.id))
+      .limit(1);
+    const mentorCourseId = mentor?.courseId ?? session!.user.courseId;
+    if (!mentorCourseId || parsed.data.courseId !== mentorCourseId) {
+      return NextResponse.json({ error: "You can only upload recordings for your assigned course." }, { status: 403 });
+    }
+  }
+
+  const [batch] = await db
+    .select({ id: batches.id, courseId: batches.courseId, deletedAt: batches.deletedAt })
+    .from(batches)
+    .where(eq(batches.id, parsed.data.batchId))
+    .limit(1);
+  if (!batch || batch.deletedAt || batch.courseId !== parsed.data.courseId) {
+    return NextResponse.json({ error: "Batch does not belong to this course." }, { status: 400 });
+  }
+
   const [recording] = await db
     .insert(classRecordings)
     .values({
@@ -304,38 +349,84 @@ export async function PATCHClassRecording(request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
   const parsed = classRecordingSchema.partial().safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const [existing] = await db
+    .select({ id: classRecordings.id, courseId: classRecordings.courseId, batchId: classRecordings.batchId })
+    .from(classRecordings)
+    .where(and(eq(classRecordings.id, id), isNull(classRecordings.deletedAt)))
+    .limit(1);
+  if (!existing) {
+    return NextResponse.json({ error: "Recording not found" }, { status: 404 });
+  }
+
+  if (session!.user.role === "mentor") {
+    const [mentor] = await db
+      .select({ courseId: users.courseId })
+      .from(users)
+      .where(eq(users.id, session!.user.id))
+      .limit(1);
+    const mentorCourseId = mentor?.courseId ?? session!.user.courseId;
+    if (!mentorCourseId || existing.courseId !== mentorCourseId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
+  const nextCourseId = parsed.data.courseId ?? existing.courseId;
+  const nextBatchId = parsed.data.batchId ?? existing.batchId;
+  const [batch] = await db
+    .select({ courseId: batches.courseId, deletedAt: batches.deletedAt })
+    .from(batches)
+    .where(eq(batches.id, nextBatchId))
+    .limit(1);
+  if (!batch || batch.deletedAt || batch.courseId !== nextCourseId) {
+    return NextResponse.json({ error: "Batch does not belong to this course." }, { status: 400 });
+  }
+
   const [recording] = await db
     .update(classRecordings)
     .set(parsed.data)
-    .where(eq(classRecordings.id, id))
+    .where(and(eq(classRecordings.id, id), isNull(classRecordings.deletedAt)))
     .returning();
 
-  await logAction({
-    userId: session!.user.id,
-    role: session!.user.role,
-    action: "UPDATED_CLASS_RECORDING",
-    entity: "ClassRecording",
-    entityId: id,
-    ipAddress: getClientIp(request),
-  });
+  if (!recording) {
+    return NextResponse.json({ error: "Recording not found" }, { status: 404 });
+  }
+
+  try {
+    await logAction({
+      userId: session!.user.id,
+      role: session!.user.role,
+      action: "UPDATED_CLASS_RECORDING",
+      entity: "ClassRecording",
+      entityId: id,
+      ipAddress: getClientIp(request),
+    });
+  } catch (auditErr) {
+    console.error("[PATCHClassRecording audit]", auditErr);
+  }
 
   return NextResponse.json(recording);
 }
 
+/** Move a recording to trash. Mentors can upload but only super_admin/manager may delete. */
 export async function DELETEClassRecording(request: Request, id: string) {
-  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
+  const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
-  await db
+  const [recording] = await db
     .update(classRecordings)
     .set({ deletedAt: new Date() })
-    .where(eq(classRecordings.id, id));
+    .where(and(eq(classRecordings.id, id), isNull(classRecordings.deletedAt)))
+    .returning({ id: classRecordings.id });
+
+  if (!recording) {
+    return NextResponse.json({ error: "Recording not found." }, { status: 404 });
+  }
 
   await logAction({
     userId: session!.user.id,
@@ -358,32 +449,30 @@ export async function GETStudentRecordings(studentId: string) {
   }
 
   const enrollments = await db
-    .select({
-      liveCourseId: studentCourses.liveCourseId,
-      batchId: studentCourses.batchId,
-    })
+    .select()
     .from(studentCourses)
     .where(
       and(
         eq(studentCourses.studentId, studentId),
-        eq(studentCourses.isActive, true),
         isNotNull(studentCourses.liveCourseId)
       )
     );
 
-  if (enrollments.length === 0) {
+  const accessible = enrollments.filter((e) => hasRecordedAccess(e));
+
+  if (accessible.length === 0) {
     return NextResponse.json([]);
   }
 
-  const accessConditions = enrollments.map((enrollment) => {
+  const accessConditions = accessible.map((enrollment) => {
     if (enrollment.batchId) {
       return and(
         eq(classRecordings.courseId, enrollment.liveCourseId!),
         eq(classRecordings.batchId, enrollment.batchId)
       );
     }
-    // Enrolled in course but batch not set — show all recordings for that course
-    return eq(classRecordings.courseId, enrollment.liveCourseId!);
+    // Unbatched enrollments do not see org-specific batches.
+    return sql`false`;
   });
 
   const recordings = await db

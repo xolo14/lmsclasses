@@ -4,8 +4,11 @@ import {
  eq,
  or,
 } from "drizzle-orm";
-import { db, payments } from "@/lib/db/schema";
+import { db } from "@/lib/db";
+import { payments } from "@/lib/db/schema";
+import { logAction } from "@/lib/audit";
 import {
+ rupeesToPaise,
  verifyRazorpayWebhookSignature,
 } from "@/lib/razorpay";
 import {
@@ -23,10 +26,12 @@ type RazorpayWebhookPayload = {
  id?: string;
  order_id?: string;
  status?: string;
+ amount?: number | string;
+ currency?: string;
  };
  };
  };
- };
+};
 
 export async function POST(request: Request) {
  const rawBody = await request.text();
@@ -73,6 +78,41 @@ export async function POST(request: Request) {
  if (!payment) {
  // Not an LMS org-slot payment (or timing-window purge removed it) — ACK so Razorpay stops retrying.
  return NextResponse.json({ received: true, ignored: "unknown_order" });
+ }
+
+ if (payment.status === "success") {
+ return NextResponse.json({ received: true, alreadyProcessed: true });
+ }
+
+ // Bind the webhook's payment entity to our DB row: the order must be the one we stored
+ // and the captured amount (paise) must equal what we charged for. Do NOT fulfil otherwise.
+ const paidPaise = Number(paymentEntity?.amount);
+ const expectedPaise = rupeesToPaise(payment.amount);
+ const orderMismatch = payment.razorpayOrderId !== orderId;
+ const amountMismatch = !Number.isFinite(paidPaise) || paidPaise !== expectedPaise;
+ if (orderMismatch || amountMismatch) {
+ console.error(
+ `[payments/webhook] payment binding mismatch payment=${payment.id} order=${orderId} paid=${paidPaise} expected=${expectedPaise}`
+ );
+ await logAction({
+ action: "PAYMENT_NEEDS_MANUAL_REVIEW",
+ entity: "Payment",
+ entityId: payment.id,
+ metadata: {
+ reason: orderMismatch ? "webhook_order_mismatch" : "webhook_amount_mismatch",
+ actionTaken: "not_fulfilled",
+ razorpayOrderId: orderId,
+ razorpayPaymentId,
+ paidPaise: Number.isFinite(paidPaise) ? paidPaise : null,
+ expectedPaise,
+ },
+ });
+ // ACK so Razorpay stops retrying — retrying cannot change the outcome; ops must review.
+ return NextResponse.json({
+ received: true,
+ ignored: orderMismatch ? "order_mismatch" : "amount_mismatch",
+ needsManualReview: true,
+ });
  }
 
  // Atomic CAS: only accept pending/failed rows, skip already-successful (concurrent webhook handler got there first)

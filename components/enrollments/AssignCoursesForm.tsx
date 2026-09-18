@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,6 +34,8 @@ type Props = {
 };
 
 export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }: Props) {
+  const { data: session } = useSession();
+  const canComplimentary = session?.user?.role === "super_admin" || session?.user?.role === "manager";
   const [selected, setSelected] = useState<string[]>([]);
   const [accessType, setAccessType] = useState<EnrollmentAccessType>("both");
   const [isFree, setIsFree] = useState(false);
@@ -83,6 +86,10 @@ export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }
     enabled: !!activeLiveCourseId && (accessType === "live" || accessType === "both"),
   });
 
+  useEffect(() => {
+    setBatchId("");
+  }, [activeLiveCourseId]);
+
   const visibleCourses = useMemo(
     () => courses.filter((c) => courseMatchesAccessType(c, accessType)),
     [courses, accessType]
@@ -119,7 +126,7 @@ export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }
       recordedAccessFrom: now,
       liveAccessUntil: null,
       recordedAccessUntil: null,
-      isFree,
+      isFree: canComplimentary ? isFree : false,
       adminNotes: adminNotes || undefined,
     });
     if (res.success) {
@@ -159,27 +166,25 @@ export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }
         {(accessType === "live" || accessType === "both") && (
           <div>
             <Label>Batch (live courses)</Label>
-            {batches.length > 0 ? (
-              <select
-                className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 bg-swiss-white px-3 text-sm"
-                value={batchId}
-                onChange={(e) => setBatchId(e.target.value)}
-              >
-                <option value="">-- Select batch --</option>
-                {batches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} {b.startDate ? `(${formatDate(b.startDate)})` : ""}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 px-3 text-sm"
-                placeholder={batchesLoading ? "Loading batches..." : "Enter Batch ID or select course first"}
-                value={batchId}
-                onChange={(e) => setBatchId(e.target.value)}
-              />
-            )}
+            <select
+              className="mt-1 flex h-10 w-full rounded-sm border border-swiss-black/15 bg-swiss-white px-3 text-sm"
+              value={batchId}
+              onChange={(e) => setBatchId(e.target.value)}
+              disabled={batchesLoading || !activeLiveCourseId}
+            >
+              <option value="">
+                {batchesLoading
+                  ? "Loading batches..."
+                  : !activeLiveCourseId
+                    ? "Select a live course first"
+                    : "-- Select batch --"}
+              </option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} {b.startDate ? `(${formatDate(b.startDate)})` : ""}
+                </option>
+              ))}
+            </select>
             <p className="text-xs text-swiss-muted mt-1">
               Required for organisation live enrollments.
             </p>
@@ -232,10 +237,12 @@ export function AssignCoursesForm({ studentId, onSuccess, preselectedCourseIds }
         )}
       </div>
 
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={isFree} onChange={(e) => setIsFree(e.target.checked)} />
-        Complimentary (skip slot check)
-      </label>
+      {canComplimentary && (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={isFree} onChange={(e) => setIsFree(e.target.checked)} />
+          Complimentary (skip slot check)
+        </label>
+      )}
 
       <div>
         <Label>Admin notes</Label>

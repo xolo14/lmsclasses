@@ -13,7 +13,17 @@ import {
 const MONTHS_BACK = 6;
 
 function monthKey(date: Date): string {
-  return date.toLocaleString("en-IN", { month: "short", year: "2-digit" });
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${date.getFullYear()}-${month}`;
+}
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatMonthLabel(key: string): string {
+  const [year, month] = key.split("-");
+  const idx = Number(month) - 1;
+  if (!year || idx < 0 || idx > 11) return key;
+  return `${MONTH_LABELS[idx]} ${year.slice(-2)}`;
 }
 
 function lastNMonthKeys(n: number): string[] {
@@ -70,7 +80,11 @@ export async function getOrgAdminAnalytics(
   since.setDate(1);
   since.setHours(0, 0, 0, 0);
 
-  const orgStudentFilter = and(eq(users.role, "student"), eq(users.organisationId, organisationId));
+  const orgStudentFilter = and(
+    eq(users.role, "student"),
+    eq(users.organisationId, organisationId),
+    isNull(users.deletedAt)
+  );
   const orgPaymentFilter = and(
     eq(payments.organisationId, organisationId),
     or(isNotNull(payments.liveCourseId), isNotNull(payments.recordCourseId))!
@@ -133,38 +147,36 @@ export async function getOrgAdminAnalytics(
       .where(eq(slots.organisationId, organisationId)),
     db
       .select({
-        month: sql<string>`to_char(${payments.createdAt}, 'Mon YY')`,
+        month: sql<string>`to_char(date_trunc('month', ${payments.createdAt}), 'YYYY-MM')`,
         amount: sql<string>`coalesce(sum(${payments.amount}), 0)`,
       })
       .from(payments)
       .where(
         and(orgPaymentFilter, eq(payments.status, "success"), gte(payments.createdAt, since))
       )
-      .groupBy(sql`to_char(${payments.createdAt}, 'Mon YY')`, sql`date_trunc('month', ${payments.createdAt})`)
+      .groupBy(sql`date_trunc('month', ${payments.createdAt})`)
       .orderBy(sql`date_trunc('month', ${payments.createdAt})`),
     db
       .select({
-        month: sql<string>`to_char(${studentCourses.enrolledAt}, 'Mon YY')`,
+        month: sql<string>`to_char(date_trunc('month', ${studentCourses.enrolledAt}), 'YYYY-MM')`,
         count: sql<number>`count(*)::int`,
       })
       .from(studentCourses)
       .where(and(orgEnrollmentFilter, gte(studentCourses.enrolledAt, since)))
-      .groupBy(
-        sql`to_char(${studentCourses.enrolledAt}, 'Mon YY')`,
-        sql`date_trunc('month', ${studentCourses.enrolledAt})`
-      )
+      .groupBy(sql`date_trunc('month', ${studentCourses.enrolledAt})`)
       .orderBy(sql`date_trunc('month', ${studentCourses.enrolledAt})`),
     db
       .select({
         courseTitle: sql<string>`coalesce(${liveCourses.title}, ${recordCourses.title}, 'Unknown')`,
-        used: sql<number>`coalesce(${slots.usedSlots}, 0)::int`,
-        total: slots.totalSlots,
+        used: sql<number>`coalesce(sum(${slots.usedSlots}), 0)::int`,
+        total: sql<number>`coalesce(sum(${slots.totalSlots}), 0)::int`,
       })
       .from(slots)
-      .leftJoin(liveCourses, eq(slots.courseId, liveCourses.id))
-      .leftJoin(recordCourses, eq(slots.recordCourseId, recordCourses.id))
+      .leftJoin(liveCourses, and(eq(slots.courseId, liveCourses.id), isNull(liveCourses.deletedAt)))
+      .leftJoin(recordCourses, and(eq(slots.recordCourseId, recordCourses.id), isNull(recordCourses.deletedAt)))
       .where(eq(slots.organisationId, organisationId))
-      .orderBy(desc(slots.totalSlots)),
+      .groupBy(sql`coalesce(${liveCourses.title}, ${recordCourses.title}, 'Unknown')`)
+      .orderBy(sql`coalesce(sum(${slots.totalSlots}), 0) desc`),
     db
       .select({
         id: payments.id,
@@ -205,13 +217,13 @@ export async function getOrgAdminAnalytics(
     monthKeys,
     spendingRows.map((r) => ({ month: r.month, value: parseFloat(r.amount) })),
     "amount"
-  ) as { month: string; amount: number }[];
+  ).map((row) => ({ month: formatMonthLabel(String(row.month)), amount: Number(row.amount) }));
 
   const enrollmentsByMonth = fillMonthlySeries(
     monthKeys,
     enrollmentRows.map((r) => ({ month: r.month, value: r.count })),
     "count"
-  ) as { month: string; count: number }[];
+  ).map((row) => ({ month: formatMonthLabel(String(row.month)), count: Number(row.count) }));
 
   const liveCount = liveEnrollments?.count ?? 0;
   const recordCount = recordEnrollments?.count ?? 0;

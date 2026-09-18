@@ -313,20 +313,28 @@ export async function sendHrWelcomeEmail({
   email,
   hrName,
   companyName,
-  password,
 }: {
   email: string;
   hrName: string;
   companyName: string;
-  password: string;
 }) {
-  return sendMemberCredentialsEmail({
-    email,
-    name: hrName,
-    roleLabel: "HR",
-    password,
-    loginPath: "/hr/login",
-    introHtml: `<p>Your HR account for <strong>${escapeHtml(companyName)}</strong> is ready.</p>`,
+  const safeEmail = email.trim().toLowerCase();
+  const loginUrl = `${appUrl}/hr/login`;
+  return sendEmail({
+    to: safeEmail,
+    subject: "Welcome to LMS Classes — HR Account",
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff; color: #1a202c;">
+        <h2 style="color: #0284c7; margin: 0 0 16px;">Welcome, ${escapeHtml(hrName)}!</h2>
+        <p>Your HR account for <strong>${escapeHtml(companyName)}</strong> is ready.</p>
+        <p>Sign in with the email and password you chose during registration.</p>
+        <p><strong>Email:</strong> ${escapeHtml(safeEmail)}</p>
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${loginUrl}" style="background-color: #0284c7; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Login here</a>
+        </div>
+        <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
+      </div>
+    `,
   });
 }
 
@@ -351,14 +359,14 @@ export async function sendMentorLiveClassEmail({
     to: email,
     subject: `New Live Class Assigned: ${title}`,
     html: `
-      <h2>Hello ${mentorName},</h2>
+      <h2>Hello ${escapeHtml(mentorName)},</h2>
       <p>A new live class has been assigned to you.</p>
       <ul>
-        <li><strong>Title:</strong> ${title}</li>
-        <li><strong>Course:</strong> ${courseName}</li>
-        ${batchName ? `<li><strong>Batch:</strong> ${batchName}</li>` : ""}
-        <li><strong>Scheduled:</strong> ${scheduledAt}</li>
-        ${meetingLink ? `<li><strong>Meeting Link:</strong> <a href="${meetingLink}">${meetingLink}</a></li>` : ""}
+        <li><strong>Title:</strong> ${escapeHtml(title)}</li>
+        <li><strong>Course:</strong> ${escapeHtml(courseName)}</li>
+        ${batchName ? `<li><strong>Batch:</strong> ${escapeHtml(batchName)}</li>` : ""}
+        <li><strong>Scheduled:</strong> ${escapeHtml(scheduledAt)}</li>
+        ${meetingLink ? `<li><strong>Meeting Link:</strong> <a href="${escapeHtml(meetingLink)}">${escapeHtml(meetingLink)}</a></li>` : ""}
       </ul>
       <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
@@ -378,7 +386,7 @@ export async function sendHrOtpEmail({
     html: `
       <h2>HR Email Verification</h2>
       <p>Your OTP is:</p>
-      <p style="font-size:24px;font-weight:700;letter-spacing:2px">${otp}</p>
+      <p style="font-size:24px;font-weight:700;letter-spacing:2px">${escapeHtml(otp)}</p>
       <p>This code expires in 10 minutes.</p>
       <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
@@ -400,8 +408,8 @@ export async function sendJobPostedEmail({
     to: email,
     subject: "Job Posted Successfully",
     html: `
-      <h2>Hello ${hrName},</h2>
-      <p>Your job <strong>${jobTitle}</strong> for <strong>${companyName}</strong> is now live.</p>
+      <h2>Hello ${escapeHtml(hrName)},</h2>
+      <p>Your job <strong>${escapeHtml(jobTitle)}</strong> for <strong>${escapeHtml(companyName)}</strong> is now live.</p>
       <p><a href="${appUrl}/hr/jobs/live">View live jobs</a></p>
       <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
@@ -423,8 +431,8 @@ export async function sendNewApplicationEmail({
     to: email,
     subject: "New Application Received",
     html: `
-      <h2>Hello ${hrName},</h2>
-      <p><strong>${applicantName}</strong> applied for <strong>${jobTitle}</strong>.</p>
+      <h2>Hello ${escapeHtml(hrName)},</h2>
+      <p><strong>${escapeHtml(applicantName)}</strong> applied for <strong>${escapeHtml(jobTitle)}</strong>.</p>
       <p><a href="${appUrl}/hr/applications">Open applications</a></p>
       <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
@@ -444,8 +452,8 @@ export async function sendApplicationShortlistedEmail({
     to: email,
     subject: "Application Shortlisted",
     html: `
-      <h2>Hello ${applicantName},</h2>
-      <p>Your application for <strong>${jobTitle}</strong> has been shortlisted.</p>
+      <h2>Hello ${escapeHtml(applicantName)},</h2>
+      <p>Your application for <strong>${escapeHtml(jobTitle)}</strong> has been shortlisted.</p>
       <p>We will contact you with next steps.</p>
       <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,
@@ -465,8 +473,8 @@ export async function sendApplicationRejectedEmail({
     to: email,
     subject: "Application Update",
     html: `
-      <h2>Hello ${applicantName},</h2>
-      <p>Thank you for applying to <strong>${jobTitle}</strong>.</p>
+      <h2>Hello ${escapeHtml(applicantName)},</h2>
+      <p>Thank you for applying to <strong>${escapeHtml(jobTitle)}</strong>.</p>
       <p>At this time, your application was not selected. We encourage you to apply for future opportunities.</p>
       <p style="color:#64748b;font-size:12px;margin-top:24px">— ${appName} (info@lmsclasses.com)</p>
     `,

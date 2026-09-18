@@ -43,7 +43,7 @@ export default function HrApplicationsPage() {
                   <p className="text-sm text-muted-foreground">{a.email} · {a.phone} · {a.collegeName}</p>
                   <p className="text-xs text-muted-foreground">{formatDateTime(a.appliedAt)}</p>
                   <div className="mt-2 flex gap-2">
-                    <a className="text-sm underline" href={a.resumeUrl} target="_blank" rel="noopener noreferrer">Resume</a>
+                    <a className="text-sm underline" href={`/api/hr/applications/${a.id}/resume`} target="_blank" rel="noopener noreferrer">Resume</a>
                     <Button size="sm" variant="outline" onClick={() => updateStatus.mutate({ id: a.id, status: "shortlisted" })}>Shortlist</Button>
                     <Button size="sm" variant="destructive" onClick={() => updateStatus.mutate({ id: a.id, status: "rejected" })}>Reject</Button>
                   </div>

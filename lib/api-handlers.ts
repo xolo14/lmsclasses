@@ -18,7 +18,7 @@ import {
 } from "@/lib/db/schema";
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
-import { organisationSchema, editOrganisationSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, studentSchema } from "@/lib/validations";
+import { organisationSchema, editOrganisationSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, studentSchema, patchStaffUserSchema, patchStudentSchema } from "@/lib/validations";
 import { orgAdminVisibleBatches } from "@/lib/batch-scope";
 import { sendOrgAdminWelcomeEmail,
   sendStudentWelcomeEmail,
@@ -30,6 +30,8 @@ import { sendOrgAdminWelcomeEmail,
 import { notifyStudentsLiveClassMeetingLink } from "@/lib/live-class-whatsapp";
 import { generatePassword, generateLmsId } from "@/lib/razorpay";
 import { softDeleteOrganisationCascade } from "@/lib/organisation-cascade";
+import { freeOneSlot, consumeOneSlot, getSlotSummary, resolveCourse } from "@/lib/enrollment-service";
+import { hasLiveAccess, hasRecordedAccess } from "@/lib/content-access";
 
 /** Remove a partially created student if enrollment or slot steps fail (HTTP driver has no transactions). */
 async function rollbackNewStudent(studentId: string) {
@@ -53,7 +55,7 @@ async function consumeSlot(slotId: string): Promise<boolean> {
   return !!updated;
 }
 
-async function autoCompletePastLiveClasses(filters?: { courseId?: string; mentorId?: string }) {
+export async function autoCompletePastLiveClasses(filters?: { courseId?: string; mentorId?: string }) {
   const conditions = [
     isNull(liveClasses.deletedAt),
     inArray(liveClasses.status, ["scheduled", "live"]),
@@ -284,14 +286,19 @@ export async function DELETEOrganisation(request: Request, id: string) {
 
 // ============ COURSES ============
 export async function GETLiveCourses() {
-  const { error } = await requireAuth();
+  const { error, session } = await requireAuth();
   if (error) return error;
+
+  const filters = [isNull(liveCourses.deletedAt)];
+  if (session!.user.role === "org_admin" || session!.user.role === "student") {
+    filters.push(eq(liveCourses.isActive, true));
+  }
 
   const [allCourses, enrollmentCounts] = await Promise.all([
     db
       .select()
       .from(liveCourses)
-      .where(isNull(liveCourses.deletedAt))
+      .where(and(...filters))
       .orderBy(desc(liveCourses.createdAt)),
     db
       .select({
@@ -357,7 +364,7 @@ export async function GETOrgAdminPurchasedLiveCourses(organisationId: string) {
       price: liveCourses.price,
     })
     .from(liveCourses)
-    .where(and(inArray(liveCourses.id, courseIds), isNull(liveCourses.deletedAt)));
+    .where(and(inArray(liveCourses.id, courseIds), isNull(liveCourses.deletedAt), eq(liveCourses.isActive, true)));
 
   const enriched = courses.map((course) => {
     const totals = byCourse.get(course.id)!;
@@ -373,14 +380,19 @@ export async function GETOrgAdminPurchasedLiveCourses(organisationId: string) {
 }
 
 export async function GETRecordCourses() {
-  const { error } = await requireAuth();
+  const { error, session } = await requireAuth();
   if (error) return error;
+
+  const filters = [isNull(recordCourses.deletedAt)];
+  if (session!.user.role === "org_admin" || session!.user.role === "student") {
+    filters.push(eq(recordCourses.isActive, true));
+  }
 
   const [allCourses, enrollmentCounts] = await Promise.all([
     db
       .select()
       .from(recordCourses)
-      .where(isNull(recordCourses.deletedAt))
+      .where(and(...filters))
       .orderBy(desc(recordCourses.createdAt)),
     db
       .select({
@@ -446,7 +458,7 @@ export async function GETOrgAdminPurchasedRecordCourses(organisationId: string) 
       price: recordCourses.price,
     })
     .from(recordCourses)
-    .where(and(inArray(recordCourses.id, courseIds), isNull(recordCourses.deletedAt)));
+    .where(and(inArray(recordCourses.id, courseIds), isNull(recordCourses.deletedAt), eq(recordCourses.isActive, true)));
 
   const enriched = courses.map((course) => {
     const totals = byCourse.get(course.id)!;
@@ -690,8 +702,9 @@ export async function GETStudents(request: Request) {
   const courseId = searchParams.get("courseId");
   const batchId = searchParams.get("batchId");
   const cursor = searchParams.get("cursor");
-  const limit = searchParams.get("limit") || "50";
-  const limitNum = Math.min(parseInt(limit), 100);
+  const q = searchParams.get("q")?.trim();
+  const parsedLimit = Number.parseInt(searchParams.get("limit") || "50", 10);
+  const limitNum = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 50;
 
   const conditions = [eq(users.role, "student"), isNull(users.deletedAt)];
 
@@ -711,6 +724,10 @@ export async function GETStudents(request: Request) {
     conditions.push(eq(studentCourses.isActive, true));
   }
   if (batchId) conditions.push(eq(studentCourses.batchId, batchId));
+  if (q) {
+    const like = `%${q}%`;
+    conditions.push(or(sql`${users.name} ilike ${like}`, sql`${users.email} ilike ${like}`)!);
+  }
 
   if (cursor) {
     conditions.push(gt(users.id, cursor));
@@ -829,6 +846,40 @@ export async function GETStudents(request: Request) {
   });
 
   return NextResponse.json({ data: finalData, nextCursor, hasNextPage });
+}
+
+export async function GETStudent(id: string) {
+  const { error, session } = await requireAuth(["super_admin", "manager", "org_admin"]);
+  if (error) return error;
+
+  const filters = [eq(users.id, id), eq(users.role, "student"), isNull(users.deletedAt)];
+  if (session!.user.role === "org_admin") {
+    const orgId = await resolveOrganisationId(session!);
+    if (!orgId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    filters.push(eq(users.organisationId, orgId));
+  }
+
+  const [student] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      phone: users.phone,
+      lmsId: users.lmsId,
+      collegeName: users.collegeName,
+      isActive: users.isActive,
+      organisationId: users.organisationId,
+    })
+    .from(users)
+    .where(and(...filters))
+    .limit(1);
+
+  if (!student) {
+    return NextResponse.json({ error: "Student not found" }, { status: 404 });
+  }
+  return NextResponse.json(student);
 }
 
 export async function POSTStudent(request: Request) {
@@ -1167,7 +1218,22 @@ export async function PATCHStudent(request: Request, id: string) {
     return NextResponse.json(student);
   }
 
-  const { name, phone, email, collegeName, isActive } = body;
+  const parsedPatch = patchStudentSchema.safeParse(body);
+  if (!parsedPatch.success) {
+    return NextResponse.json({ error: parsedPatch.error.flatten() }, { status: 400 });
+  }
+  const { name, phone, email, collegeName, isActive } = parsedPatch.data;
+
+  if (email) {
+    const [existing] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email}`)
+      .limit(1);
+    if (existing && existing.id !== id) {
+      return NextResponse.json({ error: "Email is already in use" }, { status: 409 });
+    }
+  }
 
   const updates: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
   if (name !== undefined) updates.name = name;
@@ -1259,50 +1325,67 @@ export async function DELETEStudent(request: Request, id: string) {
       if (claimed.length === 0) continue;
 
       if (enrollment.liveCourseId) {
-        await db
-          .update(slots)
-          .set({ usedSlots: sql`GREATEST(COALESCE(${slots.usedSlots}, 0) - 1, 0)` })
-          .where(
-            and(
-              eq(slots.organisationId, enrollment.organisationId),
-              eq(slots.courseId, enrollment.liveCourseId),
-              sql`COALESCE(${slots.usedSlots}, 0) > 0`
-            )
-          );
+        const course = await resolveCourse(enrollment.liveCourseId);
+        if (course) await freeOneSlot(enrollment.organisationId, course);
       }
       if (enrollment.recordCourseId) {
-        await db
-          .update(slots)
-          .set({ usedSlots: sql`GREATEST(COALESCE(${slots.usedSlots}, 0) - 1, 0)` })
-          .where(
-            and(
-              eq(slots.organisationId, enrollment.organisationId),
-              eq(slots.recordCourseId, enrollment.recordCourseId),
-              sql`COALESCE(${slots.usedSlots}, 0) > 0`
-            )
-          );
+        const course = await resolveCourse(enrollment.recordCourseId);
+        if (course) await freeOneSlot(enrollment.organisationId, course);
+      }
+    }
+
+    await db
+      .update(studentCourses)
+      .set({ isActive: false, status: "revoked" })
+      .where(and(eq(studentCourses.studentId, id), eq(studentCourses.organisationId, actorOrgId)));
+
+    await db
+      .update(users)
+      .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(users.id, id), eq(users.role, "student"), eq(users.organisationId, actorOrgId)));
+  } else {
+    const staffEnrollments = await db
+      .select({
+        id: studentCourses.id,
+        liveCourseId: studentCourses.liveCourseId,
+        recordCourseId: studentCourses.recordCourseId,
+        organisationId: studentCourses.organisationId,
+        slotConsumed: studentCourses.slotConsumed,
+      })
+      .from(studentCourses)
+      .where(and(eq(studentCourses.studentId, id), eq(studentCourses.isActive, true)));
+
+    for (const enrollment of staffEnrollments) {
+      if (!enrollment.slotConsumed || !enrollment.organisationId) continue;
+      const claimed = await db
+        .update(studentCourses)
+        .set({ slotConsumed: false, updatedAt: new Date() })
+        .where(and(eq(studentCourses.id, enrollment.id), eq(studentCourses.slotConsumed, true)))
+        .returning({ id: studentCourses.id });
+      if (claimed.length === 0) continue;
+      if (enrollment.liveCourseId) {
+        const course = await resolveCourse(enrollment.liveCourseId);
+        if (course) await freeOneSlot(enrollment.organisationId, course);
+      }
+      if (enrollment.recordCourseId) {
+        const course = await resolveCourse(enrollment.recordCourseId);
+        if (course) await freeOneSlot(enrollment.organisationId, course);
       }
     }
 
     await db
       .update(studentCourses)
       .set({ isActive: false })
-      .where(and(eq(studentCourses.studentId, id), eq(studentCourses.organisationId, actorOrgId)));
-
-    await db
-      .update(users)
-      .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(users.id, id), eq(users.organisationId, actorOrgId)));
-  } else {
-    await db
-      .update(studentCourses)
-      .set({ isActive: false })
       .where(eq(studentCourses.studentId, id));
 
-    await db
+    const [deleted] = await db
       .update(users)
       .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(users.id, id));
+      .where(and(eq(users.id, id), eq(users.role, "student")))
+      .returning({ id: users.id });
+    if (!deleted) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
   }
 
   await logAction({
@@ -1433,18 +1516,23 @@ export async function POSTUserByRole(request: Request, role: "manager" | "mentor
   return NextResponse.json(user, { status: 201 });
 }
 
-export async function PATCHUser(request: Request, id: string) {
+export async function PATCHUser(request: Request, id: string, role: "manager" | "mentor") {
   const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
-  const body = await request.json();
-  const { name, phone, isActive, email, password, courseId } = body;
+  const body = await request.json().catch(() => null);
+  const parsed = patchStaffUserSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const { name, phone, isActive, email, password, courseId } = parsed.data;
 
   if (email) {
     const [existing] = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.email, email))
+      .where(sql`lower(${users.email}) = ${email}`)
       .limit(1);
     if (existing && existing.id !== id) {
       return NextResponse.json({ error: "Email is already in use" }, { status: 409 });
@@ -1472,21 +1560,14 @@ export async function PATCHUser(request: Request, id: string) {
     updateData.password = await bcrypt.hash(password, 12);
   }
 
-  let user;
-  try {
-    [user] = await db
-      .update(users)
-      .set(updateData)
-      .where(eq(users.id, id))
-      .returning();
-  } catch (patchErr: any) {
-    console.warn("[PATCHUser fallback without courseId]", patchErr?.message);
-    delete updateData.courseId;
-    [user] = await db
-      .update(users)
-      .set(updateData)
-      .where(eq(users.id, id))
-      .returning();
+  const [user] = await db
+    .update(users)
+    .set(updateData)
+    .where(and(eq(users.id, id), eq(users.role, role), isNull(users.deletedAt)))
+    .returning();
+
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   await logAction({
@@ -1495,20 +1576,26 @@ export async function PATCHUser(request: Request, id: string) {
     action: "UPDATED_USER",
     entity: "User",
     entityId: id,
+    metadata: { targetRole: role, fields: Object.keys(parsed.data) },
     ipAddress: getClientIp(request),
   });
 
   return NextResponse.json(user);
 }
 
-export async function DELETEUser(request: Request, id: string) {
+export async function DELETEUser(request: Request, id: string, role: "manager" | "mentor") {
   const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
-  await db
+  const [user] = await db
     .update(users)
     .set({ isActive: false, deletedAt: new Date(), updatedAt: new Date() })
-    .where(eq(users.id, id));
+    .where(and(eq(users.id, id), eq(users.role, role), isNull(users.deletedAt)))
+    .returning({ id: users.id });
+
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
 
   await logAction({
     userId: session!.user.id,
@@ -1516,6 +1603,7 @@ export async function DELETEUser(request: Request, id: string) {
     action: "DELETED_USER",
     entity: "User",
     entityId: id,
+    metadata: { targetRole: role },
     ipAddress: getClientIp(request),
   });
 
@@ -1602,6 +1690,35 @@ export async function POSTBatch(request: Request) {
     );
   }
 
+  const [course] = await db
+    .select({ id: liveCourses.id })
+    .from(liveCourses)
+    .where(and(eq(liveCourses.id, parsed.data.courseId), isNull(liveCourses.deletedAt)))
+    .limit(1);
+  if (!course) {
+    return NextResponse.json({ error: "Course not found" }, { status: 404 });
+  }
+
+  if (session!.user.role === "org_admin" && organisationId) {
+    const [owned] = await db
+      .select({ id: slots.id })
+      .from(slots)
+      .where(
+        and(
+          eq(slots.organisationId, organisationId),
+          eq(slots.courseId, course.id),
+          sql`${slots.totalSlots} > 0`
+        )
+      )
+      .limit(1);
+    if (!owned) {
+      return NextResponse.json(
+        { error: "Purchase slots for this course before creating a batch." },
+        { status: 403 }
+      );
+    }
+  }
+
   const [batch] = await db
     .insert(batches)
     .values({
@@ -1646,11 +1763,24 @@ export async function PATCHBatch(request: Request, id: string) {
     updateData.endDate = endDate ? new Date(endDate) : null;
   }
 
+  const filters = [eq(batches.id, id), isNull(batches.deletedAt)];
+  if (session!.user.role === "org_admin") {
+    const orgId = await resolveOrganisationId(session!);
+    if (!orgId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    filters.push(eq(batches.organisationId, orgId));
+  }
+
   const [batch] = await db
     .update(batches)
     .set(updateData as typeof batches.$inferInsert)
-    .where(eq(batches.id, id))
+    .where(and(...filters))
     .returning();
+
+  if (!batch) {
+    return NextResponse.json({ error: "Batch not found" }, { status: 404 });
+  }
 
   await logAction({
     userId: session!.user.id,
@@ -1684,14 +1814,13 @@ export async function DELETEBatch(request: Request, id: string) {
 
 // ============ LIVE CLASSES ============
 export async function GETLiveClasses(request: Request) {
-  const { error, session } = await requireAuth();
+  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
   const tab = searchParams.get("tab") ?? "active";
 
   const mentorId = session!.user.role === "mentor" ? session!.user.id : undefined;
-  await autoCompletePastLiveClasses(mentorId ? { mentorId } : undefined);
 
   const conditions = [isNull(liveClasses.deletedAt)];
 
@@ -1746,11 +1875,25 @@ export async function POSTLiveClass(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  if (session!.user.role === "mentor" && parsed.data.mentorId !== session!.user.id) {
-    return NextResponse.json(
-      { error: "You can only schedule live classes for yourself." },
-      { status: 403 }
-    );
+  if (session!.user.role === "mentor") {
+    if (parsed.data.mentorId !== session!.user.id) {
+      return NextResponse.json(
+        { error: "You can only schedule live classes for yourself." },
+        { status: 403 }
+      );
+    }
+    const [self] = await db
+      .select({ courseId: users.courseId })
+      .from(users)
+      .where(eq(users.id, session!.user.id))
+      .limit(1);
+    const mentorCourseId = self?.courseId ?? session!.user.courseId;
+    if (mentorCourseId && parsed.data.courseId !== mentorCourseId) {
+      return NextResponse.json(
+        { error: "You can only schedule live classes for your assigned course." },
+        { status: 403 }
+      );
+    }
   }
 
   const [liveClass] = await db
@@ -1777,15 +1920,19 @@ export async function POSTLiveClass(request: Request) {
   ]);
 
   if (mentor && course) {
-    await sendMentorLiveClassEmail({
-      email: mentor.email,
-      mentorName: mentor.name,
-      title: parsed.data.title,
-      courseName: course.title,
-      batchName: batch?.name,
-      scheduledAt: parsed.data.scheduledAt,
-      meetingLink: parsed.data.meetingLink,
-    });
+    try {
+      await sendMentorLiveClassEmail({
+        email: mentor.email,
+        mentorName: mentor.name,
+        title: parsed.data.title,
+        courseName: course.title,
+        batchName: batch?.name,
+        scheduledAt: parsed.data.scheduledAt,
+        meetingLink: parsed.data.meetingLink,
+      });
+    } catch (mailErr) {
+      console.error("[live-class] mentor email failed:", mailErr);
+    }
   }
 
   if (parsed.data.meetingLink?.trim()) {
@@ -1909,10 +2056,12 @@ export async function GETPayments(request: Request) {
   const type = searchParams.get("type");
 
   const conditions = [];
-  const isOrgAdmin = session!.user.role === "org_admin" && session!.user.organisationId;
-  if (isOrgAdmin) {
-    conditions.push(eq(payments.organisationId, session!.user.organisationId!));
-    conditions.push(isNotNull(payments.liveCourseId));
+  if (session!.user.role === "org_admin") {
+    const orgId = await resolveOrganisationId(session!);
+    if (!orgId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    conditions.push(eq(payments.organisationId, orgId));
   } else if (type === "live") {
     conditions.push(isNotNull(payments.liveCourseId));
   } else if (type === "record") {
@@ -2033,7 +2182,7 @@ export async function GETAuditLogs(request: Request) {
 
 // ============ DASHBOARD STATS ============
 export async function GETDashboardStats(scope?: "org" | "global", organisationId?: string) {
-  const { error, session } = await requireAuth();
+  const { error, session } = await requireAuth(["super_admin", "manager", "org_admin"]);
   if (error) return error;
 
   const orgFilter =
@@ -2270,22 +2419,23 @@ export async function GETStudentLiveClasses(
   }
 
   const [enrollment] = await db
-    .select({
-      id: studentCourses.id,
-      batchId: studentCourses.batchId,
-    })
+    .select()
     .from(studentCourses)
     .where(
       and(
         eq(studentCourses.studentId, studentId),
-        eq(studentCourses.liveCourseId, courseId),
-        eq(studentCourses.isActive, true)
+        eq(studentCourses.liveCourseId, courseId)
       )
     )
     .limit(1);
 
   if (!enrollment) {
     return NextResponse.json({ error: "Not enrolled in this course" }, { status: 403 });
+  }
+
+  const wantsRecordings = tab === "recordings" || tab === "completed";
+  if (wantsRecordings ? !hasRecordedAccess(enrollment) && !hasLiveAccess(enrollment) : !hasLiveAccess(enrollment)) {
+    return NextResponse.json({ error: "Access expired or not granted" }, { status: 403 });
   }
 
   await autoCompletePastLiveClasses({ courseId });
@@ -2300,6 +2450,8 @@ export async function GETStudentLiveClasses(
     conditions.push(
       or(eq(liveClasses.batchId, enrollment.batchId), isNull(liveClasses.batchId))!
     );
+  } else {
+    conditions.push(isNull(liveClasses.batchId));
   }
 
   if (tab === "completed" || tab === "recordings") {

@@ -7,6 +7,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { classRecordingSchema, type ClassRecordingInput } from "@/lib/validations";
 import { encodeUrlForApiTransport } from "@/lib/api-url-transport";
 import {
+  ACCEPTED_VIDEO_INPUT,
+  MAX_VIDEO_UPLOAD_LABEL,
+  formatFileSize,
+  getVideoSizeError,
+} from "@/lib/video-upload";
+import {
+  startResumableVideoUpload,
+  uploadFileToResumableSession,
+} from "@/lib/video-upload-client";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -63,78 +73,31 @@ export function AddClassRecordingModal({
   };
 
   const uploadFileToGcs = async (file: File): Promise<string> => {
-    setUploadStatus("Requesting upload URL...");
+    setUploadStatus("Starting upload session...");
+    setUploadProgress(2);
+
+    // Step 1: server opens a GCS resumable session (enforces the 5 GB cap and IAM).
+    const session = await startResumableVideoUpload({ batchId, file });
+    setUploadStatus(`Uploading to folder: ${session.folderName}...`);
     setUploadProgress(5);
 
-    // Step 1: Request signed upload URL with batch folder organization
-    const res = await fetch("/api/uploads/video-signed-url", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        batchId,
-        filename: file.name,
-        contentType: file.type || "video/mp4",
-      }),
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || "Failed to generate storage upload URL");
-    }
-
-    const { signedUrl, objectKey, folderName } = await res.json();
-    setUploadStatus(`Uploading to folder: ${folderName}...`);
-
-    // Step 2: Upload directly to GCS bucket via XMLHttpRequest to monitor progress
+    // Step 2: browser streams the bytes to GCS in retryable chunks; nothing goes through Next.js.
+    const totalLabel = formatFileSize(file.size);
     try {
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", signedUrl, true);
-        xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
-
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 90);
-            setUploadProgress(Math.max(10, percent));
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            setUploadProgress(95);
-            resolve();
-          } else {
-            reject(new Error(`Direct storage upload returned status ${xhr.status}`));
-          }
-        };
-
-        xhr.onerror = () => reject(new Error("Direct bucket upload network error"));
-        xhr.send(file);
+      await uploadFileToResumableSession(file, session, {
+        onProgress: (uploaded) => {
+          const percent = 5 + Math.round((uploaded / file.size) * 90);
+          setUploadProgress(Math.min(95, Math.max(5, percent)));
+          setUploadStatus(`Uploading ${formatFileSize(uploaded)} of ${totalLabel}...`);
+        },
       });
-
-      return objectKey;
-    } catch (directUploadErr) {
-      // Fallback: If browser direct PUT fails (e.g. CORS), upload through server fallback
-      console.warn("[GCS Direct Upload failed, using server fallback]", directUploadErr);
-      setUploadStatus("Using server upload fallback...");
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("batchId", batchId);
-
-      const fallbackRes = await fetch("/api/uploads/video", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!fallbackRes.ok) {
-        const errJson = await fallbackRes.json().catch(() => ({}));
-        throw new Error(errJson.error || "Failed to upload video to storage");
-      }
-
-      const fallbackData = await fallbackRes.json();
-      return fallbackData.objectKey;
+    } catch (uploadErr) {
+      console.error("[GCS resumable upload failed]", uploadErr);
+      throw uploadErr instanceof Error ? uploadErr : new Error("Upload to storage failed.");
     }
+
+    setUploadProgress(95);
+    return session.objectKey;
   };
 
   const saveRecordingMutation = useMutation({
@@ -203,11 +166,20 @@ export function AddClassRecordingModal({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setValue("videoUrl", file.name, { shouldValidate: true });
-      setError("");
+    if (!file) return;
+
+    const sizeError = getVideoSizeError(file.size);
+    if (sizeError) {
+      setSelectedFile(null);
+      setValue("videoUrl", "");
+      setError(sizeError);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
     }
+
+    setSelectedFile(file);
+    setValue("videoUrl", file.name, { shouldValidate: true });
+    setError("");
   };
 
   return (
@@ -287,7 +259,7 @@ export function AddClassRecordingModal({
               <input
                 type="file"
                 ref={fileInputRef}
-                accept="video/*,.mp4,.mov,.mkv,.webm,.avi"
+                accept={ACCEPTED_VIDEO_INPUT}
                 className="hidden"
                 onChange={handleFileChange}
                 disabled={isUploading}
@@ -304,7 +276,7 @@ export function AddClassRecordingModal({
                     Directly uploads into the <strong>lmsclasses</strong> bucket under this batch's folder
                   </p>
                   <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                    Supports MP4, WebM, MOV, MKV
+                    Supports MP4, WebM, MOV, MKV · up to {MAX_VIDEO_UPLOAD_LABEL}
                   </p>
                 </div>
               ) : (
@@ -316,7 +288,7 @@ export function AddClassRecordingModal({
                     <div className="truncate">
                       <p className="text-sm font-medium truncate">{selectedFile.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {(selectedFile.size / (1024 * 1024)).toFixed(1)} MB
+                        {formatFileSize(selectedFile.size)}
                       </p>
                     </div>
                   </div>
