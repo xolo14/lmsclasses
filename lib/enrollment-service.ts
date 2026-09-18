@@ -787,9 +787,13 @@ export async function listEnrollmentsForAdmin(filters: {
   accessType?: EnrollmentAccessType;
   limit?: number;
 }) {
-  const conditions = [];
+  const conditions = [isNull(users.deletedAt)];
   if (filters.studentId) conditions.push(eq(studentCourses.studentId, filters.studentId));
-  if (filters.orgId) conditions.push(eq(studentCourses.organisationId, filters.orgId));
+  if (filters.orgId === "direct") {
+    conditions.push(isNull(studentCourses.organisationId));
+  } else if (filters.orgId) {
+    conditions.push(eq(studentCourses.organisationId, filters.orgId));
+  }
   if (filters.status) conditions.push(eq(studentCourses.status, filters.status));
   if (filters.accessType) conditions.push(eq(studentCourses.accessType, filters.accessType));
   if (filters.courseId) {
@@ -806,16 +810,23 @@ export async function listEnrollmentsForAdmin(filters: {
       enrollment: studentCourses,
       studentName: users.name,
       studentEmail: users.email,
+      studentLmsId: users.lmsId,
+      studentPhone: users.phone,
+      studentCollegeName: users.collegeName,
+      studentIsActive: users.isActive,
+      studentOrganisationId: users.organisationId,
       orgName: organisations.name,
       liveTitle: liveCourses.title,
       recordTitle: recordCourses.title,
+      batchName: batches.name,
     })
     .from(studentCourses)
     .innerJoin(users, eq(studentCourses.studentId, users.id))
     .leftJoin(organisations, eq(studentCourses.organisationId, organisations.id))
     .leftJoin(liveCourses, eq(studentCourses.liveCourseId, liveCourses.id))
     .leftJoin(recordCourses, eq(studentCourses.recordCourseId, recordCourses.id))
-    .where(conditions.length ? and(...conditions) : undefined)
+    .leftJoin(batches, eq(studentCourses.batchId, batches.id))
+    .where(and(...conditions))
     .orderBy(desc(studentCourses.enrolledAt))
     .limit(filters.limit ?? 100);
 }

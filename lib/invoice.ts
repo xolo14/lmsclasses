@@ -19,11 +19,12 @@ export type PaymentInvoiceResult = {
 };
 
 function formatInvoiceDate(date: Date | null): string {
-  if (!date) return new Date().toLocaleDateString("en-IN");
+  if (!date) return new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
   return date.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "Asia/Kolkata",
   });
 }
 

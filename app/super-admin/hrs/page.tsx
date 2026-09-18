@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 
 type HrRow = {
   id: string;
@@ -213,7 +213,7 @@ export default function SuperAdminHrsPage() {
                   <p><strong>Designation:</strong> {details.data.profile.designation || "-"}</p>
                   <p><strong>Email Address:</strong> {details.data.profile.email}</p>
                   <p><strong>Account Status:</strong> {details.data.profile.isActive ? "Enabled" : "Disabled"}</p>
-                  <p><strong>Last Login Date:</strong> {details.data.profile.lastLoginDate ? formatDate(details.data.profile.lastLoginDate) : "-"}</p>
+                  <p><strong>Last Login Date:</strong> {details.data.profile.lastLoginDate ? formatDateTime(details.data.profile.lastLoginDate) : "-"}</p>
                   <p><strong>Account Created Date:</strong> {formatDate(details.data.profile.accountCreatedDate)}</p>
                 </CardContent>
               </Card>
@@ -276,7 +276,7 @@ export default function SuperAdminHrsPage() {
                   {details.data.timeline.map((log: any) => (
                     <div key={log.id} className="rounded border border-border p-3">
                       <p className="font-medium">{String(log.action).replaceAll("_", " ")}</p>
-                      <p className="text-xs text-muted-foreground">{formatDate(log.createdAt)} {log.entity ? `| ${log.entity}` : ""}</p>
+                      <p className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)} {log.entity ? `| ${log.entity}` : ""}</p>
                     </div>
                   ))}
                 </CardContent>

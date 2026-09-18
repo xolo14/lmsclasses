@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format } from "date-fns";
 import { Check, Lock } from "lucide-react";
 import { getPublicCourseBySlug } from "@/lib/public-courses";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import { EnrollmentCard } from "@/components/public/CourseDetailClient";
 import { ResolvedVideoPlayer } from "@/components/ui/resolved-video-player";
 import { LandingCell, LandingSection, landingLayout } from "@/components/public/landing/landing-grid";
@@ -63,7 +63,7 @@ export default async function CourseDetailPage({
             <span>{course.level}</span>
             <span>{course.language}</span>
             {course.updatedAt && (
-              <span>Updated {format(new Date(course.updatedAt), "MMM d, yyyy")}</span>
+              <span>Updated {formatDate(course.updatedAt)}</span>
             )}
             <span className="text-swiss-red">{course.enrolledCount} enrolled</span>
           </div>
@@ -174,7 +174,7 @@ export default async function CourseDetailPage({
                       <td className="p-3">{lc.title}</td>
                       <td className="p-3">
                         {lc.scheduledAt
-                          ? format(new Date(lc.scheduledAt), "MMM d, yyyy h:mm a")
+                          ? formatDateTime(lc.scheduledAt)
                           : "—"}
                       </td>
                       <td className="p-3 capitalize">{lc.status}</td>

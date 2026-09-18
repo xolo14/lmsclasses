@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
 import { Lock, Play, Calendar, ExternalLink, Award, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayerModal } from "@/components/student/VideoPlayerModal";
 import { prefetchVideoUrl } from "@/lib/video-prefetch";
+import { formatDate, formatDateTime } from "@/lib/utils";
 
 type CourseContent = {
   enrollment: {
@@ -165,9 +165,9 @@ export function StudentCourseDetail({
                         <div>
                           <p className="font-mono text-primary">{c.certificateNumber}</p>
                           <p className="text-muted-foreground">
-                            Generated {format(new Date(c.issuedAt), "MMM d, yyyy")}
+                            Generated {formatDate(c.issuedAt)}
                             {c.isLocked && c.unlockAt
-                              ? ` · Unlocks ${format(new Date(c.unlockAt), "MMM d, yyyy")}`
+                              ? ` · Unlocks ${formatDate(c.unlockAt)}`
                               : ""}
                           </p>
                         </div>
@@ -275,7 +275,7 @@ export function StudentCourseDetail({
                       {displayedLiveClasses.map((cls) => (
                         <tr key={cls.id} className="border-t">
                           <td className="p-3">{cls.title}</td>
-                          <td className="p-3">{format(new Date(cls.scheduledAt), "MMM d, yyyy h:mm a")}</td>
+                          <td className="p-3">{formatDateTime(cls.scheduledAt)}</td>
                           <td className="p-3">{cls.duration ?? 60} min</td>
                           <td className="p-3">
                             {cls.status === "live" && (
@@ -342,7 +342,7 @@ export function StudentCourseDetail({
                       <CardContent className="space-y-2 py-4">
                         <p className="font-medium">{rec.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(rec.scheduledAt), "MMM d, yyyy")}
+                          {formatDate(rec.scheduledAt)}
                         </p>
                         {rec.duration != null && (
                           <Badge variant="secondary">{rec.duration} min</Badge>

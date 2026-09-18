@@ -32,6 +32,7 @@ import { generatePassword, generateLmsId } from "@/lib/razorpay";
 import { softDeleteOrganisationCascade } from "@/lib/organisation-cascade";
 import { freeOneSlot, consumeOneSlot, getSlotSummary, resolveCourse } from "@/lib/enrollment-service";
 import { hasLiveAccess, hasRecordedAccess } from "@/lib/content-access";
+import { formatDateTime, parseDatetimeLocalAsIst } from "@/lib/utils";
 
 /** Remove a partially created student if enrollment or slot steps fail (HTTP driver has no transactions). */
 async function rollbackNewStudent(studentId: string) {
@@ -1904,7 +1905,7 @@ export async function POSTLiveClass(request: Request) {
       batchId: parsed.data.batchId || null,
       mentorId: parsed.data.mentorId,
       meetingLink: parsed.data.meetingLink || null,
-      scheduledAt: new Date(parsed.data.scheduledAt),
+      scheduledAt: parseDatetimeLocalAsIst(parsed.data.scheduledAt),
       duration: parsed.data.duration,
       createdBy: session!.user.id,
     })
@@ -1927,7 +1928,7 @@ export async function POSTLiveClass(request: Request) {
         title: parsed.data.title,
         courseName: course.title,
         batchName: batch?.name,
-        scheduledAt: parsed.data.scheduledAt,
+        scheduledAt: formatDateTime(parseDatetimeLocalAsIst(parsed.data.scheduledAt)),
         meetingLink: parsed.data.meetingLink,
       });
     } catch (mailErr) {
@@ -1942,7 +1943,7 @@ export async function POSTLiveClass(request: Request) {
         courseId: parsed.data.courseId,
         batchId: parsed.data.batchId || null,
         title: parsed.data.title,
-        scheduledAt: new Date(parsed.data.scheduledAt),
+        scheduledAt: parseDatetimeLocalAsIst(parsed.data.scheduledAt),
         meetingLink: parsed.data.meetingLink,
       });
       console.log("[live-class] WhatsApp notify:", wa);
@@ -1985,7 +1986,7 @@ export async function PATCHLiveClass(request: Request, id: string) {
 
   const updateData: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.scheduledAt) {
-    updateData.scheduledAt = new Date(parsed.data.scheduledAt);
+    updateData.scheduledAt = parseDatetimeLocalAsIst(parsed.data.scheduledAt);
   }
 
   const [liveClass] = await db

@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { AddCourseRecordingModal } from "@/components/modals/AddCourseRecordingModal";
 import type { CourseRecording } from "@/lib/db/schema";
-import { format } from "date-fns";
+import { formatDate } from "@/lib/utils";
 
 export default function RecordCourseRecordingsPage() {
   const params = useParams();
@@ -107,7 +107,7 @@ export default function RecordCourseRecordingsPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  {rec.createdAt ? format(new Date(rec.createdAt), "MMM d, yyyy") : "—"}
+                  {rec.createdAt ? formatDate(rec.createdAt) : "—"}
                 </TableCell>
                 <TableCell className="flex gap-2">
                   <Button

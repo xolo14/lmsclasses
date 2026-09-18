@@ -149,6 +149,7 @@ export function DashboardPage({ scope = "global", userRole }: DashboardPageProps
       const month = new Date(p.createdAt).toLocaleString("en-IN", {
         month: "short",
         year: "2-digit",
+        timeZone: "Asia/Kolkata",
       });
       acc[month] = (acc[month] || 0) + parseFloat(p.amount);
       return acc;

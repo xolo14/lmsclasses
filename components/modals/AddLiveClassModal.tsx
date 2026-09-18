@@ -143,7 +143,7 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
             <Input {...register("meetingLink")} placeholder="https://meet.google.com/..." />
           </div>
           <div className="space-y-2">
-            <Label>Scheduled At</Label>
+            <Label>Scheduled At (IST)</Label>
             <Input type="datetime-local" {...register("scheduledAt")} />
             {errors.scheduledAt && <p className="text-sm text-destructive">{errors.scheduledAt.message}</p>}
           </div>

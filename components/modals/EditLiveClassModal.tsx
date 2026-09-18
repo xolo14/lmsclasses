@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveClassSchema, type LiveClassInput } from "@/lib/validations";
+import { toDatetimeLocalValue } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -35,12 +36,6 @@ type LiveClass = {
   status?: string;
   recordingUrl?: string | null;
 };
-
-function toDateTimeLocal(value: string) {
-  const d = new Date(value);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 export function EditLiveClassModal({
   open,
@@ -78,7 +73,7 @@ export function EditLiveClassModal({
         batchId: liveClass.batchId || undefined,
         mentorId: liveClass.mentorId,
         meetingLink: liveClass.meetingLink || "",
-        scheduledAt: toDateTimeLocal(liveClass.scheduledAt),
+        scheduledAt: toDatetimeLocalValue(liveClass.scheduledAt),
         duration: liveClass.duration ?? undefined,
         status: (liveClass.status as LiveClassInput["status"]) || "scheduled",
         recordingUrl: liveClass.recordingUrl || "",
@@ -161,7 +156,7 @@ export function EditLiveClassModal({
             </p>
           </div>
           <div className="space-y-2">
-            <Label>Scheduled At</Label>
+            <Label>Scheduled At (IST)</Label>
             <Input type="datetime-local" {...register("scheduledAt")} />
           </div>
           <div className="space-y-2">

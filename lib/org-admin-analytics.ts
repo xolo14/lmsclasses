@@ -10,11 +10,20 @@ import {
   users,
 } from "@/lib/db/schema";
 
+import { IST_TIMEZONE } from "@/lib/utils";
+
 const MONTHS_BACK = 6;
 
-function monthKey(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${date.getFullYear()}-${month}`;
+function istYearMonth(date: Date): { y: number; m: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: IST_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(date);
+  return {
+    y: Number(parts.find((p) => p.type === "year")?.value),
+    m: Number(parts.find((p) => p.type === "month")?.value),
+  };
 }
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -28,10 +37,12 @@ function formatMonthLabel(key: string): string {
 
 function lastNMonthKeys(n: number): string[] {
   const keys: string[] = [];
-  const now = new Date();
+  const { y, m } = istYearMonth(new Date());
   for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    keys.push(monthKey(d));
+    const idx = y * 12 + (m - 1) - i;
+    const year = Math.floor(idx / 12);
+    const month = (idx % 12) + 1;
+    keys.push(`${year}-${String(month).padStart(2, "0")}`);
   }
   return keys;
 }
@@ -75,10 +86,8 @@ export async function getOrgAdminAnalytics(
   orgAdminUserId: string
 ): Promise<OrgAdminAnalytics> {
   const monthKeys = lastNMonthKeys(MONTHS_BACK);
-  const since = new Date();
-  since.setMonth(since.getMonth() - (MONTHS_BACK - 1));
-  since.setDate(1);
-  since.setHours(0, 0, 0, 0);
+  const sinceKey = monthKeys[0];
+  const since = sinceKey ? new Date(`${sinceKey}-01T00:00:00+05:30`) : new Date();
 
   const orgStudentFilter = and(
     eq(users.role, "student"),
@@ -147,24 +156,24 @@ export async function getOrgAdminAnalytics(
       .where(eq(slots.organisationId, organisationId)),
     db
       .select({
-        month: sql<string>`to_char(date_trunc('month', ${payments.createdAt}), 'YYYY-MM')`,
+        month: sql<string>`to_char((${payments.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM')`,
         amount: sql<string>`coalesce(sum(${payments.amount}), 0)`,
       })
       .from(payments)
       .where(
         and(orgPaymentFilter, eq(payments.status, "success"), gte(payments.createdAt, since))
       )
-      .groupBy(sql`date_trunc('month', ${payments.createdAt})`)
-      .orderBy(sql`date_trunc('month', ${payments.createdAt})`),
+      .groupBy(sql`date_trunc('month', (${payments.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')`)
+      .orderBy(sql`date_trunc('month', (${payments.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')`),
     db
       .select({
-        month: sql<string>`to_char(date_trunc('month', ${studentCourses.enrolledAt}), 'YYYY-MM')`,
+        month: sql<string>`to_char((${studentCourses.enrolledAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM')`,
         count: sql<number>`count(*)::int`,
       })
       .from(studentCourses)
       .where(and(orgEnrollmentFilter, gte(studentCourses.enrolledAt, since)))
-      .groupBy(sql`date_trunc('month', ${studentCourses.enrolledAt})`)
-      .orderBy(sql`date_trunc('month', ${studentCourses.enrolledAt})`),
+      .groupBy(sql`date_trunc('month', (${studentCourses.enrolledAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')`)
+      .orderBy(sql`date_trunc('month', (${studentCourses.enrolledAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')`),
     db
       .select({
         courseTitle: sql<string>`coalesce(${liveCourses.title}, ${recordCourses.title}, 'Unknown')`,

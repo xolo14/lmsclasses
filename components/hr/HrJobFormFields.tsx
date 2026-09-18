@@ -104,7 +104,7 @@ export function HrJobFormFields({ register, errors, setValue, watch }: HrJobForm
         <Textarea {...register("eligibilityCriteria")} />
       </div>
       <div className="space-y-1">
-        <Label>Last Date to Apply</Label>
+        <Label>Last Date to Apply (IST)</Label>
         <Input type="datetime-local" {...register("applicationDeadline")} />
         {errors.applicationDeadline && (
           <p className="text-sm text-destructive">{errors.applicationDeadline.message}</p>

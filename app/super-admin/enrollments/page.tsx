@@ -1,24 +1,15 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import {
-  GraduationCap,
-  Layers,
-  MoreHorizontal,
-  ChevronDown,
-  UserPlus,
-  BookOpen,
-} from "lucide-react";
+import { BookOpen, MoreHorizontal, UserPlus } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AddDirectStudentModal } from "@/components/modals/AddDirectStudentModal";
 import { EditStudentModal } from "@/components/modals/EditStudentModal";
 import { SelectStudentForAssignModal } from "@/components/modals/SelectStudentForAssignModal";
@@ -35,12 +26,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useEnrollmentsList } from "@/lib/hooks/useEnrollments";
+import { fetchAllStudents } from "@/lib/students-client";
 import { formatDateTime } from "@/lib/utils";
 
-/* ------------------------------------------------------------------ */
-/* Types                                                              */
-/* ------------------------------------------------------------------ */
+type OrganisationOption = { id: string; name: string };
 
 type Student = {
   id: string;
@@ -55,90 +44,139 @@ type Student = {
   organisationId?: string | null;
   courseTitle: string;
   courseTitles?: string[];
-  courseId: string;
-  batchName: string;
   isActive: boolean;
-  enrollmentId?: string | null;
 };
 
-type OrganisationOption = { id: string; name: string };
-
-type EnrollmentRow = {
+type EnrollmentApiRow = {
   id: string;
+  studentId: string;
   studentName: string;
   studentEmail: string;
-  courseTitle: string;
-  courseType?: "live" | "record";
+  lmsId?: string | null;
+  phone?: string | null;
+  collegeName?: string | null;
+  isActive?: boolean | null;
+  organisationId?: string | null;
+  enrollmentSource?: string | null;
   orgName: string | null;
-  accessType: string;
+  courseTitle: string | null;
+  courseType?: "live" | "record";
+  accessType?: string;
   status: string;
-  completionPercentage: number;
-  enrolledAt: string;
+  completionPercentage?: number | null;
+  enrolledAt?: string | null;
+  batchName?: string | null;
 };
 
-/* ------------------------------------------------------------------ */
-/* Student Courses Cell Component                                     */
-/* ------------------------------------------------------------------ */
-
-function StudentCoursesCell({
-  courseTitles,
-  courseTitle,
-}: {
-  courseTitles?: string[];
+type CombinedRow = {
+  rowId: string;
+  studentId: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  collegeName?: string | null;
+  lmsId: string;
+  orgName: string | null;
+  organisationId?: string | null;
+  source?: string | null;
+  isActive: boolean;
+  enrollmentId?: string | null;
   courseTitle: string;
-}) {
-  const titles =
-    courseTitles && courseTitles.length > 0
-      ? courseTitles
-      : courseTitle && courseTitle !== "—"
-        ? [courseTitle]
-        : [];
+  courseType?: "live" | "record";
+  accessType?: string;
+  enrollmentStatus?: string;
+  completionPercentage?: number;
+  enrolledAt?: string | null;
+  batchName: string;
+};
 
-  if (titles.length === 0) {
-    return <span className="text-muted-foreground">—</span>;
+function sourceLabel(src?: string | null, orgName?: string | null) {
+  if (src === "super_admin") {
+    return <Badge className="bg-swiss-red/15 text-swiss-red border-swiss-red/30">Direct</Badge>;
   }
-
-  if (titles.length === 1) {
-    return <span className="text-sm font-medium">{titles[0]}</span>;
+  if (src === "public") {
+    return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Self Enrolled</Badge>;
   }
+  if (src === "org_admin" || orgName) {
+    return orgName || "Organisation";
+  }
+  return "—";
+}
 
+function typeBadge(row: CombinedRow) {
+  if (!row.enrollmentId) return <span className="text-muted-foreground">—</span>;
+  const isLive = row.courseType === "live" || row.accessType?.toLowerCase() === "live";
+  const isBoth = row.accessType?.toLowerCase() === "both";
+  const label = isBoth ? "BOTH" : isLive ? "LIVE" : "RECORDED";
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 text-sm font-medium text-swiss-red hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {titles.length} courses
-          <ChevronDown className="h-3.5 w-3.5" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-w-[240px]">
-        {titles.map((title) => (
-          <DropdownMenuItem key={title} onSelect={(e) => e.preventDefault()} className="text-sm">
-            {title}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Badge
+      variant="outline"
+      className={
+        isLive
+          ? "bg-swiss-red/15 text-swiss-red border-swiss-red/30 font-semibold"
+          : isBoth
+            ? "bg-violet-500/15 text-violet-700 border-violet-500/30 font-semibold"
+            : "bg-amber-500/15 text-amber-700 border-amber-500/30 font-semibold"
+      }
+    >
+      {label}
+    </Badge>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Students Tab Component                                             */
-/* ------------------------------------------------------------------ */
+function fromEnrollment(e: EnrollmentApiRow): CombinedRow {
+  return {
+    rowId: e.id,
+    studentId: e.studentId,
+    name: e.studentName,
+    email: e.studentEmail,
+    phone: e.phone,
+    collegeName: e.collegeName,
+    lmsId: e.lmsId || "—",
+    orgName: e.orgName,
+    organisationId: e.organisationId,
+    source: e.enrollmentSource,
+    isActive: e.isActive !== false,
+    enrollmentId: e.id,
+    courseTitle: e.courseTitle || "—",
+    courseType: e.courseType,
+    accessType: e.accessType,
+    enrollmentStatus: e.status,
+    completionPercentage: e.completionPercentage ?? 0,
+    enrolledAt: e.enrolledAt,
+    batchName: e.batchName || "—",
+  };
+}
 
-function StudentsTabSection({
-  onAddStudentClick,
-  onAssignCourseClick,
-}: {
-  onAddStudentClick: () => void;
-  onAssignCourseClick: () => void;
-}) {
+function fromUnenrolledStudent(s: Student): CombinedRow {
+  return {
+    rowId: `student:${s.id}`,
+    studentId: s.id,
+    name: s.name,
+    email: s.email,
+    phone: s.phone,
+    collegeName: s.collegeName,
+    lmsId: s.lmsId,
+    orgName: s.orgName || null,
+    organisationId: s.organisationId,
+    source: s.enrollmentSource ?? s.source,
+    isActive: s.isActive,
+    enrollmentId: null,
+    courseTitle: "—",
+    enrollmentStatus: undefined,
+    completionPercentage: undefined,
+    enrolledAt: null,
+    batchName: "—",
+  };
+}
+
+export default function SuperAdminEnrollmentsPage() {
+  const queryClient = useQueryClient();
   const [editStudent, setEditStudent] = useState<Student | undefined>();
   const [organisationFilter, setOrganisationFilter] = useState("all");
-  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
 
   const { data: organisations = [] } = useQuery<OrganisationOption[]>({
     queryKey: ["organisations"],
@@ -150,35 +188,48 @@ function StudentsTabSection({
   });
 
   const {
-    data,
-    isLoading,
-    isError,
-    error,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteQuery({
-    queryKey: ["students", organisationFilter],
-    queryFn: async ({ pageParam = "" }) => {
-      const params = new URLSearchParams({ cursor: String(pageParam), limit: "50" });
-      if (organisationFilter !== "all") {
-        params.set("organisationId", organisationFilter);
-      }
-      const res = await fetch(`/api/students?${params}`);
-      const resData = await res.json();
-      if (!res.ok) {
-        throw new Error(typeof resData?.error === "string" ? resData.error : "Failed to load students");
-      }
-      return resData;
+    data: enrollments = [],
+    isLoading: enrollmentsLoading,
+    isError: enrollmentsError,
+    error: enrollmentsErr,
+  } = useQuery<EnrollmentApiRow[]>({
+    queryKey: ["enrollments-list", organisationFilter, statusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: "500" });
+      if (organisationFilter !== "all") params.set("orgId", organisationFilter);
+      if (statusFilter) params.set("status", statusFilter);
+      const res = await fetch(`/api/enrollments?${params}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to load enrollments");
+      return (json.data ?? []) as EnrollmentApiRow[];
     },
-    initialPageParam: "",
-    getNextPageParam: (lastPage: any) => lastPage.nextCursor ?? undefined,
   });
 
-  const students = data ? data.pages.flatMap((page) => page.data) : [];
+  const { data: students = [], isLoading: studentsLoading } = useQuery<Student[]>({
+    queryKey: ["students", organisationFilter],
+    queryFn: () =>
+      fetchAllStudents({
+        organisationId: organisationFilter === "all" ? undefined : organisationFilter,
+      }),
+    enabled: !statusFilter,
+  });
+
+  const rows = useMemo(() => {
+    const enrolled = enrollments.map(fromEnrollment);
+    if (statusFilter) return enrolled;
+    const enrolledIds = new Set(enrollments.map((e) => e.studentId));
+    const extras = students
+      .filter((s) => !enrolledIds.has(s.id))
+      .map(fromUnenrolledStudent);
+    return [...enrolled, ...extras];
+  }, [enrollments, students, statusFilter]);
 
   const deleteStudent = useMutation({
-    mutationFn: (id: string) => fetch(`/api/students/${id}`, { method: "DELETE" }),
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/students/${id}`, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to delete student");
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       queryClient.invalidateQueries({ queryKey: ["enrollments-list"] });
@@ -186,52 +237,48 @@ function StudentsTabSection({
   });
 
   const toggleActive = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      fetch(`/api/students/${id}`, {
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const res = await fetch(`/api/students/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !isActive }),
-      }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to update student");
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       queryClient.invalidateQueries({ queryKey: ["enrollments-list"] });
     },
   });
 
-  const columns: ColumnDef<Student>[] = [
+  const columns: ColumnDef<CombinedRow>[] = [
     { accessorKey: "name", header: "Student Name" },
     { accessorKey: "lmsId", header: "LMS ID" },
     {
       accessorKey: "source",
       header: "Source",
-      cell: ({ row }) => {
-        const src = row.original.enrollmentSource ?? row.original.source;
-        if (src === "super_admin") {
-          return <Badge className="bg-swiss-red/15 text-swiss-red border-swiss-red/30">Direct</Badge>;
-        }
-        if (src === "public") {
-          return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Self Enrolled</Badge>;
-        }
-        if (src === "org_admin" || row.original.orgName) {
-          return row.original.orgName || "Organisation";
-        }
-        return "—";
-      },
+      cell: ({ row }) => sourceLabel(row.original.source, row.original.orgName),
     },
     {
       accessorKey: "orgName",
       header: "Organisation",
-      cell: ({ row }) => row.original.orgName || "—",
+      cell: ({ row }) => row.original.orgName || "Direct",
     },
     {
       accessorKey: "courseTitle",
       header: "Course",
-      cell: ({ row }) => (
-        <StudentCoursesCell
-          courseTitles={row.original.courseTitles}
-          courseTitle={row.original.courseTitle}
-        />
-      ),
+      cell: ({ row }) =>
+        row.original.enrollmentId ? (
+          <span className="text-sm font-medium">{row.original.courseTitle}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      accessorKey: "accessType",
+      header: "Type",
+      cell: ({ row }) => typeBadge(row.original),
     },
     {
       accessorKey: "batchName",
@@ -239,13 +286,40 @@ function StudentsTabSection({
       cell: ({ row }) => row.original.batchName || "—",
     },
     {
-      accessorKey: "isActive",
+      id: "status",
       header: "Status",
-      cell: ({ row }) => (
-        <Badge variant={row.original.isActive ? "success" : "destructive"}>
-          {row.original.isActive ? "Active" : "Inactive"}
-        </Badge>
-      ),
+      cell: ({ row }) =>
+        row.original.enrollmentStatus ? (
+          <Badge variant="outline">{row.original.enrollmentStatus}</Badge>
+        ) : (
+          <Badge variant={row.original.isActive ? "success" : "destructive"}>
+            {row.original.isActive ? "Active" : "Inactive"}
+          </Badge>
+        ),
+    },
+    {
+      accessorKey: "completionPercentage",
+      header: "Progress",
+      cell: ({ row }) => {
+        if (!row.original.enrollmentId) {
+          return <span className="text-muted-foreground">—</span>;
+        }
+        const pct = row.original.completionPercentage ?? 0;
+        return (
+          <div className="flex items-center gap-2 min-w-[100px]">
+            <div className="h-1.5 flex-1 bg-swiss-black/10 rounded-full overflow-hidden">
+              <div className="h-full bg-swiss-red" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="text-xs tabular-nums">{pct}%</span>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "enrolledAt",
+      header: "Enrolled",
+      cell: ({ row }) =>
+        row.original.enrolledAt ? formatDateTime(row.original.enrolledAt) : "—",
     },
     {
       id: "actions",
@@ -259,13 +333,35 @@ function StudentsTabSection({
           <DropdownMenuContent align="end">
             {!row.original.organisationId && (
               <DropdownMenuItem asChild>
-                <Link href={`/super-admin/students/${row.original.id}/courses`}>Assign courses</Link>
+                <Link href={`/super-admin/students/${row.original.studentId}/courses`}>
+                  Assign courses
+                </Link>
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => setEditStudent(row.original)}>Edit</DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
-                toggleActive.mutate({ id: row.original.id, isActive: row.original.isActive })
+                setEditStudent({
+                  id: row.original.studentId,
+                  name: row.original.name,
+                  email: row.original.email,
+                  phone: row.original.phone,
+                  collegeName: row.original.collegeName,
+                  lmsId: row.original.lmsId,
+                  orgName: row.original.orgName || "",
+                  organisationId: row.original.organisationId,
+                  courseTitle: row.original.courseTitle,
+                  isActive: row.original.isActive,
+                })
+              }
+            >
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                toggleActive.mutate({
+                  id: row.original.studentId,
+                  isActive: row.original.isActive,
+                })
               }
             >
               {row.original.isActive ? "Deactivate" : "Activate"}
@@ -274,7 +370,7 @@ function StudentsTabSection({
               className="text-destructive focus:text-destructive"
               onClick={() => {
                 if (confirm(`Move "${row.original.name}" to trash?`)) {
-                  deleteStudent.mutate(row.original.id);
+                  deleteStudent.mutate(row.original.studentId);
                 }
               }}
             >
@@ -286,213 +382,13 @@ function StudentsTabSection({
     },
   ];
 
-  return (
-    <div className="space-y-4">
-      <EditStudentModal
-        open={!!editStudent}
-        onOpenChange={(open) => !open && setEditStudent(undefined)}
-        student={editStudent}
-        showStatus
-      />
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1 sm:min-w-[280px]">
-          <Label htmlFor="org-filter" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-            Filter by Organisation
-          </Label>
-          <Select value={organisationFilter} onValueChange={setOrganisationFilter}>
-            <SelectTrigger id="org-filter">
-              <SelectValue placeholder="All students" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All students</SelectItem>
-              <SelectItem value="direct">Direct (no organisation)</SelectItem>
-              {organisations.map((org) => (
-                <SelectItem key={org.id} value={org.id}>
-                  {org.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onAssignCourseClick}>
-            <BookOpen className="h-4 w-4 mr-1.5" />
-            Assign Course
-          </Button>
-          <Button onClick={onAddStudentClick}>
-            <UserPlus className="h-4 w-4 mr-1.5" />
-            Add Student
-          </Button>
-        </div>
-      </div>
-
-      {organisationFilter !== "all" && (
-        <p className="text-xs text-muted-foreground">
-          {organisationFilter === "direct"
-            ? "Showing students enrolled directly by super admin."
-            : `Showing students for ${organisations.find((o) => o.id === organisationFilter)?.name ?? "selected organisation"}.`}
-        </p>
-      )}
-
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground py-8">Loading students…</p>
-      ) : isError ? (
-        <p className="text-sm text-destructive py-4">
-          Could not load students: {error instanceof Error ? error.message : "Unknown error"}
-        </p>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={students}
-          searchPlaceholder="Search students by name..."
-          searchKey="name"
-          getRowId={(row) => row.id}
-          hasNextPage={hasNextPage}
-          fetchNextPage={fetchNextPage}
-          isFetchingNextPage={isFetchingNextPage}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Course Enrollments Tab Component                                   */
-/* ------------------------------------------------------------------ */
-
-function CourseEnrollmentsTabSection() {
-  const [statusFilter, setStatusFilter] = useState("");
-
-  const { data = [], isLoading } = useEnrollmentsList({
-    status: statusFilter || undefined,
-  });
-
-  const columns: ColumnDef<EnrollmentRow>[] = [
-    { accessorKey: "studentName", header: "Student" },
-    { accessorKey: "courseTitle", header: "Course" },
-    { accessorKey: "orgName", header: "Org", cell: ({ row }) => row.original.orgName ?? "Direct" },
-    {
-      accessorKey: "accessType",
-      header: "Type",
-      cell: ({ row }) => {
-        const isLive = row.original.courseType === "live" || row.original.accessType?.toLowerCase() === "live";
-        const isBoth = row.original.accessType?.toLowerCase() === "both";
-        const label = isBoth ? "BOTH" : isLive ? "LIVE" : "RECORDED";
-        return (
-          <Badge
-            variant="outline"
-            className={
-              isLive
-                ? "bg-swiss-red/15 text-swiss-red border-swiss-red/30 font-semibold"
-                : isBoth
-                ? "bg-violet-500/15 text-violet-700 border-violet-500/30 font-semibold"
-                : "bg-amber-500/15 text-amber-700 border-amber-500/30 font-semibold"
-            }
-          >
-            {label}
-          </Badge>
-        );
-      },
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => <Badge variant="outline">{row.original.status}</Badge>,
-    },
-    {
-      accessorKey: "completionPercentage",
-      header: "Progress",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2 min-w-[100px]">
-          <div className="h-1.5 flex-1 bg-swiss-black/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-swiss-red"
-              style={{ width: `${row.original.completionPercentage}%` }}
-            />
-          </div>
-          <span className="text-xs tabular-nums">{row.original.completionPercentage}%</span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "enrolledAt",
-      header: "Enrolled",
-      cell: ({ row }) =>
-        row.original.enrolledAt ? formatDateTime(row.original.enrolledAt) : "—",
-    },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2 flex-wrap items-center">
-        <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mr-1">
-          Status:
-        </span>
-        {["", "active", "paused", "revoked", "completed"].map((s) => (
-          <button
-            key={s || "all"}
-            type="button"
-            onClick={() => setStatusFilter(s)}
-            className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider border rounded-sm transition-colors ${
-              statusFilter === s
-                ? "bg-swiss-red text-white border-swiss-red"
-                : "border-swiss-black/15 text-swiss-muted hover:border-swiss-black/30"
-            }`}
-          >
-            {s || "All"}
-          </button>
-        ))}
-      </div>
-
-      {isLoading ? (
-        <p className="text-sm text-swiss-muted py-8">Loading enrollments…</p>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={data as EnrollmentRow[]}
-          searchPlaceholder="Search enrollments by student, course, or org…"
-        />
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Main Enrollment Page                                               */
-/* ------------------------------------------------------------------ */
-
-function EnrollmentContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const queryClient = useQueryClient();
-
-  const tabParam = searchParams.get("tab") as "students" | "enrollments" | null;
-  const [activeTab, setActiveTab] = useState<string>(tabParam || "students");
-
-  const [addOpen, setAddOpen] = useState(false);
-  const [assignOpen, setAssignOpen] = useState(false);
-
-  useEffect(() => {
-    if (tabParam && (tabParam === "students" || tabParam === "enrollments")) {
-      setActiveTab(tabParam);
-    }
-  }, [tabParam]);
-
-  const handleTabChange = (val: string) => {
-    setActiveTab(val);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", val);
-    router.replace(`${pathname}?${params.toString()}`);
-  };
+  const isLoading = enrollmentsLoading || (!statusFilter && studentsLoading);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Enrollment"
-        description="Unified hub for student directory, direct admissions, and course enrollments."
+        description="Students and course enrollments in one table. One row per student per course."
       >
         <Button variant="outline" onClick={() => setAssignOpen(true)}>
           <BookOpen className="h-4 w-4 mr-1.5" />
@@ -522,37 +418,77 @@ function EnrollmentContent() {
         }}
       />
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-        <TabsList className="bg-swiss-cream/70 border border-swiss-black/10 p-1">
-          <TabsTrigger value="students" className="gap-2 px-4 py-2 text-sm">
-            <GraduationCap className="h-4 w-4" />
-            Students
-          </TabsTrigger>
-          <TabsTrigger value="enrollments" className="gap-2 px-4 py-2 text-sm">
-            <Layers className="h-4 w-4" />
-            Course Enrollments
-          </TabsTrigger>
-        </TabsList>
+      <EditStudentModal
+        open={!!editStudent}
+        onOpenChange={(open) => !open && setEditStudent(undefined)}
+        student={editStudent}
+        showStatus
+      />
 
-        <TabsContent value="students" className="mt-0">
-          <StudentsTabSection
-            onAddStudentClick={() => setAddOpen(true)}
-            onAssignCourseClick={() => setAssignOpen(true)}
-          />
-        </TabsContent>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-1 sm:min-w-[280px]">
+          <Label htmlFor="org-filter" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+            Filter by Organisation
+          </Label>
+          <Select value={organisationFilter} onValueChange={setOrganisationFilter}>
+            <SelectTrigger id="org-filter">
+              <SelectValue placeholder="All students" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All students</SelectItem>
+              <SelectItem value="direct">Direct (no organisation)</SelectItem>
+              {organisations.map((org) => (
+                <SelectItem key={org.id} value={org.id}>
+                  {org.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        <TabsContent value="enrollments" className="mt-0">
-          <CourseEnrollmentsTabSection />
-        </TabsContent>
-      </Tabs>
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mr-1">
+            Status:
+          </span>
+          {["", "active", "paused", "revoked", "completed"].map((s) => (
+            <button
+              key={s || "all"}
+              type="button"
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider border rounded-sm transition-colors ${
+                statusFilter === s
+                  ? "bg-swiss-red text-white border-swiss-red"
+                  : "border-swiss-black/15 text-swiss-muted hover:border-swiss-black/30"
+              }`}
+            >
+              {s || "All"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {organisationFilter !== "all" && (
+        <p className="text-xs text-muted-foreground">
+          {organisationFilter === "direct"
+            ? "Showing students enrolled directly by super admin."
+            : `Showing students for ${organisations.find((o) => o.id === organisationFilter)?.name ?? "selected organisation"}.`}
+        </p>
+      )}
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground py-8">Loading enrollment…</p>
+      ) : enrollmentsError ? (
+        <p className="text-sm text-destructive py-4">
+          Could not load enrollment: {enrollmentsErr instanceof Error ? enrollmentsErr.message : "Unknown error"}
+        </p>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={rows}
+          searchPlaceholder="Search by student, course, LMS ID, or organisation…"
+          getRowId={(row) => row.rowId}
+        />
+      )}
     </div>
-  );
-}
-
-export default function SuperAdminEnrollmentsPage() {
-  return (
-    <Suspense fallback={<div className="text-muted-foreground p-6">Loading Enrollment hub…</div>}>
-      <EnrollmentContent />
-    </Suspense>
   );
 }

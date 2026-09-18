@@ -5,6 +5,7 @@ import { coupons, organisations } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { couponSchema } from "@/lib/validations";
+import { parseDatetimeLocalAsIst } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -86,8 +87,8 @@ export async function POST(request: Request) {
         discountValue: discountValue.toString(),
         minOrderAmount: minOrderAmount ? minOrderAmount.toString() : "0.00",
         maxUses: maxUses || null,
-        startsAt: startsAt ? new Date(startsAt) : null,
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        startsAt: startsAt ? parseDatetimeLocalAsIst(startsAt) : null,
+        expiresAt: expiresAt ? parseDatetimeLocalAsIst(expiresAt) : null,
         organisationId: organisationId || null,
         isActive,
       })

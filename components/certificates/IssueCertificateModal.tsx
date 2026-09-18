@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { format } from "date-fns";
+import { formatDate } from "@/lib/utils";
 
 type TemplateRow = {
   id: string;
@@ -229,9 +229,9 @@ export function IssueCertificateModal({
                           <span className="font-medium">{s.name}</span>
                           <span className="block text-xs text-muted-foreground">
                             {s.completionPercentage}% complete
-                            {s.enrolledAt ? ` · joined ${format(new Date(s.enrolledAt), "MMM d, yyyy")}` : ""}
+                            {s.enrolledAt ? ` · joined ${formatDate(s.enrolledAt)}` : ""}
                             {s.durationEligible === false && s.eligibleAt
-                              ? ` · eligible ${format(new Date(s.eligibleAt), "MMM d, yyyy")}`
+                              ? ` · eligible ${formatDate(s.eligibleAt)}`
                               : ""}
                           </span>
                         </span>

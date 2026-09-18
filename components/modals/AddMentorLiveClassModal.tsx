@@ -180,7 +180,7 @@ export function AddMentorLiveClassModal({
 
           {/* Scheduled At */}
           <div className="space-y-2">
-            <Label>Scheduled Date & Time *</Label>
+            <Label>Scheduled Date & Time (IST) *</Label>
             <Input type="datetime-local" {...register("scheduledAt")} />
             {errors.scheduledAt && (
               <p className="text-sm text-destructive">{errors.scheduledAt.message}</p>

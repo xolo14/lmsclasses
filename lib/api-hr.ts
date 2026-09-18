@@ -20,7 +20,7 @@ import {
   getClientIp,
   logAction,
 } from "@/lib/audit";
-import { formatApiError } from "@/lib/utils";
+import { formatApiError, parseDatetimeLocalAsIst } from "@/lib/utils";
 import {
   hrEmailSchema,
   hrOtpSchema,
@@ -418,7 +418,7 @@ async function getHrOwnedJob(jobId: string, hrId: string) {
 }
 
 function parseHrJobDates(data: HrJobInput) {
-  const deadline = new Date(data.applicationDeadline);
+  const deadline = parseDatetimeLocalAsIst(data.applicationDeadline);
   if (Number.isNaN(deadline.getTime())) {
     return { error: "Invalid last date to apply." } as const;
   }
@@ -568,7 +568,7 @@ export async function POSTHrJob(request: Request) {
       );
     }
 
-    const deadline = new Date(parsed.data.applicationDeadline);
+    const deadline = parseDatetimeLocalAsIst(parsed.data.applicationDeadline);
     if (Number.isNaN(deadline.getTime())) {
       return NextResponse.json(
         { error: "Invalid application closing date/time." },
@@ -1349,24 +1349,24 @@ export async function GETSuperAdminHrDetail(id: string) {
 
   const jobsByMonth = await db
     .select({
-      month: sql<string>`to_char(date_trunc('month', ${jobPostings.createdAt}), 'YYYY-MM')`,
+      month: sql<string>`to_char((${jobPostings.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM')`,
       count: sql<number>`count(*)::int`,
     })
     .from(jobPostings)
     .where(eq(jobPostings.hrId, id))
-    .groupBy(sql`date_trunc('month', ${jobPostings.createdAt})`)
-    .orderBy(sql`date_trunc('month', ${jobPostings.createdAt})`);
+    .groupBy(sql`date_trunc('month', (${jobPostings.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')`)
+    .orderBy(sql`date_trunc('month', (${jobPostings.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')`);
 
   const applicationsByMonth = await db
     .select({
-      month: sql<string>`to_char(date_trunc('month', ${jobApplications.appliedAt}), 'YYYY-MM')`,
+      month: sql<string>`to_char((${jobApplications.appliedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM')`,
       count: sql<number>`count(*)::int`,
     })
     .from(jobApplications)
     .innerJoin(jobPostings, eq(jobApplications.jobId, jobPostings.id))
     .where(eq(jobPostings.hrId, id))
-    .groupBy(sql`date_trunc('month', ${jobApplications.appliedAt})`)
-    .orderBy(sql`date_trunc('month', ${jobApplications.appliedAt})`);
+    .groupBy(sql`date_trunc('month', (${jobApplications.appliedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')`)
+    .orderBy(sql`date_trunc('month', (${jobApplications.appliedAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')`);
 
   const topAppliedJobs = await db
     .select({

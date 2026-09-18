@@ -148,11 +148,11 @@ export function AddCouponModal({ open, onOpenChange }: AddCouponModalProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="startsAt">Starts at</Label>
+              <Label htmlFor="startsAt">Starts at (IST)</Label>
               <Input id="startsAt" type="datetime-local" {...register("startsAt")} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="expiresAt">Expires at</Label>
+              <Label htmlFor="expiresAt">Expires at (IST)</Label>
               <Input id="expiresAt" type="datetime-local" {...register("expiresAt")} />
             </div>
           </div>
