@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
@@ -43,6 +44,7 @@ function statusBadge(status: string) {
 
 export default function MentorLiveClassesPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [watchRecording, setWatchRecording] = useState<{ url: string; title: string } | null>(null);
 
@@ -71,20 +73,19 @@ export default function MentorLiveClassesPage() {
 
   const assignedCourse = courseData?.course;
 
+  const openStudio = (row: LiveClass) => {
+    if (row.meetingLink) {
+      const popup = openMeetPopup(row.meetingLink, row.id);
+      if (!popup) window.open(row.meetingLink, "_blank", "noopener,noreferrer");
+    }
+    router.push(`/mentor/live-classes/${row.id}/studio`);
+  };
+
   const actionCell = (row: LiveClass, opts?: { showWatch?: boolean }) => (
     <div className="flex flex-wrap gap-1">
-      {row.meetingLink && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            const popup = openMeetPopup(row.meetingLink!, row.id);
-            if (!popup) window.open(row.meetingLink!, "_blank", "noopener,noreferrer");
-          }}
-        >
-          <ExternalLink className="h-3 w-3 mr-1" /> Join
-        </Button>
-      )}
+      <Button size="sm" onClick={() => openStudio(row)}>
+        <ExternalLink className="h-3 w-3 mr-1" /> Join
+      </Button>
       <Button variant="outline" size="sm" asChild>
         <Link href={`/mentor/live-classes/${row.id}/studio`}>
           <Circle className="h-3 w-3 mr-1 fill-red-500 text-red-500" /> Record
@@ -124,7 +125,29 @@ export default function MentorLiveClassesPage() {
   ];
 
   const activeColumns: ColumnDef<LiveClass>[] = [
-    ...baseColumns,
+    { accessorKey: "title", header: "Title" },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => actionCell(row.original),
+    },
+    { accessorKey: "courseTitle", header: "Course" },
+    { accessorKey: "batchName", header: "Batch", cell: ({ row }) => row.original.batchName || "—" },
+    {
+      accessorKey: "scheduledAt",
+      header: "Scheduled At",
+      cell: ({ row }) => formatDateTime(row.original.scheduledAt),
+    },
+    {
+      accessorKey: "duration",
+      header: "Duration",
+      cell: ({ row }) => `${row.original.duration || "—"} min`,
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => statusBadge(row.original.status),
+    },
     {
       accessorKey: "meetingLink",
       header: "Meeting",
@@ -141,20 +164,16 @@ export default function MentorLiveClassesPage() {
           "—"
         ),
     },
-    {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }) => actionCell(row.original),
-    },
   ];
 
   const completedColumns: ColumnDef<LiveClass>[] = [
-    ...baseColumns,
+    { accessorKey: "title", header: "Title" },
     {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => actionCell(row.original, { showWatch: true }),
     },
+    ...baseColumns.slice(1),
   ];
 
   return (
@@ -163,7 +182,7 @@ export default function MentorLiveClassesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">My Live Classes</h1>
           <p className="text-sm text-muted-foreground">
-            Join Google Meet, record the Meet tab here, then students watch a private link in the LMS.
+            Click Join to open Google Meet and the recording studio. Then click Start recording.
           </p>
         </div>
 

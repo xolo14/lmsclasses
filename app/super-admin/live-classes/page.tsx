@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Circle, Play, Plus, Pencil, Trash2 } from "lucide-react";
+import { Circle, ExternalLink, Play, Plus, Pencil, Trash2 } from "lucide-react";
 import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { AddLiveClassModal } from "@/components/modals/AddLiveClassModal";
 import { EditLiveClassModal } from "@/components/modals/EditLiveClassModal";
 import { formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { openMeetPopup } from "@/lib/live-class-recorder";
 
 type LiveClass = {
   id: string;
@@ -45,10 +46,19 @@ export default function LiveClassesPage() {
   const [editClass, setEditClass] = useState<LiveClass | undefined>();
   const [watchRecording, setWatchRecording] = useState<{ url: string; title: string } | null>(null);
   const pathname = usePathname();
+  const router = useRouter();
   const studioHref = (id: string) =>
     pathname.startsWith("/manager")
       ? `/manager/live-classes/${id}/studio`
       : `/super-admin/live-classes/${id}/studio`;
+
+  const openStudio = (row: LiveClass) => {
+    if (row.meetingLink) {
+      const popup = openMeetPopup(row.meetingLink, row.id);
+      if (!popup) window.open(row.meetingLink, "_blank", "noopener,noreferrer");
+    }
+    router.push(studioHref(row.id));
+  };
 
   const { data: activeClasses = [], isLoading: loadingActive } = useQuery<LiveClass[]>({
     queryKey: ["live-classes", "active"],
@@ -93,12 +103,15 @@ export default function LiveClassesPage() {
   ];
 
   const activeColumns: ColumnDef<LiveClass>[] = [
-    ...baseColumns,
+    { accessorKey: "title", header: "Title" },
     {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => (
         <div className="flex gap-2">
+          <Button size="sm" onClick={() => openStudio(row.original)}>
+            <ExternalLink className="h-3 w-3 mr-1" /> Join
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href={studioHref(row.original.id)}>
               <Circle className="h-3 w-3 mr-1 fill-red-500 text-red-500" /> Record
@@ -120,6 +133,19 @@ export default function LiveClassesPage() {
           </Button>
         </div>
       ),
+    },
+    { accessorKey: "courseTitle", header: "Course" },
+    { accessorKey: "batchName", header: "Batch", cell: ({ row }) => row.original.batchName || "—" },
+    { accessorKey: "mentorName", header: "Mentor" },
+    {
+      accessorKey: "scheduledAt",
+      header: "Scheduled At",
+      cell: ({ row }) => formatDateTime(row.original.scheduledAt),
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => statusBadge(row.original.status),
     },
   ];
 
@@ -151,6 +177,9 @@ export default function LiveClassesPage() {
       header: "Actions",
       cell: ({ row }) => (
         <div className="flex gap-2">
+          <Button size="sm" onClick={() => openStudio(row.original)}>
+            <ExternalLink className="h-3 w-3 mr-1" /> Join
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href={studioHref(row.original.id)}>
               <Circle className="h-3 w-3 mr-1 fill-red-500 text-red-500" /> Record
