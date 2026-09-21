@@ -63,7 +63,50 @@ export function unwrapApiJson(body: unknown): unknown {
   }
 }
 
+function utf8ToHex(text: string): string {
+  if (typeof window === "undefined") {
+    return Buffer.from(text, "utf8").toString("hex");
+  }
+  const bytes = new TextEncoder().encode(text);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) hex += bytes[i]!.toString(16).padStart(2, "0");
+  return hex;
+}
+
+function hexToUtf8(hex: string): string {
+  const clean = hex.trim();
+  if (!/^[0-9a-fA-F]+$/.test(clean) || clean.length % 2 !== 0) {
+    throw new Error("invalid hex");
+  }
+  if (typeof window === "undefined") {
+    return Buffer.from(clean, "hex").toString("utf8");
+  }
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+/** Multipart body — Hostinger JSON/ModSecurity rules often 403 POST /api/class-recordings. */
+export function wrapApiForm(data: unknown): FormData {
+  const form = new FormData();
+  form.append("d", utf8ToHex(JSON.stringify(data)));
+  return form;
+}
+
 export async function readApiJson(request: Request): Promise<unknown> {
+  const ct = request.headers.get("content-type") || "";
+  if (ct.includes("multipart/form-data")) {
+    const form = await request.formData();
+    const d = form.get("d");
+    if (typeof d !== "string" || !d.trim()) return null;
+    try {
+      return JSON.parse(hexToUtf8(d));
+    } catch {
+      return unwrapApiJson({ p: d.startsWith(B64_PREFIX) ? d : `${B64_PREFIX}${d}` });
+    }
+  }
   const raw = await request.json().catch(() => null);
   return unwrapApiJson(raw);
 }

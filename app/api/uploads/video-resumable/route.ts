@@ -8,7 +8,7 @@ import {
   VIDEO_UPLOAD_CHUNK_BYTES,
   getVideoSizeError,
 } from "@/lib/video-upload";
-import { resolveBatchVideoObjectKey, VideoUploadAuthError } from "@/lib/video-upload-server";
+import { resolveBatchVideoObjectKey, resolveLiveClassVideoObjectKey, VideoUploadAuthError } from "@/lib/video-upload-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +20,14 @@ const ALLOWED_VIDEO_TYPES = new Set([
   "video/quicktime",
   "video/x-matroska",
 ]);
+
+function normalizeVideoContentType(raw: unknown): string {
+  const s = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  const base = s.split(";")[0]?.trim() || "";
+  if (ALLOWED_VIDEO_TYPES.has(base)) return base;
+  if (base.includes("webm")) return "video/webm";
+  return "video/mp4";
+}
 
 /**
  * Diagnostic: does the configured service account have the bucket permissions
@@ -57,20 +65,24 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json().catch(() => null)) as
-      | { batchId?: unknown; filename?: unknown; contentType?: unknown; fileSize?: unknown }
+      | {
+          batchId?: unknown;
+          liveClassId?: unknown;
+          filename?: unknown;
+          contentType?: unknown;
+          fileSize?: unknown;
+        }
       | null;
 
     const batchId = typeof body?.batchId === "string" ? body.batchId.trim() : "";
+    const liveClassId = typeof body?.liveClassId === "string" ? body.liveClassId.trim() : "";
     const filename = typeof body?.filename === "string" ? body.filename.trim() : "";
-    const contentType =
-      typeof body?.contentType === "string" && ALLOWED_VIDEO_TYPES.has(body.contentType.trim())
-        ? body.contentType.trim()
-        : "video/mp4";
+    const contentType = normalizeVideoContentType(body?.contentType);
     const fileSize = typeof body?.fileSize === "number" ? body.fileSize : Number(body?.fileSize);
 
-    if (!batchId || !filename) {
+    if ((!batchId && !liveClassId) || !filename) {
       return NextResponse.json(
-        { error: "batchId and filename are required." },
+        { error: "filename and batchId or liveClassId are required." },
         { status: 400 }
       );
     }
@@ -80,11 +92,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: sizeError }, { status: 413 });
     }
 
-    const { objectKey, folderName, safeFilename } = await resolveBatchVideoObjectKey(
-      batchId,
-      filename,
-      session!.user.role === "mentor" ? { mentorCourseId: session!.user.courseId } : undefined
-    );
+    const mentorOpts =
+      session!.user.role === "mentor"
+        ? { mentorCourseId: session!.user.courseId, mentorUserId: session!.user.id }
+        : undefined;
+
+    const { objectKey, folderName, safeFilename } = liveClassId
+      ? await resolveLiveClassVideoObjectKey(liveClassId, filename, mentorOpts)
+      : await resolveBatchVideoObjectKey(batchId, filename, mentorOpts);
 
     const origin = request.headers.get("origin")?.trim() || getAppUrl();
 

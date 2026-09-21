@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { batches } from "@/lib/db/schema";
+import { batches, liveClasses } from "@/lib/db/schema";
 import { buildVideoObjectKey } from "@/lib/video-upload";
 
 export class VideoUploadAuthError extends Error {
@@ -31,4 +31,36 @@ export async function resolveBatchVideoObjectKey(
   }
 
   return buildVideoObjectKey(batch.name, filename);
+}
+
+/** Folder from the live class batch (or title) — mentors may only record their own class. */
+export async function resolveLiveClassVideoObjectKey(
+  liveClassId: string,
+  filename: string,
+  opts?: { mentorUserId?: string; mentorCourseId?: string | null }
+) {
+  const [row] = await db
+    .select({
+      id: liveClasses.id,
+      title: liveClasses.title,
+      mentorId: liveClasses.mentorId,
+      courseId: liveClasses.courseId,
+      batchName: batches.name,
+    })
+    .from(liveClasses)
+    .leftJoin(batches, eq(liveClasses.batchId, batches.id))
+    .where(and(eq(liveClasses.id, liveClassId), isNull(liveClasses.deletedAt)))
+    .limit(1);
+
+  if (!row) {
+    throw new VideoUploadAuthError("Live class not found.", 404);
+  }
+  if (opts?.mentorUserId && row.mentorId !== opts.mentorUserId) {
+    throw new VideoUploadAuthError("You can only record your own live classes.", 403);
+  }
+  if (opts?.mentorCourseId && row.courseId !== opts.mentorCourseId) {
+    throw new VideoUploadAuthError("You can only record classes for your assigned course.", 403);
+  }
+
+  return buildVideoObjectKey(row.batchName || row.title || "live-class", filename);
 }

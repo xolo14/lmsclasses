@@ -1866,6 +1866,41 @@ export async function GETLiveClasses(request: Request) {
   return NextResponse.json(result);
 }
 
+export async function GETLiveClass(_request: Request, id: string) {
+  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
+  if (error) return error;
+
+  const [row] = await db
+    .select({
+      id: liveClasses.id,
+      title: liveClasses.title,
+      courseId: liveClasses.courseId,
+      courseTitle: liveCourses.title,
+      batchId: liveClasses.batchId,
+      batchName: batches.name,
+      mentorId: liveClasses.mentorId,
+      meetingLink: liveClasses.meetingLink,
+      scheduledAt: liveClasses.scheduledAt,
+      duration: liveClasses.duration,
+      recordingUrl: liveClasses.recordingUrl,
+      status: liveClasses.status,
+    })
+    .from(liveClasses)
+    .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
+    .leftJoin(batches, eq(liveClasses.batchId, batches.id))
+    .where(and(eq(liveClasses.id, id), isNull(liveClasses.deletedAt)))
+    .limit(1);
+
+  if (!row) {
+    return NextResponse.json({ error: "Live class not found." }, { status: 404 });
+  }
+  if (session!.user.role === "mentor" && row.mentorId !== session!.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  return NextResponse.json(row);
+}
+
 export async function POSTLiveClass(request: Request) {
   const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;

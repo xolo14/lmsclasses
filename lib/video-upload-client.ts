@@ -44,10 +44,15 @@ export function parseGcsErrorBody(body: string | null | undefined): string | nul
 
 /** Ask the server to open a GCS resumable session for this file. Fails fast on size. */
 export async function startResumableVideoUpload(args: {
-  batchId: string;
   file: File;
+  batchId?: string;
+  liveClassId?: string;
 }): Promise<ResumableSession> {
-  const { batchId, file } = args;
+  const { batchId, liveClassId, file } = args;
+
+  if (!batchId && !liveClassId) {
+    throw new VideoUploadError("A batch or live class is required to start the upload.");
+  }
 
   const sizeError = getVideoSizeError(file.size);
   if (sizeError) throw new VideoUploadError(sizeError, 413);
@@ -56,9 +61,9 @@ export async function startResumableVideoUpload(args: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      batchId,
+      ...(liveClassId ? { liveClassId } : { batchId }),
       filename: file.name,
-      contentType: file.type || "video/mp4",
+      contentType: file.type || "video/webm",
       fileSize: file.size,
     }),
   });
@@ -106,11 +111,20 @@ function putChunk(
     xhr.onload = () => {
       // GCS answers `308 Resume Incomplete` for accepted intermediate chunks and
       // reports how much it has persisted via `Range: bytes=0-N`.
-      const range = xhr.getResponseHeader("Range");
-      const m = range?.match(/bytes=0-(\d+)/);
+      // Do not call getResponseHeader("Range") — Chromium logs "unsafe header"
+      // when CORS does not expose it, and returns null anyway.
+      let rangeEnd: number | null = null;
+      try {
+        const m = (xhr.getAllResponseHeaders() || "").match(
+          /(?:^|\r?\n)range:\s*bytes=0-(\d+)/i
+        );
+        if (m) rangeEnd = Number(m[1]);
+      } catch {
+        /* CORS may hide Range */
+      }
       resolve({
         status: xhr.status,
-        rangeEnd: m ? Number(m[1]) : null,
+        rangeEnd,
         body: xhr.responseText ?? "",
       });
     };

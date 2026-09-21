@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Play, Plus, Pencil, Trash2 } from "lucide-react";
+import { Circle, Play, Plus, Pencil, Trash2 } from "lucide-react";
 import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
@@ -42,6 +44,11 @@ export default function LiveClassesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editClass, setEditClass] = useState<LiveClass | undefined>();
   const [watchRecording, setWatchRecording] = useState<{ url: string; title: string } | null>(null);
+  const pathname = usePathname();
+  const studioHref = (id: string) =>
+    pathname.startsWith("/manager")
+      ? `/manager/live-classes/${id}/studio`
+      : `/super-admin/live-classes/${id}/studio`;
 
   const { data: activeClasses = [], isLoading: loadingActive } = useQuery<LiveClass[]>({
     queryKey: ["live-classes", "active"],
@@ -92,6 +99,11 @@ export default function LiveClassesPage() {
       header: "Actions",
       cell: ({ row }) => (
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={studioHref(row.original.id)}>
+              <Circle className="h-3 w-3 mr-1 fill-red-500 text-red-500" /> Record
+            </Link>
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditClass(row.original)}>
             <Pencil className="h-3 w-3 mr-1" /> Edit
           </Button>
@@ -138,9 +150,16 @@ export default function LiveClassesPage() {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <Button variant="outline" size="sm" onClick={() => setEditClass(row.original)}>
-          <Pencil className="h-3 w-3 mr-1" /> Edit
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={studioHref(row.original.id)}>
+              <Circle className="h-3 w-3 mr-1 fill-red-500 text-red-500" /> Record
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setEditClass(row.original)}>
+            <Pencil className="h-3 w-3 mr-1" /> Edit
+          </Button>
+        </div>
       ),
     },
   ];

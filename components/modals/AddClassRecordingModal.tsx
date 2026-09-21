@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { classRecordingSchema, type ClassRecordingInput } from "@/lib/validations";
-import { wrapApiJson } from "@/lib/api-url-transport";
+import { wrapApiForm } from "@/lib/api-url-transport";
 import {
   ACCEPTED_VIDEO_INPUT,
   MAX_VIDEO_UPLOAD_LABEL,
@@ -133,10 +133,10 @@ export function AddClassRecordingModal({
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid recording data");
       }
 
-      const res = await fetch("/api/class-recordings", {
+      const res = await fetch("/api/media/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(wrapApiJson(parsed.data)),
+        body: wrapApiForm(parsed.data),
+        credentials: "same-origin",
       });
 
       const raw = await res.text();
@@ -166,7 +166,7 @@ export function AddClassRecordingModal({
       }
 
       setUploadProgress(100);
-      return res.json();
+      return json;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["class-recordings", batchId] });
