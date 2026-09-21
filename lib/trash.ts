@@ -204,6 +204,13 @@ async function hardDeleteExpiredUsers(cutoff: Date) {
   await hardDeleteUsers(trashed.map((u) => u.id));
 }
 
+async function hardDeleteCoupons(ids: string[]) {
+  if (ids.length === 0) return;
+  // Payments keep historical discount amounts; drop the FK so coupon rows can go.
+  await db.update(payments).set({ couponId: null }).where(inArray(payments.couponId, ids));
+  await db.delete(coupons).where(inArray(coupons.id, ids));
+}
+
 /** Permanently remove items that have been in trash longer than retention period. */
 export async function purgeExpiredTrash() {
   const cutoff = trashCutoffDate();
@@ -246,7 +253,11 @@ export async function purgeExpiredTrash() {
     .where(and(isNotNull(recordCourses.deletedAt), lt(recordCourses.deletedAt, cutoff)));
   await hardDeleteRecordCourses(expiredRecordCourses.map((c) => c.id));
 
-  await db.delete(coupons).where(and(isNotNull(coupons.deletedAt), lt(coupons.deletedAt, cutoff)));
+  const expiredCoupons = await db
+    .select({ id: coupons.id })
+    .from(coupons)
+    .where(and(isNotNull(coupons.deletedAt), lt(coupons.deletedAt, cutoff)));
+  await hardDeleteCoupons(expiredCoupons.map((c) => c.id));
   await hardDeleteExpiredUsers(cutoff);
 }
 
@@ -287,7 +298,11 @@ export async function clearAllTrashImmediate() {
     .where(isNotNull(recordCourses.deletedAt));
   await hardDeleteRecordCourses(trashedRecordCourses.map((c) => c.id));
 
-  await db.delete(coupons).where(isNotNull(coupons.deletedAt));
+  const trashedCoupons = await db
+    .select({ id: coupons.id })
+    .from(coupons)
+    .where(isNotNull(coupons.deletedAt));
+  await hardDeleteCoupons(trashedCoupons.map((c) => c.id));
   await hardDeleteTrashedUsers();
 }
 

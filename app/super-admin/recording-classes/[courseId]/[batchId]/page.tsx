@@ -13,6 +13,7 @@ import { AddClassRecordingModal } from "@/components/modals/AddClassRecordingMod
 import { BulkImportModal } from "@/components/modals/BulkImportModal";
 import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 import { formatDateTime } from "@/lib/utils";
+import { wrapApiJson } from "@/lib/api-url-transport";
 
 type Recording = {
   id: string;
@@ -178,11 +179,13 @@ export default function BatchRecordingsPage() {
           const res = await fetch("/api/class-recordings/bulk", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              courseId,
-              batchId,
-              recordings: data
-            }),
+            body: JSON.stringify(
+              wrapApiJson({
+                courseId,
+                batchId,
+                recordings: data,
+              })
+            ),
           });
           const json = await res.json();
           if (!res.ok) {

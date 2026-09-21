@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { courseRecordings, recordCourses } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { courseRecordingSchema } from "@/lib/validations/course-recording";
+import { readApiJson } from "@/lib/api-url-transport";
 import { logAction, getClientIp } from "@/lib/audit";
 
 export async function GET(request: Request) {
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
   if (error) return error;
 
   try {
-    const body = await request.json();
+    const body = await readApiJson(request);
     const parsed = courseRecordingSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

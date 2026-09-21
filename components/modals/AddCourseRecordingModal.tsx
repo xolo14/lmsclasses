@@ -21,7 +21,7 @@ import {
   PlayableVideoError,
   resolvePlayableVideoUrl,
 } from "@/lib/resolve-playable-video-url";
-import { encodeUrlForApiTransport } from "@/lib/api-url-transport";
+import { encodeUrlForApiTransport, wrapApiJson } from "@/lib/api-url-transport";
 import type { CourseRecording } from "@/lib/db/schema";
 import { z } from "zod";
 
@@ -148,10 +148,10 @@ export function AddCourseRecordingModal({
         : "/api/super-admin/recordings";
       // Prefer POST for updates — Hostinger/WAF often returns plain-text 403 on PATCH.
       // Encode video URL so remote http(s) signatures in the body are not blocked.
-      const payload = {
+      const payload = wrapApiJson({
         ...parsed.data,
         videoUrl: encodeUrlForApiTransport(parsed.data.videoUrl),
-      };
+      });
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

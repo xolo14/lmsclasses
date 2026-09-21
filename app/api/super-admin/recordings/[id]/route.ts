@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { courseRecordings } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { courseRecordingUpdateSchema } from "@/lib/validations/course-recording";
+import { readApiJson } from "@/lib/api-url-transport";
 import { logAction, getClientIp } from "@/lib/audit";
 
 export async function PATCH(
@@ -27,7 +28,7 @@ async function updateRecording(request: Request, params: Promise<{ id: string }>
 
   try {
     const { id } = await params;
-    const body = await request.json();
+    const body = await readApiJson(request);
     const parsed = courseRecordingUpdateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

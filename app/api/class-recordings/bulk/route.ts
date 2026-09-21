@@ -5,6 +5,7 @@ import { batches, classRecordings } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { classRecordingSchema } from "@/lib/validations";
+import { readApiJson } from "@/lib/api-url-transport";
 
 export const runtime = "nodejs";
 
@@ -15,10 +16,14 @@ export async function POST(request: Request) {
   if (error) return error;
 
   try {
-    const body = await request.json();
+    const body = ((await readApiJson(request)) ?? {}) as {
+      courseId?: unknown;
+      batchId?: unknown;
+      recordings?: unknown;
+    };
     const { courseId, batchId, recordings } = body;
 
-    if (!courseId || !batchId || !Array.isArray(recordings)) {
+    if (typeof courseId !== "string" || typeof batchId !== "string" || !Array.isArray(recordings)) {
       return NextResponse.json(
         { error: "courseId, batchId, and recordings array are required" },
         { status: 400 }

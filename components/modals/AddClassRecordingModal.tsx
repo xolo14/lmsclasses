@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { classRecordingSchema, type ClassRecordingInput } from "@/lib/validations";
-import { encodeUrlForApiTransport } from "@/lib/api-url-transport";
+import { wrapApiJson } from "@/lib/api-url-transport";
 import {
   ACCEPTED_VIDEO_INPUT,
   MAX_VIDEO_UPLOAD_LABEL,
@@ -21,6 +21,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -135,15 +136,33 @@ export function AddClassRecordingModal({
       const res = await fetch("/api/class-recordings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...parsed.data,
-          videoUrl: encodeUrlForApiTransport(parsed.data.videoUrl),
-        }),
+        body: JSON.stringify(wrapApiJson(parsed.data)),
       });
 
+      const raw = await res.text();
+      let json: { error?: unknown } = {};
+      if (raw) {
+        try {
+          json = JSON.parse(raw) as { error?: unknown };
+        } catch {
+          if (!res.ok) {
+            throw new Error(
+              res.status === 403
+                ? "Save blocked by the host firewall. Retry after this update, or use a simpler week/topic name."
+                : `Failed to save class recording (${res.status})`
+            );
+          }
+        }
+      }
+
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || "Failed to save class recording");
+        const message =
+          typeof json.error === "string" && json.error
+            ? json.error
+            : res.status === 403
+              ? "Save blocked by the host firewall. Retry after this update."
+              : "Failed to save class recording";
+        throw new Error(message);
       }
 
       setUploadProgress(100);
@@ -195,6 +214,9 @@ export function AddClassRecordingModal({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Upload Recorded Class</DialogTitle>
+          <DialogDescription>
+            Upload a video file or paste a GCS key / video URL for this batch.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

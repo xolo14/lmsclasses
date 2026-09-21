@@ -15,6 +15,7 @@ import {
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { classRecordingSchema } from "@/lib/validations";
+import { readApiJson } from "@/lib/api-url-transport";
 import { clearAllTrashImmediate, TRASH_RETENTION_DAYS, type TrashEntityType } from "@/lib/trash";
 import { hasRecordedAccess } from "@/lib/content-access";
 
@@ -297,10 +298,13 @@ export async function POSTClassRecording(request: Request) {
   const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
-  const body = await request.json();
+  const body = await readApiJson(request);
   const parsed = classRecordingSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid recording data" },
+      { status: 400 }
+    );
   }
 
   if (session!.user.role === "mentor") {
@@ -324,32 +328,37 @@ export async function POSTClassRecording(request: Request) {
     return NextResponse.json({ error: "Batch does not belong to this course." }, { status: 400 });
   }
 
-  const [recording] = await db
-    .insert(classRecordings)
-    .values({
-      ...parsed.data,
-      uploadedBy: session!.user.id,
-    })
-    .returning();
+  try {
+    const [recording] = await db
+      .insert(classRecordings)
+      .values({
+        ...parsed.data,
+        uploadedBy: session!.user.id,
+      })
+      .returning();
 
-  await logAction({
-    userId: session!.user.id,
-    role: session!.user.role,
-    action: "CREATED_CLASS_RECORDING",
-    entity: "ClassRecording",
-    entityId: recording.id,
-    metadata: { weekName: parsed.data.weekName, topicName: parsed.data.topicName },
-    ipAddress: getClientIp(request),
-  });
+    await logAction({
+      userId: session!.user.id,
+      role: session!.user.role,
+      action: "CREATED_CLASS_RECORDING",
+      entity: "ClassRecording",
+      entityId: recording.id,
+      metadata: { weekName: parsed.data.weekName, topicName: parsed.data.topicName },
+      ipAddress: getClientIp(request),
+    });
 
-  return NextResponse.json(recording, { status: 201 });
+    return NextResponse.json(recording, { status: 201 });
+  } catch (err) {
+    console.error("[POSTClassRecording]", err);
+    return NextResponse.json({ error: "Failed to save class recording." }, { status: 500 });
+  }
 }
 
 export async function PATCHClassRecording(request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
-  const body = await request.json().catch(() => null);
+  const body = await readApiJson(request);
   const parsed = classRecordingSchema.partial().safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
