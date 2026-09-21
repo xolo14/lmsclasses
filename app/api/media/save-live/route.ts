@@ -60,14 +60,34 @@ export async function POST(request: Request) {
 
     if (existing.batchId) {
       try {
-        await db.insert(classRecordings).values({
-          courseId: existing.courseId,
-          batchId: existing.batchId,
-          weekName: "Live recording",
-          topicName: existing.title,
-          videoUrl: recordingUrl,
-          uploadedBy: session!.user.id,
-        });
+        const [copy] = await db
+          .select({ id: classRecordings.id })
+          .from(classRecordings)
+          .where(
+            and(
+              eq(classRecordings.courseId, existing.courseId),
+              eq(classRecordings.batchId, existing.batchId),
+              eq(classRecordings.weekName, "Live recording"),
+              eq(classRecordings.topicName, existing.title),
+              isNull(classRecordings.deletedAt)
+            )
+          )
+          .limit(1);
+        if (copy) {
+          await db
+            .update(classRecordings)
+            .set({ videoUrl: recordingUrl, uploadedBy: session!.user.id })
+            .where(eq(classRecordings.id, copy.id));
+        } else {
+          await db.insert(classRecordings).values({
+            courseId: existing.courseId,
+            batchId: existing.batchId,
+            weekName: "Live recording",
+            topicName: existing.title,
+            videoUrl: recordingUrl,
+            uploadedBy: session!.user.id,
+          });
+        }
       } catch (copyErr) {
         console.error("[save-live] class_recordings copy failed:", copyErr);
       }

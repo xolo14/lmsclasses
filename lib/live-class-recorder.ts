@@ -48,12 +48,15 @@ export async function captureMeetTab(): Promise<MediaStream> {
       frameRate: { ideal: 30, max: 30 },
       width: { ideal: 1920, max: 1920 },
       height: { ideal: 1080, max: 1080 },
+      // Hint Chrome to open the tab picker (Meet tab + “Also share tab audio”).
+      displaySurface: "browser",
     },
     audio: true,
     preferCurrentTab: false,
     selfBrowserSurface: "exclude",
     systemAudio: "include",
     monitorTypeSurfaces: "exclude",
+    surfaceSwitching: "include",
   } as DisplayMediaStreamOptions);
 
   if (!stream.getVideoTracks().length) {

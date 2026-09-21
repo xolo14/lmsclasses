@@ -9,7 +9,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { orgAdminVisibleBatches } from "@/lib/batch-scope";
-import { hasRecordedAccess } from "@/lib/content-access";
+import { hasLiveAccess, hasRecordedAccess } from "@/lib/content-access";
 import { parseGcsObjectKey } from "@/lib/gcs";
 import { isPublicCourseDemoReference } from "@/lib/public-demo-access";
 import type { Session } from "next-auth";
@@ -82,11 +82,15 @@ export async function assertVideoEntitlement(
       .where(eq(studentCourses.studentId, session.user.id));
 
     const recorded = enrollments.filter((e) => hasRecordedAccess(e));
+    const liveWatch = enrollments.filter((e) => hasLiveAccess(e) || hasRecordedAccess(e));
     const batchIds = recorded.map((e) => e.batchId).filter((id): id is string => !!id);
     const recordCourseIds = recorded
       .map((e) => e.recordCourseId)
       .filter((id): id is string => !!id);
     const liveCourseIds = recorded
+      .map((e) => e.liveCourseId)
+      .filter((id): id is string => !!id);
+    const liveWatchCourseIds = liveWatch
       .map((e) => e.liveCourseId)
       .filter((id): id is string => !!id);
 
@@ -115,7 +119,7 @@ export async function assertVideoEntitlement(
           .where(or(...recordCourseIds.map((id) => eq(courseRecordings.recordCourseId, id)))!)
       );
     }
-    if (liveCourseIds.length) {
+    if (liveWatchCourseIds.length) {
       checks.push(
         db
           .select({ recordingUrl: liveClasses.recordingUrl })
@@ -123,7 +127,7 @@ export async function assertVideoEntitlement(
           .where(
             and(
               isNull(liveClasses.deletedAt),
-              or(...liveCourseIds.map((id) => eq(liveClasses.courseId, id)))!
+              or(...liveWatchCourseIds.map((id) => eq(liveClasses.courseId, id)))!
             )
           )
       );

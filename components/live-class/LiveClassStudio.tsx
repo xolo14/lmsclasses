@@ -9,11 +9,13 @@ import {
   ArrowLeft,
   Circle,
   ExternalLink,
+  Play,
   Square,
   UploadCloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 import { formatDateTime } from "@/lib/utils";
 import { formatFileSize } from "@/lib/video-upload";
 import {
@@ -71,6 +73,9 @@ export function LiveClassStudio({
   const [uploadStatus, setUploadStatus] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [meetOpen, setMeetOpen] = useState(false);
+  const [watchOpen, setWatchOpen] = useState(false);
+  const [savedMessage, setSavedMessage] = useState("");
+  const [savedKey, setSavedKey] = useState("");
 
   const { data: liveClass, isLoading, isError } = useQuery<LiveClassDetail>({
     queryKey: ["live-class", liveClassId],
@@ -119,6 +124,16 @@ export function LiveClassStudio({
   }, []);
 
   useEffect(() => {
+    if (phase !== "recording" && phase !== "uploading") return;
+    const onLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onLeave);
+    return () => window.removeEventListener("beforeunload", onLeave);
+  }, [phase]);
+
+  useEffect(() => {
     if (phase === "recording" && streamRef.current && livePreviewRef.current) {
       livePreviewRef.current.srcObject = streamRef.current;
       livePreviewRef.current.muted = true;
@@ -153,7 +168,7 @@ export function LiveClassStudio({
     const blob = new Blob(chunksRef.current, { type: blobType || "video/webm" });
     chunksRef.current = [];
     if (blob.size < 1024) {
-      setError("The recording is empty. Share the Google Meet popup window and try again.");
+      setError("The recording is empty. Share the Google Meet Chrome tab and try again.");
       setPhase("idle");
       return;
     }
@@ -172,17 +187,15 @@ export function LiveClassStudio({
   const startRecording = async () => {
     setError("");
     setWarning("");
+    setSavedMessage("");
+    setSavedKey("");
     const mimeType = pickRecorderMimeType();
     if (!mimeType) {
       setError("This browser cannot record a window. Use Chrome or Edge on a computer.");
       return;
     }
 
-    if (liveClass?.meetingLink) {
-      if (!meetPopupIsOpen(liveClassId)) openMeet();
-      else focusMeetPopup(liveClassId);
-    }
-
+    // Do not open/focus Meet first — Chrome needs this tab focused for the picker.
     let stream: MediaStream;
     try {
       stream = await captureMeetTab();
@@ -190,7 +203,7 @@ export function LiveClassStudio({
       const name = err instanceof DOMException ? err.name : "";
       if (name === "NotAllowedError") {
         setError(
-          "Permission denied. Click Start recording again and choose the Google Meet window. Enable “Also share tab audio”."
+          "Permission denied. Click Start recording again, pick the Google Meet Chrome tab, and enable “Also share tab audio”."
         );
       } else {
         setError(err instanceof Error ? err.message : "Could not start screen capture.");
@@ -198,16 +211,37 @@ export function LiveClassStudio({
       return;
     }
 
+    const videoTrack = stream.getVideoTracks()[0];
+    const surface = videoTrack?.getSettings().displaySurface;
+    if (surface === "monitor") {
+      stopMediaStream(stream);
+      setError(
+        "You shared the whole screen. Click Start recording and pick the Google Meet Chrome tab instead."
+      );
+      return;
+    }
     if (!stream.getAudioTracks().length) {
       setWarning(
-        "No audio captured. Choose the Google Meet window and enable “Also share tab audio”."
+        "No audio captured. Stop, then share the Google Meet Chrome tab with “Also share tab audio” on."
+      );
+    } else if (surface === "window") {
+      setWarning(
+        "Window capture often has no meeting audio. Prefer the Chrome Tab named Google Meet and enable tab audio."
       );
     }
 
     streamRef.current = stream;
     chunksRef.current = [];
 
-    const recorder = new MediaRecorder(stream, { mimeType });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType });
+    } catch {
+      stopMediaStream(stream);
+      streamRef.current = null;
+      setError("This browser could not start the recorder. Use Chrome or Edge on a computer.");
+      return;
+    }
     recorderRef.current = recorder;
     recorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
@@ -219,7 +253,6 @@ export function LiveClassStudio({
     };
     recorder.onstop = () => finalizeRecording(recorder.mimeType || mimeType);
 
-    const videoTrack = stream.getVideoTracks()[0];
     if (videoTrack) {
       videoTrack.addEventListener("ended", () => {
         if (recorderRef.current?.state === "recording") recorderRef.current.stop();
@@ -233,6 +266,8 @@ export function LiveClassStudio({
       setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000));
     }, 250);
     setPhase("recording");
+    // Teacher continues the class in Meet after the picker closes.
+    focusMeetPopup(liveClassId);
   };
 
   const stopRecording = () => {
@@ -297,6 +332,8 @@ export function LiveClassStudio({
       setUploadProgress(100);
       resetMedia();
       setPhase("idle");
+      setSavedMessage("Recording saved. Students can watch it in the course.");
+      setSavedKey(session.objectKey);
       queryClient.invalidateQueries({ queryKey: ["live-class", liveClassId] });
       queryClient.invalidateQueries({ queryKey: ["live-classes"] });
     } catch (err) {
@@ -323,6 +360,8 @@ export function LiveClassStudio({
       </div>
     );
   }
+
+  const playbackUrl = savedKey || liveClass.recordingUrl;
 
   return (
     <div className="space-y-6">
@@ -381,8 +420,11 @@ export function LiveClassStudio({
           <h2 className="font-semibold">Recorder</h2>
           <ol className="list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
             <li>Open Google Meet in the popup.</li>
-            <li>Click Start recording and pick the <strong>Google Meet</strong> window.</li>
-            <li>Enable <strong>Also share tab audio</strong>.</li>
+            <li>
+              Click Start recording. In Chrome pick <strong>Chrome Tab</strong> → the{" "}
+              <strong>Google Meet</strong> tab (not this LMS page).
+            </li>
+            <li>Enable <strong>Also share tab audio</strong>, then Share.</li>
             <li>Stop → preview → upload. Students watch inside the LMS.</li>
           </ol>
 
@@ -437,9 +479,9 @@ export function LiveClassStudio({
             </div>
           )}
 
-          {liveClass.recordingUrl && phase === "idle" && (
-            <p className="text-xs text-muted-foreground">
-              A recording is already saved. Uploading again replaces the student playback link.
+          {(savedMessage || playbackUrl) && phase === "idle" && (
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">
+              {savedMessage || "A recording is already saved. Uploading again replaces the student playback link."}
             </p>
           )}
 
@@ -459,9 +501,16 @@ export function LiveClassStudio({
 
           <div className="flex flex-wrap gap-2">
             {phase === "idle" && (
-              <Button type="button" onClick={() => void startRecording()}>
-                <Circle className="mr-2 h-4 w-4 fill-red-500 text-red-500" /> Start recording
-              </Button>
+              <>
+                <Button type="button" onClick={() => void startRecording()}>
+                  <Circle className="mr-2 h-4 w-4 fill-red-500 text-red-500" /> Start recording
+                </Button>
+                {playbackUrl && (
+                  <Button type="button" variant="outline" onClick={() => setWatchOpen(true)}>
+                    <Play className="mr-2 h-4 w-4" /> Watch recording
+                  </Button>
+                )}
+              </>
             )}
             {phase === "recording" && (
               <Button type="button" variant="destructive" onClick={stopRecording}>
@@ -481,6 +530,13 @@ export function LiveClassStudio({
           </div>
         </div>
       </div>
+
+      <WatchRecordingModal
+        open={watchOpen}
+        onOpenChange={setWatchOpen}
+        videoUrl={playbackUrl ?? ""}
+        title={liveClass.title}
+      />
     </div>
   );
 }

@@ -1822,6 +1822,7 @@ export async function GETLiveClasses(request: Request) {
   const tab = searchParams.get("tab") ?? "active";
 
   const mentorId = session!.user.role === "mentor" ? session!.user.id : undefined;
+  await autoCompletePastLiveClasses(mentorId ? { mentorId } : undefined);
 
   const conditions = [isNull(liveClasses.deletedAt)];
 
