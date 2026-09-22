@@ -1,5 +1,6 @@
 import { createPrivateKey } from "crypto";
 import { Storage } from "@google-cloud/storage";
+import { contentTypeForVideoKey } from "@/lib/video-duration";
 
 const DEFAULT_BUCKET = "lmsclasses-videos";
 
@@ -457,10 +458,12 @@ export async function getSignedReadUrl(
 
   const storage = getStorage();
   const file = storage.bucket(bucketName).file(parsed.key);
+  const responseType = contentTypeForVideoKey(parsed.key);
   const [signedUrl] = await file.getSignedUrl({
     version: "v4",
     action: "read",
     expires: Date.now() + expiresMs,
+    ...(responseType ? { responseType } : {}),
   });
 
   return signedUrl;

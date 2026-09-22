@@ -11,14 +11,20 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 export const GET = handlers.GET;
 
 export async function POST(request: NextRequest) {
-  const ip = getClientIp(request) ?? "unknown";
-  const limited = checkRateLimit(`login:ip:${ip}`, LOGIN_LIMIT, LOGIN_WINDOW_MS);
-  if (!limited.allowed) {
-    const rl = rateLimitResponse(
-      limited.retryAfterSec,
-      "Too many sign-in attempts. Please wait and try again."
-    );
-    return NextResponse.json(rl.body, { status: rl.status, headers: rl.headers });
+  const path = request.nextUrl.pathname;
+  const isCredentialLogin =
+    path.includes("/callback/credentials") || path.includes("/signin");
+
+  if (isCredentialLogin) {
+    const ip = getClientIp(request) ?? "unknown";
+    const limited = checkRateLimit(`login:ip:${ip}`, LOGIN_LIMIT, LOGIN_WINDOW_MS);
+    if (!limited.allowed) {
+      const rl = rateLimitResponse(
+        limited.retryAfterSec,
+        "Too many sign-in attempts. Please wait and try again."
+      );
+      return NextResponse.json(rl.body, { status: rl.status, headers: rl.headers });
+    }
   }
 
   return handlers.POST(request);

@@ -13,7 +13,6 @@ import {
   PlayableVideoError,
   resolvePlayableVideoUrl,
 } from "@/lib/resolve-playable-video-url";
-import { prefetchVideoUrl } from "@/lib/video-prefetch";
 
 interface VideoPlayerModalProps {
   isOpen: boolean;
@@ -48,7 +47,6 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
         const url = await resolvePlayableVideoUrl(videoUrl);
         if (cancelled) return;
         setPlayableUrl(url);
-        prefetchVideoUrl(url);
         setEmbed(resolveVideoEmbed(url, true));
       } catch (err) {
         if (cancelled) return;

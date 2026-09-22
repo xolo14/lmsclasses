@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveClassSchema, type LiveClassInput } from "@/lib/validations";
+import { wrapApiForm } from "@/lib/api-url-transport";
 import { toDatetimeLocalValue } from "@/lib/utils";
 import {
   Dialog,
@@ -85,8 +86,7 @@ export function EditLiveClassModal({
     mutationFn: async (data: LiveClassInput) => {
       const res = await fetch(`/api/live-classes/${liveClass!.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: wrapApiForm(data),
       });
       if (!res.ok) throw new Error("Failed to update live class");
       return res.json();

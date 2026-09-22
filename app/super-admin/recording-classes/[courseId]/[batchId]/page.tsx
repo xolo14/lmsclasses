@@ -13,7 +13,7 @@ import { AddClassRecordingModal } from "@/components/modals/AddClassRecordingMod
 import { BulkImportModal } from "@/components/modals/BulkImportModal";
 import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 import { formatDateTime } from "@/lib/utils";
-import { wrapApiJson } from "@/lib/api-url-transport";
+import { wrapApiForm } from "@/lib/api-url-transport";
 
 type Recording = {
   id: string;
@@ -46,7 +46,7 @@ export default function BatchRecordingsPage() {
 
   const deleteRecording = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/class-recordings/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/media/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
         throw new Error(json.error || "Failed to delete recording.");
@@ -176,16 +176,13 @@ export default function BatchRecordingsPage() {
           videoUrl: "Video path"
         }}
         onImport={async (data) => {
-          const res = await fetch("/api/class-recordings/bulk", {
+          const res = await fetch("/api/media/bulk", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(
-              wrapApiJson({
-                courseId,
-                batchId,
-                recordings: data,
-              })
-            ),
+            body: wrapApiForm({
+              courseId,
+              batchId,
+              recordings: data,
+            }),
           });
           const json = await res.json();
           if (!res.ok) {

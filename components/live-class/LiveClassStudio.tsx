@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Play,
   Square,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,13 @@ import {
   recordingFilename,
   stopMediaStream,
 } from "@/lib/live-class-recorder";
+import {
+  deleteLiveTake,
+  getLiveTake,
+  listLiveTakes,
+  saveLiveTake,
+  type LocalLiveTakeMeta,
+} from "@/lib/live-class-take-store";
 
 type Phase = "idle" | "recording" | "preview" | "uploading";
 
@@ -47,6 +55,12 @@ type LiveClassDetail = {
   recordingUrl: string | null;
   status: string | null;
 };
+
+function daysLeft(expiresAt: number) {
+  const ms = expiresAt - Date.now();
+  if (ms <= 0) return 0;
+  return Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+}
 
 export function LiveClassStudio({
   liveClassId,
@@ -64,6 +78,8 @@ export function LiveClassStudio({
   const timerRef = useRef<number | null>(null);
   const startedAtRef = useRef(0);
   const previewUrlRef = useRef("");
+  const historyPlayUrlRef = useRef("");
+  const currentTakeIdRef = useRef<string | null>(null);
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [elapsed, setElapsed] = useState(0);
@@ -77,6 +93,11 @@ export function LiveClassStudio({
   const [watchOpen, setWatchOpen] = useState(false);
   const [savedMessage, setSavedMessage] = useState("");
   const [savedKey, setSavedKey] = useState("");
+  const [takes, setTakes] = useState<LocalLiveTakeMeta[]>([]);
+  const [historyError, setHistoryError] = useState("");
+  const [historyPlayUrl, setHistoryPlayUrl] = useState("");
+  const [historyPlayId, setHistoryPlayId] = useState("");
+  const [uploadingTakeId, setUploadingTakeId] = useState<string | null>(null);
 
   const { data: liveClass, isLoading, isError } = useQuery<LiveClassDetail>({
     queryKey: ["live-class", liveClassId],
@@ -91,6 +112,20 @@ export function LiveClassStudio({
   });
 
   const busy = phase === "recording" || phase === "uploading";
+
+  const refreshTakes = useCallback(async () => {
+    try {
+      const rows = await listLiveTakes(liveClassId);
+      setTakes(rows);
+      setHistoryError("");
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Could not read local history.");
+    }
+  }, [liveClassId]);
+
+  useEffect(() => {
+    void refreshTakes();
+  }, [refreshTakes]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -122,7 +157,10 @@ export function LiveClassStudio({
   };
 
   useEffect(() => {
-    return () => resetMedia();
+    return () => {
+      resetMedia();
+      if (historyPlayUrlRef.current) URL.revokeObjectURL(historyPlayUrlRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -159,6 +197,16 @@ export function LiveClassStudio({
     setMeetOpen(true);
   };
 
+  const showPreview = (file: File, takeId: string | null) => {
+    const url = URL.createObjectURL(file);
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = url;
+    currentTakeIdRef.current = takeId;
+    setPreviewFile(file);
+    setPreviewUrl(url);
+    setPhase("preview");
+  };
+
   const finalizeRecording = (blobType: string) => {
     captureStopRef.current?.();
     captureStopRef.current = null;
@@ -178,15 +226,30 @@ export function LiveClassStudio({
       return;
     }
 
-    const file = new File([blob], recordingFilename(liveClass?.title || "live-class"), {
+    const title = liveClass?.title || "live-class";
+    const file = new File([blob], recordingFilename(title), {
       type: blob.type || "video/webm",
     });
-    const url = URL.createObjectURL(blob);
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    previewUrlRef.current = url;
-    setPreviewFile(file);
-    setPreviewUrl(url);
-    setPhase("preview");
+    showPreview(file, null);
+
+    void (async () => {
+      try {
+        const meta = await saveLiveTake({
+          liveClassId,
+          title,
+          blob,
+          durationSeconds: Math.floor((Date.now() - startedAtRef.current) / 1000),
+        });
+        currentTakeIdRef.current = meta.id;
+        await refreshTakes();
+      } catch (err) {
+        setWarning(
+          err instanceof Error && /quota|Quota/i.test(err.message)
+            ? "This computer is out of space for local drafts. Upload now or delete old History items."
+            : "Could not keep this take in History. Upload it now or it will be lost if you leave."
+        );
+      }
+    })();
   };
 
   const startRecording = async () => {
@@ -194,7 +257,6 @@ export function LiveClassStudio({
     setWarning("");
     setSavedMessage("");
     setSavedKey("");
-    // Do not open/focus Meet first — Chrome needs this tab focused for the picker.
     let capture: Awaited<ReturnType<typeof captureMeetTab>>;
     try {
       capture = await captureMeetTab();
@@ -287,7 +349,6 @@ export function LiveClassStudio({
       setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000));
     }, 250);
     setPhase("recording");
-    // Teacher continues the class in Meet after the picker closes.
     focusMeetPopup(liveClassId);
   };
 
@@ -298,30 +359,30 @@ export function LiveClassStudio({
 
   const discardPreview = () => {
     resetMedia();
+    currentTakeIdRef.current = null;
     setPhase("idle");
     setError("");
   };
 
-  const uploadRecording = async () => {
-    if (!previewFile || !liveClass) return;
+  const uploadFile = async (file: File, takeId: string | null) => {
+    if (!liveClass) return;
     setError("");
     setPhase("uploading");
+    setUploadingTakeId(takeId);
     setUploadProgress(2);
     setUploadStatus("Starting upload session...");
 
     try {
       const session = await startResumableVideoUpload({
         liveClassId: liveClass.id,
-        file: previewFile,
+        file,
       });
       setUploadStatus("Uploading recording...");
-      await uploadFileToResumableSession(previewFile, session, {
+      await uploadFileToResumableSession(file, session, {
         onProgress: (uploaded) => {
-          const percent = 5 + Math.round((uploaded / previewFile.size) * 90);
+          const percent = 5 + Math.round((uploaded / file.size) * 90);
           setUploadProgress(Math.min(95, Math.max(5, percent)));
-          setUploadStatus(
-            `Uploading ${formatFileSize(uploaded)} of ${formatFileSize(previewFile.size)}...`
-          );
+          setUploadStatus(`Uploading ${formatFileSize(uploaded)} of ${formatFileSize(file.size)}...`);
         },
       });
 
@@ -350,6 +411,9 @@ export function LiveClassStudio({
         );
       }
 
+      if (takeId) await deleteLiveTake(takeId).catch(() => undefined);
+      currentTakeIdRef.current = null;
+      await refreshTakes();
       setUploadProgress(100);
       resetMedia();
       setPhase("idle");
@@ -359,9 +423,71 @@ export function LiveClassStudio({
       queryClient.invalidateQueries({ queryKey: ["live-classes"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed. Please try again.");
-      setPhase("preview");
+      setPhase(previewFile ? "preview" : "idle");
       setUploadProgress(0);
       setUploadStatus("");
+    } finally {
+      setUploadingTakeId(null);
+    }
+  };
+
+  const uploadRecording = async () => {
+    if (!previewFile) return;
+    await uploadFile(previewFile, currentTakeIdRef.current);
+  };
+
+  const playHistoryTake = async (id: string) => {
+    setHistoryError("");
+    try {
+      const take = await getLiveTake(id);
+      if (!take) {
+        setHistoryError("That take expired or was deleted.");
+        await refreshTakes();
+        return;
+      }
+      if (historyPlayUrlRef.current) URL.revokeObjectURL(historyPlayUrlRef.current);
+      const url = URL.createObjectURL(take.blob);
+      historyPlayUrlRef.current = url;
+      setHistoryPlayUrl(url);
+      setHistoryPlayId(id);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Could not play this take.");
+    }
+  };
+
+  const uploadHistoryTake = async (id: string) => {
+    setHistoryError("");
+    setError("");
+    try {
+      const take = await getLiveTake(id);
+      if (!take) {
+        setHistoryError("That take expired or was deleted.");
+        await refreshTakes();
+        return;
+      }
+      const file = new File([take.blob], recordingFilename(take.title), {
+        type: take.mimeType || "video/webm",
+      });
+      showPreview(file, take.id);
+      await uploadFile(file, take.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not upload this take.");
+    }
+  };
+
+  const deleteHistoryTake = async (id: string) => {
+    try {
+      await deleteLiveTake(id);
+      if (historyPlayId === id) {
+        if (historyPlayUrlRef.current) URL.revokeObjectURL(historyPlayUrlRef.current);
+        historyPlayUrlRef.current = "";
+        setHistoryPlayUrl("");
+        setHistoryPlayId("");
+      }
+      if (currentTakeIdRef.current === id) currentTakeIdRef.current = null;
+      await refreshTakes();
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Could not delete this take.");
     }
   };
 
@@ -405,8 +531,8 @@ export function LiveClassStudio({
         </Badge>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4 rounded-lg border bg-card p-4">
+      <div className="grid gap-6 xl:grid-cols-3">
+        <section className="space-y-4 rounded-lg border bg-card p-4">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-semibold">Google Meet</h2>
             <span className="text-xs text-muted-foreground">
@@ -435,10 +561,10 @@ export function LiveClassStudio({
               <p className="self-center text-xs text-destructive">No meeting link on this class.</p>
             )}
           </div>
-        </div>
+        </section>
 
-        <div className="space-y-4 rounded-lg border bg-card p-4">
-          <h2 className="font-semibold">Recorder</h2>
+        <section className="space-y-4 rounded-lg border bg-card p-4">
+          <h2 className="font-semibold">Record</h2>
           <ol className="list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
             <li>Open Google Meet (it opens as a browser tab).</li>
             <li>
@@ -449,7 +575,7 @@ export function LiveClassStudio({
               Turn on <strong>Also share tab audio</strong>, then Share. Allow the microphone
               when asked (your voice is mixed in).
             </li>
-            <li>Stop → preview → upload. Students watch inside the LMS.</li>
+            <li>Stop → preview → upload. A copy stays in History for 7 days until you upload or delete it.</li>
           </ol>
 
           {phase === "recording" && (
@@ -552,7 +678,87 @@ export function LiveClassStudio({
               </>
             )}
           </div>
-        </div>
+        </section>
+
+        <section className="space-y-4 rounded-lg border bg-card p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-semibold">History</h2>
+            <span className="text-xs text-muted-foreground">This browser · 7 days</span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Takes you have not uploaded stay on this computer for seven days. They are not on the
+            server and students cannot see them until you upload.
+          </p>
+
+          {historyPlayUrl && (
+            <video
+              key={historyPlayUrl}
+              className="aspect-video w-full rounded-md bg-black"
+              src={historyPlayUrl}
+              controls
+              playsInline
+            />
+          )}
+
+          {historyError && (
+            <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{historyError}</span>
+            </div>
+          )}
+
+          {takes.length === 0 ? (
+            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+              No local takes yet. Stop a recording to save a draft here.
+            </p>
+          ) : (
+            <ul className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+              {takes.map((take) => (
+                <li key={take.id} className="rounded-md border p-3 text-sm">
+                  <p className="font-medium">{take.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {formatDateTime(new Date(take.createdAt).toISOString())}
+                    {" · "}
+                    {formatElapsed(take.durationSeconds)}
+                    {" · "}
+                    {formatFileSize(take.size)}
+                    {" · "}
+                    {daysLeft(take.expiresAt)}d left
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void playHistoryTake(take.id)}
+                    >
+                      <Play className="mr-1 h-3 w-3" /> Play
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void uploadHistoryTake(take.id)}
+                    >
+                      <UploadCloud className="mr-1 h-3 w-3" />
+                      {uploadingTakeId === take.id ? "Uploading..." : "Upload"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      disabled={busy}
+                      onClick={() => void deleteHistoryTake(take.id)}
+                    >
+                      <Trash2 className="mr-1 h-3 w-3" /> Delete
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
 
       <WatchRecordingModal

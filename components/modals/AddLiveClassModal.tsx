@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveClassSchema, type LiveClassInput } from "@/lib/validations";
+import { wrapApiForm } from "@/lib/api-url-transport";
 import {
   Dialog,
   DialogContent,
@@ -80,8 +81,7 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
     mutationFn: async (data: LiveClassInput) => {
       const res = await fetch("/api/live-classes", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: wrapApiForm(data),
       });
       if (!res.ok) throw new Error("Failed to create live class");
       return res.json();

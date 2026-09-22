@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useState, type VideoHTMLAttributes } from "react
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { protectedVideoProps } from "@/lib/video-embed";
+import { recoverVideoDuration } from "@/lib/video-duration";
 
 type ProtectedVideoProps = VideoHTMLAttributes<HTMLVideoElement> & {
   /** Show a loading overlay until enough media is buffered to play. */
@@ -52,8 +53,13 @@ export const ProtectedVideo = forwardRef<HTMLVideoElement, ProtectedVideoProps>(
             onLoadStart?.(e);
           }}
           onLoadedMetadata={(e) => {
+            recoverVideoDuration(e.currentTarget);
             setBuffering(false);
             props.onLoadedMetadata?.(e);
+          }}
+          onDurationChange={(e) => {
+            recoverVideoDuration(e.currentTarget);
+            props.onDurationChange?.(e);
           }}
           onWaiting={(e) => {
             setBuffering(true);

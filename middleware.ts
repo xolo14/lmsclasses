@@ -44,6 +44,15 @@ export default auth((req) => {
   }
 
   const role = req.auth?.user?.role;
+  const homeForRole = (r: string | undefined) => {
+    if (r === "mentor") return "/mentor/dashboard";
+    if (r === "student") return "/student/courses";
+    if (r === "hr") return "/hr/dashboard";
+    if (r && ROLE_ROUTES[r as keyof typeof ROLE_ROUTES]) {
+      return `${ROLE_ROUTES[r as keyof typeof ROLE_ROUTES]}/dashboard`;
+    }
+    return "/login";
+  };
 
   const publicPaths = ["/login", "/hr/login", "/hr/register", "/"];
   const isPublic =
@@ -52,6 +61,7 @@ export default auth((req) => {
     pathname.startsWith("/demo") ||
     pathname.startsWith("/api/video") ||
     pathname.startsWith("/api/auth") ||
+    pathname === "/api/logout" ||
     pathname.startsWith("/api/public") ||
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/pay/") ||
@@ -69,17 +79,7 @@ export default auth((req) => {
 
   if (isPublic) {
     if (role && (pathname === "/login" || pathname === "/")) {
-      let dest = "/login";
-      if (role === "mentor") {
-        dest = "/mentor/dashboard";
-      } else if (role === "student") {
-        dest = "/student/courses";
-      } else if (role === "hr") {
-        dest = "/hr/dashboard";
-      } else if (role && ROLE_ROUTES[role as keyof typeof ROLE_ROUTES]) {
-        dest = `${ROLE_ROUTES[role as keyof typeof ROLE_ROUTES]}/dashboard`;
-      }
-      return withSecurityHeaders(NextResponse.redirect(new URL(dest, req.url)));
+      return withSecurityHeaders(NextResponse.redirect(new URL(homeForRole(role), req.url)));
     }
     if (role === "hr" && (pathname === "/hr/login" || pathname === "/hr/register")) {
       return withSecurityHeaders(NextResponse.redirect(new URL("/hr/dashboard", req.url)));
@@ -96,7 +96,8 @@ export default auth((req) => {
 
   for (const [r, prefix] of Object.entries(ROLE_ROUTES)) {
     if (pathname.startsWith(prefix) && role !== r) {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/login", req.url)));
+      // Still signed in — send them to their own home. /login would bounce them back.
+      return withSecurityHeaders(NextResponse.redirect(new URL(homeForRole(role), req.url)));
     }
   }
 

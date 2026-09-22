@@ -33,6 +33,7 @@ import { softDeleteOrganisationCascade } from "@/lib/organisation-cascade";
 import { freeOneSlot, consumeOneSlot, getSlotSummary, resolveCourse } from "@/lib/enrollment-service";
 import { hasLiveAccess, hasRecordedAccess } from "@/lib/content-access";
 import { formatDateTime, parseDatetimeLocalAsIst } from "@/lib/utils";
+import { readApiJson } from "@/lib/api-url-transport";
 
 /** Remove a partially created student if enrollment or slot steps fail (HTTP driver has no transactions). */
 async function rollbackNewStudent(studentId: string) {
@@ -1906,7 +1907,7 @@ export async function POSTLiveClass(request: Request) {
   const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
-  const body = await request.json();
+  const body = await readApiJson(request);
   const parsed = liveClassSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -2014,7 +2015,7 @@ export async function PATCHLiveClass(request: Request, id: string) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const body = await request.json();
+  const body = await readApiJson(request);
   const parsed = liveClassSchema.partial().safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
