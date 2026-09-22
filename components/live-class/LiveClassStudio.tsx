@@ -58,6 +58,7 @@ export function LiveClassStudio({
   const queryClient = useQueryClient();
   const livePreviewRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const captureStopRef = useRef<(() => void) | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
@@ -101,6 +102,8 @@ export function LiveClassStudio({
   const resetMedia = () => {
     recorderRef.current = null;
     chunksRef.current = [];
+    captureStopRef.current?.();
+    captureStopRef.current = null;
     stopMediaStream(streamRef.current);
     streamRef.current = null;
     if (timerRef.current) {
@@ -150,13 +153,15 @@ export function LiveClassStudio({
     }
     const popup = openMeetPopup(link, liveClassId);
     if (!popup) {
-      setError("The browser blocked the Meet popup. Allow popups for this site and try again.");
+      setError("The browser blocked the Meet tab. Allow popups for this site and try again.");
       return;
     }
     setMeetOpen(true);
   };
 
   const finalizeRecording = (blobType: string) => {
+    captureStopRef.current?.();
+    captureStopRef.current = null;
     stopMediaStream(streamRef.current);
     streamRef.current = null;
     if (livePreviewRef.current) livePreviewRef.current.srcObject = null;
@@ -189,16 +194,10 @@ export function LiveClassStudio({
     setWarning("");
     setSavedMessage("");
     setSavedKey("");
-    const mimeType = pickRecorderMimeType();
-    if (!mimeType) {
-      setError("This browser cannot record a window. Use Chrome or Edge on a computer.");
-      return;
-    }
-
     // Do not open/focus Meet first — Chrome needs this tab focused for the picker.
-    let stream: MediaStream;
+    let capture: Awaited<ReturnType<typeof captureMeetTab>>;
     try {
-      stream = await captureMeetTab();
+      capture = await captureMeetTab();
     } catch (err) {
       const name = err instanceof DOMException ? err.name : "";
       if (name === "NotAllowedError") {
@@ -211,33 +210,52 @@ export function LiveClassStudio({
       return;
     }
 
+    const { stream, stop, hasTabAudio, hasMicAudio } = capture;
     const videoTrack = stream.getVideoTracks()[0];
     const surface = videoTrack?.getSettings().displaySurface;
+
     if (surface === "monitor") {
-      stopMediaStream(stream);
+      stop();
       setError(
         "You shared the whole screen. Click Start recording and pick the Google Meet Chrome tab instead."
       );
       return;
     }
-    if (!stream.getAudioTracks().length) {
-      setWarning(
-        "No audio captured. Stop, then share the Google Meet Chrome tab with “Also share tab audio” on."
+
+    if (!hasTabAudio && !hasMicAudio) {
+      stop();
+      setError(
+        "No audio was captured. Pick Chrome Tab → Google Meet, turn on “Also share tab audio”, and allow the microphone when asked."
       );
-    } else if (surface === "window") {
+      return;
+    }
+
+    if (!hasTabAudio) {
       setWarning(
-        "Window capture often has no meeting audio. Prefer the Chrome Tab named Google Meet and enable tab audio."
+        "Meet tab audio was not shared, so only your microphone is in this recording. Stop and share the Google Meet Chrome tab with “Also share tab audio” to include students."
       );
     }
 
+    const mimeType = pickRecorderMimeType({ audio: true });
+    if (!mimeType) {
+      stop();
+      setError("This browser cannot record audio and video together. Use Chrome or Edge on a computer.");
+      return;
+    }
+
+    captureStopRef.current = stop;
     streamRef.current = stream;
     chunksRef.current = [];
 
     let recorder: MediaRecorder;
     try {
-      recorder = new MediaRecorder(stream, { mimeType });
+      recorder = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 128_000,
+      });
     } catch {
-      stopMediaStream(stream);
+      stop();
+      captureStopRef.current = null;
       streamRef.current = null;
       setError("This browser could not start the recorder. Use Chrome or Edge on a computer.");
       return;
@@ -248,7 +266,10 @@ export function LiveClassStudio({
     };
     recorder.onerror = () => {
       setError("The recorder stopped unexpectedly. Try again.");
+      captureStopRef.current?.();
+      captureStopRef.current = null;
       stopMediaStream(streamRef.current);
+      streamRef.current = null;
       setPhase("idle");
     };
     recorder.onstop = () => finalizeRecording(recorder.mimeType || mimeType);
@@ -389,20 +410,20 @@ export function LiveClassStudio({
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-semibold">Google Meet</h2>
             <span className="text-xs text-muted-foreground">
-              {meetOpen ? "Popup is open" : "Popup closed"}
+              {meetOpen ? "Meet tab is open" : "Meet tab closed"}
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            Meet cannot run inside this page (Google blocks embedding). It opens as a popup next to
-            this studio so you can teach and record from here.
+            Meet cannot run inside this page (Google blocks embedding). It opens in a browser tab so
+            Chrome can share that tab’s audio into the recording.
           </p>
           <div className="flex aspect-video flex-col items-center justify-center rounded-md border border-dashed bg-muted/30 p-6 text-center">
             <ExternalLink className="mb-3 h-10 w-10 text-muted-foreground" />
             <p className="text-sm font-medium">
-              {meetOpen ? "The live class is running in the Meet popup." : "Open Meet to start the class."}
+              {meetOpen ? "The live class is running in the Meet tab." : "Open Meet to start the class."}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Keep this LMS tab open. Use the popup for camera, mic, and students.
+              Keep this LMS tab open. Teach in the Meet tab (camera, mic, students).
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -419,12 +440,15 @@ export function LiveClassStudio({
         <div className="space-y-4 rounded-lg border bg-card p-4">
           <h2 className="font-semibold">Recorder</h2>
           <ol className="list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
-            <li>Open Google Meet in the popup.</li>
+            <li>Open Google Meet (it opens as a browser tab).</li>
             <li>
               Click Start recording. In Chrome pick <strong>Chrome Tab</strong> → the{" "}
               <strong>Google Meet</strong> tab (not this LMS page).
             </li>
-            <li>Enable <strong>Also share tab audio</strong>, then Share.</li>
+            <li>
+              Turn on <strong>Also share tab audio</strong>, then Share. Allow the microphone
+              when asked (your voice is mixed in).
+            </li>
             <li>Stop → preview → upload. Students watch inside the LMS.</li>
           </ol>
 
