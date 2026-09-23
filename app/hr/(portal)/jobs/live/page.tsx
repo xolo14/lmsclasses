@@ -10,11 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HrJobFormFields } from "@/components/hr/HrJobFormFields";
 import { EditHrJobModal, type HrJobRecord } from "@/components/modals/EditHrJobModal";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, Link as LinkIcon } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function HrLiveJobsPage() {
   const queryClient = useQueryClient();
   const [editingJob, setEditingJob] = useState<HrJobRecord | null>(null);
+  const [importUrl, setImportUrl] = useState("");
+  const [importError, setImportError] = useState("");
 
   const { data: jobs = [], isLoading } = useQuery<HrJobRecord[]>({
     queryKey: ["hr-jobs-live"],
@@ -60,6 +64,49 @@ export default function HrLiveJobsPage() {
     },
   });
 
+  const importFromUrl = useMutation({
+    mutationFn: async (url: string) => {
+      const res = await fetch("/api/hr/jobs/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const json = await parseApiJson<{ error?: unknown; draft?: HrJobInput }>(res);
+      if (!res.ok || !json.draft) {
+        throw new Error(formatApiError(json.error, "Could not import that page"));
+      }
+      return json.draft;
+    },
+    onSuccess: (draft) => {
+      setImportError("");
+      const fields: (keyof HrJobInput)[] = [
+        "title",
+        "organisationName",
+        "location",
+        "employmentType",
+        "stipend",
+        "salary",
+        "ctc",
+        "experienceRequired",
+        "description",
+        "responsibilities",
+        "requiredSkills",
+        "eligibilityCriteria",
+        "applicationDeadline",
+        "openings",
+      ];
+      for (const key of fields) {
+        const value = draft[key];
+        if (value !== undefined && value !== null && value !== "") {
+          setValue(key, value as never, { shouldValidate: true });
+        }
+      }
+    },
+    onError: (err) => {
+      setImportError(err instanceof Error ? err.message : "Could not import that page.");
+    },
+  });
+
   const handleDelete = (job: HrJobRecord) => {
     const ok = window.confirm(
       `Delete "${job.title}"? It will move to Previous Job Postings and stop accepting applications.`
@@ -73,6 +120,32 @@ export default function HrLiveJobsPage() {
       <Card>
         <CardHeader><CardTitle>New Job Posting</CardTitle></CardHeader>
         <CardContent>
+          <div className="mb-6 space-y-2 rounded-md border p-3">
+            <Label>Import from a public job page</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                placeholder="https://company.com/careers/job-posting"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={importFromUrl.isPending || !importUrl.trim()}
+                onClick={() => importFromUrl.mutate(importUrl.trim())}
+              >
+                <LinkIcon className="mr-1 h-4 w-4" />
+                {importFromUrl.isPending ? "Reading..." : "Fill form"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Reads schema.org JobPosting on a public careers page. Review the fields, then publish.
+              Login-only boards (LinkedIn, Naukri) cannot be imported.
+            </p>
+            {(importError || importFromUrl.isError) && (
+              <p className="text-sm text-destructive">{importError || (importFromUrl.error as Error).message}</p>
+            )}
+          </div>
           <form onSubmit={handleSubmit((d) => createJob.mutate(d))} className="space-y-4">
             <HrJobFormFields
               register={register}

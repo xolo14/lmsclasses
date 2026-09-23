@@ -15,9 +15,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+type StudentJob = {
+  id: string;
+  title: string;
+  organisationName: string;
+  location: string | null;
+  employmentType?: string;
+  experienceRequired: string | null;
+  stipend?: string | null;
+  salary: string | null;
+  ctc: string | null;
+  applicationDeadline: string;
+};
+
+type StudentJobsResponse = {
+  items?: StudentJob[];
+  page?: number;
+  total?: number;
+  totalPages?: number;
+  error?: string;
+};
+
 export default function StudentJobPortalPage() {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [resumeName, setResumeName] = useState("");
   const [form, setForm] = useState({
@@ -32,10 +54,12 @@ export default function StudentJobPortalPage() {
     portfolioUrl: "",
   });
 
-  const { data: jobs = [], isLoading, refetch } = useQuery({
-    queryKey: ["student-job-portal", query],
-    queryFn: () => fetch(`/api/student/job-portal?q=${encodeURIComponent(query)}`).then((r) => r.json()),
+  const { data, isLoading, refetch } = useQuery<StudentJobsResponse>({
+    queryKey: ["student-job-portal", query, page],
+    queryFn: () =>
+      fetch(`/api/student/job-portal?q=${encodeURIComponent(query)}&page=${page}&pageSize=24`).then((r) => r.json()),
   });
+  const jobs = data?.items ?? [];
 
   const apply = useMutation({
     mutationFn: async () => {
@@ -83,17 +107,29 @@ export default function StudentJobPortalPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Job Portal</h1>
-      <div className="flex gap-2">
-        <Input placeholder="Search jobs/company..." value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Input
+          placeholder="Search jobs/company..."
+          value={query}
+          onChange={(e) => {
+            setPage(1);
+            setQuery(e.target.value);
+          }}
+        />
+        <p className="text-sm text-muted-foreground whitespace-nowrap">
+          {data?.total ?? 0} openings · page {data?.page ?? 1} of {data?.totalPages ?? 1}
+        </p>
       </div>
 
-      {isLoading ? (
+      {data?.error ? (
+        <Card><CardContent className="py-10 text-center text-destructive">{data.error}</CardContent></Card>
+      ) : isLoading ? (
         <p className="text-muted-foreground">Loading jobs...</p>
       ) : jobs.length === 0 ? (
         <Card><CardContent className="py-10 text-center text-muted-foreground">No active jobs found.</CardContent></Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {jobs.map((job: any) => (
+          {jobs.map((job) => (
             <Card key={job.id} className={selectedJobId === job.id ? "ring-2 ring-primary" : ""}>
               <CardHeader>
                 <CardTitle className="text-base">{job.title}</CardTitle>
@@ -115,6 +151,22 @@ export default function StudentJobPortalPage() {
           ))}
         </div>
       )}
+
+      {(data?.totalPages ?? 1) > 1 ? (
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= (data?.totalPages ?? 1)}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      ) : null}
 
       <Dialog open={!!selectedJobId} onOpenChange={(open) => !open && setSelectedJobId(null)}>
         <DialogContent className="max-w-2xl max-h-[min(90dvh,90vh)] overflow-y-auto">

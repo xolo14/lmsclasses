@@ -100,6 +100,7 @@ export default function SuperAdminJobPostingDetailPage() {
               : job.ctc || "—"}
           </p>
           <p><span className="text-muted-foreground">Employment Type:</span> {job.employmentType?.replaceAll("_", " ")}</p>
+          <p><span className="text-muted-foreground">Location:</span> {job.location || "—"}</p>
           <p><span className="text-muted-foreground">Posted Date:</span> {formatDateTime(job.postedDate)}</p>
           <p><span className="text-muted-foreground">Last Date to Apply:</span> {formatDateTime(job.applicationDeadline)}</p>
         </CardContent>

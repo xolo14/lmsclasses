@@ -39,6 +39,14 @@ import {
   sendNewApplicationEmail,
   trySendWelcomeEmail,
 } from "@/lib/email";
+import { readApiJson } from "@/lib/api-url-transport";
+import {
+  MONTHLY_JOB_TARGET,
+  PLATFORM_HR_EMAIL,
+  currentMonthLabel,
+  startOfCurrentIstMonth,
+} from "@/lib/job-month-import";
+import { runMonthJobImport } from "@/lib/job-month-run";
 
 const FREE_EMAIL_DOMAINS = new Set([
   "gmail.com",
@@ -781,11 +789,30 @@ export async function GETStudentJobPortal(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim();
+  const page = Math.max(Number(searchParams.get("page") || "1"), 1);
+  const pageSize = Math.min(Math.max(Number(searchParams.get("pageSize") || "24"), 1), 48);
+  const offset = (page - 1) * pageSize;
 
   await db
     .update(jobPostings)
     .set({ status: "closed", active: false, updatedAt: new Date() })
     .where(and(lte(jobPostings.applicationDeadline, new Date()), eq(jobPostings.status, "active")));
+
+  const where = and(
+    eq(jobPostings.status, "active"),
+    eq(jobPostings.active, true),
+    q
+      ? or(
+          sql`${jobPostings.title} ilike ${`%${q}%`}`,
+          sql`${jobPostings.organisationName} ilike ${`%${q}%`}`
+        )
+      : undefined
+  );
+
+  const [totalRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(jobPostings)
+    .where(where);
 
   const rows = await db
     .select({
@@ -793,7 +820,9 @@ export async function GETStudentJobPortal(request: Request) {
       title: jobPostings.title,
       organisationName: jobPostings.organisationName,
       location: jobPostings.location,
+      employmentType: jobPostings.employmentType,
       experienceRequired: jobPostings.experienceRequired,
+      stipend: jobPostings.stipend,
       salary: jobPostings.salary,
       ctc: jobPostings.ctc,
       lastDateToApply: jobPostings.lastDateToApply,
@@ -801,20 +830,19 @@ export async function GETStudentJobPortal(request: Request) {
       createdAt: jobPostings.createdAt,
     })
     .from(jobPostings)
-    .where(
-      and(
-        eq(jobPostings.status, "active"),
-        eq(jobPostings.active, true),
-        q
-          ? or(
-              sql`${jobPostings.title} ilike ${`%${q}%`}`,
-              sql`${jobPostings.organisationName} ilike ${`%${q}%`}`
-            )
-          : undefined
-      )
-    )
-    .orderBy(desc(jobPostings.createdAt));
-  return NextResponse.json(rows);
+    .where(where)
+    .orderBy(desc(jobPostings.createdAt))
+    .limit(pageSize)
+    .offset(offset);
+
+  const total = totalRow?.count ?? 0;
+  return NextResponse.json({
+    items: rows,
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(Math.ceil(total / pageSize), 1),
+  });
 }
 
 export async function GETStudentJobApplications(request: Request) {
@@ -1030,20 +1058,40 @@ export async function PATCHSuperAdminHrStatus(request: Request) {
   return NextResponse.json({ success: true, ...updated });
 }
 
-export async function GETSuperAdminJobPostings() {
+export async function GETSuperAdminJobPostings(request: Request) {
   const { error } = await requireAuth(["super_admin"]);
   if (error) return error;
+
+  const { searchParams } = new URL(request.url);
+  const page = Math.max(Number(searchParams.get("page") || "1"), 1);
+  const pageSize = Math.min(Math.max(Number(searchParams.get("pageSize") || "25"), 1), 100);
+  const q = searchParams.get("q")?.trim();
+  const offset = (page - 1) * pageSize;
 
   await db
     .update(jobPostings)
     .set({ status: "closed", active: false, updatedAt: new Date() })
     .where(and(lte(jobPostings.applicationDeadline, new Date()), eq(jobPostings.status, "active")));
 
+  const where = q
+    ? or(
+        sql`${jobPostings.title} ilike ${`%${q}%`}`,
+        sql`${jobPostings.organisationName} ilike ${`%${q}%`}`,
+        sql`${hrUsers.name} ilike ${`%${q}%`}`
+      )
+    : undefined;
+
+  const [totalRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(jobPostings)
+    .innerJoin(hrUsers, eq(jobPostings.hrId, hrUsers.id))
+    .where(where);
+
   const rows = await db
     .select({
       id: jobPostings.id,
       jobTitle: jobPostings.title,
-      companyName: companies.companyName,
+      companyName: jobPostings.organisationName,
       hrName: hrUsers.name,
       employmentType: jobPostings.employmentType,
       applicationsCount: sql<number>`(
@@ -1056,9 +1104,37 @@ export async function GETSuperAdminJobPostings() {
     .from(jobPostings)
     .innerJoin(hrUsers, eq(jobPostings.hrId, hrUsers.id))
     .innerJoin(companies, eq(jobPostings.companyId, companies.id))
-    .orderBy(desc(jobPostings.createdAt));
+    .where(where)
+    .orderBy(desc(jobPostings.createdAt))
+    .limit(pageSize)
+    .offset(offset);
 
-  return NextResponse.json(rows);
+  const [platformHr] = await db
+    .select({ id: hrUsers.id })
+    .from(hrUsers)
+    .where(eq(hrUsers.email, PLATFORM_HR_EMAIL))
+    .limit(1);
+
+  let monthImported = 0;
+  if (platformHr) {
+    const [imported] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobPostings)
+      .where(and(eq(jobPostings.hrId, platformHr.id), gte(jobPostings.createdAt, startOfCurrentIstMonth())));
+    monthImported = imported?.count ?? 0;
+  }
+
+  const total = totalRow?.count ?? 0;
+  return NextResponse.json({
+    items: rows,
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(Math.ceil(total / pageSize), 1),
+    monthImported,
+    monthTarget: MONTHLY_JOB_TARGET,
+    monthLabel: currentMonthLabel(),
+  });
 }
 
 export async function GETSuperAdminJobPostingDetail(id: string) {
@@ -1080,7 +1156,8 @@ export async function GETSuperAdminJobPostingDetail(id: string) {
       status: jobPostings.status,
       employmentType: jobPostings.employmentType,
       postedDate: jobPostings.createdAt,
-      companyName: companies.companyName,
+      companyName: jobPostings.organisationName,
+      location: jobPostings.location,
       companyWebsite: companies.website,
       companyDomain: companies.domain,
       companyVerificationStatus: companies.verificationStatus,
@@ -1113,6 +1190,51 @@ export async function GETSuperAdminJobPostingDetail(id: string) {
   }
 
   return NextResponse.json(detail);
+}
+
+export async function POSTSuperAdminImportMonthJobs(request: Request) {
+  const { error, session } = await requireAuth(["super_admin"]);
+  if (error) return error;
+
+  try {
+    const body = ((await readApiJson(request)) ?? {}) as {
+      target?: number;
+      maxInsert?: number;
+      includeBoards?: boolean;
+    };
+    const result = await runMonthJobImport({
+      target: body.target,
+      maxInsert: body.maxInsert,
+      includeBoards: body.includeBoards,
+      closePreviousMonth: true,
+    });
+
+    try {
+      await logAction({
+        userId: auditUserIdForSession(session!.user),
+        role: "super_admin",
+        action: "SUPER_ADMIN_MONTH_JOBS_IMPORTED",
+        entity: "JobPosting",
+        metadata: auditMetadataForSession(session!.user, {
+          inserted: result.inserted,
+          monthImported: result.monthImported,
+          target: result.monthTarget,
+          monthLabel: result.monthLabel,
+          closedPrevious: result.closedPrevious,
+          sources: result.sources,
+        }),
+        ipAddress: getClientIp(request),
+      });
+    } catch (auditErr) {
+      console.error("[POSTSuperAdminImportMonthJobs] Audit log failed:", auditErr);
+    }
+
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error("[POSTSuperAdminImportMonthJobs]", err);
+    const msg = err instanceof Error ? err.message : "Failed to import this month's job listings";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
 
 export async function GETHrSettings() {
