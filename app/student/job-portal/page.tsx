@@ -57,7 +57,7 @@ export default function StudentJobPortalPage() {
   const { data, isLoading, refetch } = useQuery<StudentJobsResponse>({
     queryKey: ["student-job-portal", query, page],
     queryFn: () =>
-      fetch(`/api/student/job-portal?q=${encodeURIComponent(query)}&page=${page}&pageSize=24`).then((r) => r.json()),
+      fetch(`/api/student/job-portal?q=${encodeURIComponent(query)}&page=${page}&pageSize=25`).then((r) => r.json()),
   });
   const jobs = data?.items ?? [];
 

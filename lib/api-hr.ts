@@ -772,10 +772,21 @@ export async function PATCHHrApplicationStatus(request: Request) {
 }
 
 export async function GETStudentJobPortal(request: Request) {
-  const { error, session } = await requireAuth(["student"]);
+  return GETJobBoard(request);
+}
+
+export async function GETJobBoard(request: Request) {
+  const { error, session } = await requireAuth([
+    "super_admin",
+    "manager",
+    "org_admin",
+    "mentor",
+    "hr",
+    "student",
+  ]);
   if (error) return error;
 
-  if (session?.user?.organisationId) {
+  if (session?.user?.role === "student" && session.user.organisationId) {
     const [org] = await db
       .select({ jobPortalAccess: organisations.jobPortalAccess })
       .from(organisations)
@@ -790,7 +801,7 @@ export async function GETStudentJobPortal(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim();
   const page = Math.max(Number(searchParams.get("page") || "1"), 1);
-  const pageSize = Math.min(Math.max(Number(searchParams.get("pageSize") || "24"), 1), 48);
+  const pageSize = Math.min(Math.max(Number(searchParams.get("pageSize") || "25"), 1), 50);
   const offset = (page - 1) * pageSize;
 
   await db
@@ -821,6 +832,7 @@ export async function GETStudentJobPortal(request: Request) {
       organisationName: jobPostings.organisationName,
       location: jobPostings.location,
       employmentType: jobPostings.employmentType,
+      description: jobPostings.description,
       experienceRequired: jobPostings.experienceRequired,
       stipend: jobPostings.stipend,
       salary: jobPostings.salary,

@@ -28,8 +28,14 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   onRowClick?: (row: TData) => void;
   searchPlaceholder?: string;
+  hideSearch?: boolean;
   searchKey?: string;
   getRowId?: (row: TData) => string;
+  pageSize?: number;
+  currentPage?: number;
+  totalPages?: number;
+  totalRows?: number;
+  onPageChange?: (page: number) => void;
   // PERF: Server-side pagination support
   hasNextPage?: boolean;
   fetchNextPage?: () => void;
@@ -41,14 +47,21 @@ export function DataTable<TData, TValue>({
   data,
   onRowClick,
   searchPlaceholder = "Search...",
+  hideSearch = false,
   searchKey,
   getRowId,
+  pageSize = 10,
+  currentPage,
+  totalPages,
+  totalRows,
+  onPageChange,
   hasNextPage,
   fetchNextPage,
   isFetchingNextPage,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const serverPaged = typeof onPageChange === "function";
 
   const table = useReactTable<TData>({
     data,
@@ -59,11 +72,12 @@ export function DataTable<TData, TValue>({
     }),
     getCoreRowModel: getCoreRowModel(),
     // PERF: Disable local pagination when server-side pagination is used
-    ...(hasNextPage === undefined ? { getPaginationRowModel: getPaginationRowModel() } : {}),
+    ...(hasNextPage === undefined && !serverPaged ? { getPaginationRowModel: getPaginationRowModel() } : {}),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
+    initialState: { pagination: { pageSize } },
     state: { sorting, globalFilter },
     globalFilterFn: (row, _columnId, filterValue) => {
       if (!searchKey) {
@@ -79,12 +93,14 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className="space-y-4">
-      <Input
-        placeholder={searchPlaceholder}
-        value={globalFilter}
-        onChange={(e) => setGlobalFilter(e.target.value)}
-        className="w-full sm:max-w-sm"
-      />
+      {hideSearch ? null : (
+        <Input
+          placeholder={searchPlaceholder}
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          className="w-full sm:max-w-sm"
+        />
+      )}
       <div className="rounded-xl border border-border overflow-x-auto -mx-1 px-1 sm:mx-0 sm:px-0">
         <Table className="min-w-[640px]">
           <TableHeader>
@@ -139,14 +155,20 @@ export function DataTable<TData, TValue>({
       ) : (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground text-center sm:text-left">
-            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount() || 1}
+            {serverPaged
+              ? `Page ${currentPage ?? 1} of ${Math.max(totalPages ?? 1, 1)} · ${totalRows ?? data.length} listings · ${pageSize} per page`
+              : `Page ${table.getState().pagination.pageIndex + 1} of ${table.getPageCount() || 1}`}
           </p>
           <div className="flex gap-2 justify-center sm:justify-end">
             <Button
               variant="outline"
               className="h-11 w-11 p-0"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+              onClick={() =>
+                serverPaged
+                  ? onPageChange(Math.max(1, (currentPage ?? 1) - 1))
+                  : table.previousPage()
+              }
+              disabled={serverPaged ? (currentPage ?? 1) <= 1 : !table.getCanPreviousPage()}
               aria-label="Previous page"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -154,8 +176,16 @@ export function DataTable<TData, TValue>({
             <Button
               variant="outline"
               className="h-11 w-11 p-0"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
+              onClick={() =>
+                serverPaged
+                  ? onPageChange(Math.min(Math.max(totalPages ?? 1, 1), (currentPage ?? 1) + 1))
+                  : table.nextPage()
+              }
+              disabled={
+                serverPaged
+                  ? (currentPage ?? 1) >= Math.max(totalPages ?? 1, 1)
+                  : !table.getCanNextPage()
+              }
               aria-label="Next page"
             >
               <ChevronRight className="h-4 w-4" />

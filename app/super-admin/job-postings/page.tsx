@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { DataTable } from "@/components/tables/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { wrapApiForm } from "@/lib/api-url-transport";
 import { formatApiError, formatDate, parseApiJson } from "@/lib/utils";
 
@@ -56,7 +57,7 @@ export default function SuperAdminJobPostingsPage() {
     queryKey: ["super-admin-job-postings", page, query],
     queryFn: () =>
       fetch(
-        `/api/super-admin/job-postings?page=${page}&pageSize=10&q=${encodeURIComponent(query)}`
+        `/api/super-admin/job-postings?page=${page}&pageSize=25&q=${encodeURIComponent(query)}`
       ).then((r) => r.json()),
   });
 
@@ -162,41 +163,28 @@ export default function SuperAdminJobPostingsPage() {
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <input
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm sm:max-w-sm"
-          value={query}
-          onChange={(e) => {
-            setPage(1);
-            setQuery(e.target.value);
-          }}
-          placeholder="Search title, company, poster..."
-        />
-        <p className="text-sm text-muted-foreground">
-          Page {data?.page ?? 1} of {data?.totalPages ?? 1} ({data?.total ?? 0} records)
-        </p>
-      </div>
+      <Input
+        value={query}
+        onChange={(e) => {
+          setPage(1);
+          setQuery(e.target.value);
+        }}
+        placeholder="Search title, company, poster..."
+        className="w-full sm:max-w-sm"
+      />
 
       {isLoading ? <div className="text-muted-foreground">Loading...</div> : null}
       <DataTable
         columns={columns}
         data={jobs}
-        searchPlaceholder="Filter current page..."
+        hideSearch
+        pageSize={25}
+        currentPage={data?.page ?? page}
+        totalPages={data?.totalPages ?? 1}
+        totalRows={data?.total ?? 0}
+        onPageChange={setPage}
         onRowClick={(row) => router.push(`/super-admin/job-postings/${row.id}`)}
       />
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" disabled={(data?.page ?? 1) <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-          Previous
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={(data?.page ?? 1) >= (data?.totalPages ?? 1)}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Next
-        </Button>
-      </div>
     </div>
   );
 }

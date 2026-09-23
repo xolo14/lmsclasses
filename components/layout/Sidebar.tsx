@@ -147,6 +147,7 @@ export function SuperAdminSidebar(props: Omit<SidebarProps, "items" | "title">) 
 export function ManagerSidebar(props: Omit<SidebarProps, "items" | "title">) {
   const items: NavItem[] = [
     { label: "Dashboard", href: "/manager/dashboard", icon: LayoutDashboard },
+    { label: "Job Portal", href: "/manager/job-portal", icon: Briefcase },
     { label: "Organisations", href: "/manager/organisations", icon: Building2 },
     { label: "Managers", href: "/manager/managers", icon: Users },
     { label: "Students", href: "/manager/students", icon: GraduationCap },
@@ -165,6 +166,7 @@ export function ManagerSidebar(props: Omit<SidebarProps, "items" | "title">) {
 export function OrgAdminSidebar(props: Omit<SidebarProps, "items" | "title">) {
   const items: NavItem[] = [
     { label: "Dashboard", href: "/org-admin/dashboard", icon: LayoutDashboard },
+    { label: "Job Portal", href: "/org-admin/job-portal", icon: Briefcase },
     { label: "Live Courses", href: "/org-admin/courses", icon: BookOpen },
     { label: "Record Courses", href: "/org-admin/record-courses", icon: Film },
     { label: "Course Demos", href: "/org-admin/demos", icon: Play },
@@ -182,6 +184,7 @@ export function OrgAdminSidebar(props: Omit<SidebarProps, "items" | "title">) {
 export function MentorSidebar(props: Omit<SidebarProps, "items" | "title">) {
   const items: NavItem[] = [
     { label: "Dashboard", href: "/mentor/dashboard", icon: LayoutDashboard },
+    { label: "Job Portal", href: "/mentor/job-portal", icon: Briefcase },
     { label: "Live Classes", href: "/mentor/live-classes", icon: Video },
     { label: "Settings", href: "/mentor/settings", icon: Settings },
   ];
@@ -217,6 +220,7 @@ export function HrSidebar(props: Omit<SidebarProps, "items" | "title">) {
   const items: NavItem[] = [
     { label: "Dashboard", href: "/hr/dashboard", icon: LayoutDashboard },
     { label: "Live Job Postings", href: "/hr/jobs/live", icon: Building2 },
+    { label: "All Job Listings", href: "/hr/jobs/board", icon: Briefcase },
     { label: "Previous Job Postings", href: "/hr/jobs/previous", icon: History },
     { label: "Applications", href: "/hr/applications", icon: Users },
     { label: "Settings", href: "/hr/settings", icon: Settings },
