@@ -15,6 +15,7 @@ import {
   auditLogs,
   jobApplications,
   courseLeads,
+  mentorCourses,
 } from "@/lib/db/schema";
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
@@ -33,6 +34,13 @@ import { softDeleteOrganisationCascade } from "@/lib/organisation-cascade";
 import { freeOneSlot, consumeOneSlot, getSlotSummary, resolveCourse } from "@/lib/enrollment-service";
 import { hasLiveAccess, hasRecordedAccess } from "@/lib/content-access";
 import { formatDateTime, parseDatetimeLocalAsIst } from "@/lib/utils";
+import {
+  assertLiveCoursesExist,
+  getMentorCourseIds,
+  mentorHasCourseAccess,
+  parseMentorCourseIds,
+  replaceMentorCourses,
+} from "@/lib/mentor-courses";
 import { readApiJson } from "@/lib/api-url-transport";
 
 /** Remove a partially created student if enrollment or slot steps fail (HTTP driver has no transactions). */
@@ -1427,7 +1435,48 @@ export async function GETUsersByRole(role: "manager" | "mentor") {
         .where(and(eq(users.role, role), isNull(users.deletedAt)))
         .orderBy(desc(users.createdAt));
 
-      return NextResponse.json(result);
+      const links = await db
+        .select({
+          mentorId: mentorCourses.mentorId,
+          courseId: mentorCourses.courseId,
+          courseTitle: liveCourses.title,
+        })
+        .from(mentorCourses)
+        .innerJoin(liveCourses, eq(mentorCourses.courseId, liveCourses.id))
+        .where(isNull(liveCourses.deletedAt));
+
+      const extra = new Map<string, { courseIds: string[]; courseTitles: string[] }>();
+      for (const link of links) {
+        const current = extra.get(link.mentorId) ?? { courseIds: [], courseTitles: [] };
+        if (!current.courseIds.includes(link.courseId)) {
+          current.courseIds.push(link.courseId);
+          if (link.courseTitle) current.courseTitles.push(link.courseTitle);
+        }
+        extra.set(link.mentorId, current);
+      }
+
+      return NextResponse.json(
+        result.map((row) => {
+          const assigned = extra.get(row.id);
+          const courseIds = assigned?.courseIds.length
+            ? assigned.courseIds
+            : row.courseId
+              ? [row.courseId]
+              : [];
+          const courseTitles = assigned?.courseTitles.length
+            ? assigned.courseTitles
+            : row.courseTitle
+              ? [row.courseTitle]
+              : [];
+          return {
+            ...row,
+            courseId: courseIds[0] ?? null,
+            courseIds,
+            courseTitle: courseTitles[0] ?? null,
+            courseTitles,
+          };
+        })
+      );
     } catch (err: any) {
       console.warn("[GETUsersByRole: mentor fallback]", err?.message);
       // Resilient fallback if course_id column does not exist yet on DB
@@ -1462,8 +1511,21 @@ export async function POSTUserByRole(request: Request, role: "manager" | "mentor
   }
 
   const { name, email, phone, password } = parsed.data;
-  const rawCourseId = "courseId" in parsed.data ? (parsed.data.courseId as string | undefined) : undefined;
-  const courseId = rawCourseId && rawCourseId !== "none" ? rawCourseId : null;
+  const courseIds =
+    role === "mentor"
+      ? parseMentorCourseIds({
+          courseId: "courseId" in parsed.data ? (parsed.data.courseId as string | undefined) : undefined,
+          courseIds: "courseIds" in parsed.data ? (parsed.data.courseIds as string[] | undefined) : undefined,
+        })
+      : [];
+  if (role === "mentor" && session!.user.role === "manager" && courseIds.length > 1) {
+    return NextResponse.json({ error: "Managers can assign only one course to a mentor." }, { status: 403 });
+  }
+  if (role === "mentor") {
+    const courseError = await assertLiveCoursesExist(courseIds);
+    if (courseError) return NextResponse.json({ error: courseError }, { status: 400 });
+  }
+  const courseId = courseIds[0] ?? null;
 
   const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
   if (existing.length) {
@@ -1515,6 +1577,14 @@ export async function POSTUserByRole(request: Request, role: "manager" | "mentor
 
   await trySendWelcomeEmail(`${role} welcome`, sendWelcome);
 
+  if (role === "mentor") {
+    try {
+      await replaceMentorCourses(user.id, courseIds);
+    } catch (assignErr) {
+      console.error("[POSTUserByRole] mentor course assign failed:", assignErr);
+    }
+  }
+
   return NextResponse.json(user, { status: 201 });
 }
 
@@ -1528,7 +1598,7 @@ export async function PATCHUser(request: Request, id: string, role: "manager" | 
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { name, phone, isActive, email, password, courseId } = parsed.data;
+  const { name, phone, isActive, email, password, courseId, courseIds } = parsed.data;
 
   if (email) {
     const [existing] = await db
@@ -1555,8 +1625,16 @@ export async function PATCHUser(request: Request, id: string, role: "manager" | 
   if (phone !== undefined) updateData.phone = phone;
   if (isActive !== undefined) updateData.isActive = isActive;
   if (email !== undefined) updateData.email = email;
-  if (courseId !== undefined) {
-    updateData.courseId = courseId && courseId !== "none" ? courseId : null;
+  const shouldUpdateCourses = role === "mentor" && (courseId !== undefined || courseIds !== undefined);
+  let nextCourseIds: string[] | null = null;
+  if (shouldUpdateCourses) {
+    nextCourseIds = parseMentorCourseIds({ courseId, courseIds });
+    if (session!.user.role === "manager" && nextCourseIds.length > 1) {
+      return NextResponse.json({ error: "Managers can assign only one course to a mentor." }, { status: 403 });
+    }
+    const courseError = await assertLiveCoursesExist(nextCourseIds);
+    if (courseError) return NextResponse.json({ error: courseError }, { status: 400 });
+    updateData.courseId = nextCourseIds[0] ?? null;
   }
   if (password) {
     updateData.password = await bcrypt.hash(password, 12);
@@ -1570,6 +1648,14 @@ export async function PATCHUser(request: Request, id: string, role: "manager" | 
 
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  if (nextCourseIds) {
+    try {
+      await replaceMentorCourses(id, nextCourseIds);
+    } catch (assignErr) {
+      console.error("[PATCHUser] mentor course assign failed:", assignErr);
+    }
   }
 
   await logAction({
@@ -1634,6 +1720,17 @@ export async function GETBatches(request: Request) {
     conditions.push(orgAdminVisibleBatches(orgId));
   } else if (organisationIdParam) {
     conditions.push(eq(batches.organisationId, organisationIdParam));
+  }
+
+  if (session!.user.role === "mentor") {
+    const allowedCourses = await getMentorCourseIds(session!.user.id);
+    if (courseId && !allowedCourses.includes(courseId)) {
+      return NextResponse.json({ error: "You can only view batches for your assigned courses." }, { status: 403 });
+    }
+    if (!courseId) {
+      if (!allowedCourses.length) return NextResponse.json([]);
+      conditions.push(inArray(batches.courseId, allowedCourses));
+    }
   }
 
   if (courseId) conditions.push(eq(batches.courseId, courseId));
@@ -1920,13 +2017,8 @@ export async function POSTLiveClass(request: Request) {
         { status: 403 }
       );
     }
-    const [self] = await db
-      .select({ courseId: users.courseId })
-      .from(users)
-      .where(eq(users.id, session!.user.id))
-      .limit(1);
-    const mentorCourseId = self?.courseId ?? session!.user.courseId;
-    if (mentorCourseId && parsed.data.courseId !== mentorCourseId) {
+    const allowed = await mentorHasCourseAccess(session!.user.id, parsed.data.courseId);
+    if (!allowed) {
       return NextResponse.json(
         { error: "You can only schedule live classes for your assigned course." },
         { status: 403 }

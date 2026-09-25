@@ -33,6 +33,7 @@ type MentorCourseResponse = {
     id: string;
     title: string;
   } | null;
+  courses?: { id: string; title: string }[];
 };
 
 function statusBadge(status: string) {
@@ -71,7 +72,12 @@ export default function MentorLiveClassesPage() {
     },
   });
 
-  const assignedCourse = courseData?.course;
+  const assignedCourses = courseData?.courses?.length
+    ? courseData.courses
+    : courseData?.course
+      ? [courseData.course]
+      : [];
+  const assignedCourse = assignedCourses[0];
 
   const openStudio = (row: LiveClass) => {
     if (row.meetingLink) {
@@ -228,6 +234,7 @@ export default function MentorLiveClassesPage() {
           onOpenChange={setModalOpen}
           courseId={assignedCourse.id}
           courseTitle={assignedCourse.title}
+          courses={assignedCourses}
           mentorId={session.user.id}
           mentorName={session.user.name || "Mentor"}
         />

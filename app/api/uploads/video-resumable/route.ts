@@ -9,6 +9,7 @@ import {
   getVideoSizeError,
 } from "@/lib/video-upload";
 import { resolveBatchVideoObjectKey, resolveLiveClassVideoObjectKey, VideoUploadAuthError } from "@/lib/video-upload-server";
+import { getMentorCourseIds } from "@/lib/mentor-courses";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,7 +95,10 @@ export async function POST(request: Request) {
 
     const mentorOpts =
       session!.user.role === "mentor"
-        ? { mentorCourseId: session!.user.courseId, mentorUserId: session!.user.id }
+        ? {
+            mentorCourseIds: await getMentorCourseIds(session!.user.id),
+            mentorUserId: session!.user.id,
+          }
         : undefined;
 
     const { objectKey, folderName, safeFilename } = liveClassId

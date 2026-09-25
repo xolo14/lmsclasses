@@ -19,6 +19,7 @@ import {
   courseRecordings,
   widgetLeads,
   partnerLeads,
+  mentorCourses,
 } from "@/lib/db/schema";
 import { hardDeleteOrganisations, hardDeleteUsers } from "@/lib/organisation-cascade";
 import { deleteGcsObjectIfExists } from "@/lib/gcs";
@@ -127,6 +128,7 @@ async function hardDeleteLiveCourses(courseIds: string[]) {
   await hardDeleteLiveClasses(classRows.map((r) => r.id));
 
   await db.update(users).set({ courseId: null }).where(inArray(users.courseId, courseIds));
+  await db.delete(mentorCourses).where(inArray(mentorCourses.courseId, courseIds));
 
   await deleteClassRecordingRows(
     (

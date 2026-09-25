@@ -10,6 +10,7 @@ export default function MentorsPage() {
       title="Mentors"
       addTitle="Add Mentor"
       ModalComponent={AddMentorModal}
+      allowMultipleCourses
     />
   );
 }

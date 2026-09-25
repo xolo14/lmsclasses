@@ -6,11 +6,11 @@ import {
   courseRecordings,
   liveClasses,
   studentCourses,
-  users,
 } from "@/lib/db/schema";
 import { orgAdminVisibleBatches } from "@/lib/batch-scope";
 import { hasLiveAccess, hasRecordedAccess } from "@/lib/content-access";
 import { parseGcsObjectKey } from "@/lib/gcs";
+import { getMentorCourseIds } from "@/lib/mentor-courses";
 import { isPublicCourseDemoReference } from "@/lib/public-demo-access";
 import type { Session } from "next-auth";
 
@@ -46,27 +46,22 @@ export async function assertVideoEntitlement(
   const requested = videoKey.trim();
 
   if (role === "mentor") {
-    const [mentor] = await db
-      .select({ courseId: users.courseId })
-      .from(users)
-      .where(eq(users.id, session.user.id))
-      .limit(1);
-    const courseId = mentor?.courseId ?? session.user.courseId;
-    if (!courseId) return false;
+    const courseIds = await getMentorCourseIds(session.user.id);
+    if (!courseIds.length) return false;
 
     const [classRecs, liveRecs, courseRecs] = await Promise.all([
       db
         .select({ videoUrl: classRecordings.videoUrl })
         .from(classRecordings)
-        .where(and(eq(classRecordings.courseId, courseId), isNull(classRecordings.deletedAt))),
+        .where(and(or(...courseIds.map((id) => eq(classRecordings.courseId, id)))!, isNull(classRecordings.deletedAt))),
       db
         .select({ recordingUrl: liveClasses.recordingUrl })
         .from(liveClasses)
-        .where(and(eq(liveClasses.courseId, courseId), isNull(liveClasses.deletedAt))),
+        .where(and(or(...courseIds.map((id) => eq(liveClasses.courseId, id)))!, isNull(liveClasses.deletedAt))),
       db
         .select({ videoUrl: courseRecordings.videoUrl })
         .from(courseRecordings)
-        .where(eq(courseRecordings.recordCourseId, courseId)),
+        .where(or(...courseIds.map((id) => eq(courseRecordings.recordCourseId, id)))!),
     ]);
     return (
       classRecs.some((r) => keysMatch(r.videoUrl, requested)) ||

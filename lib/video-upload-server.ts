@@ -15,7 +15,7 @@ export class VideoUploadAuthError extends Error {
 export async function resolveBatchVideoObjectKey(
   batchId: string,
   filename: string,
-  opts?: { mentorCourseId?: string | null }
+  opts?: { mentorCourseId?: string | null; mentorCourseIds?: string[] }
 ) {
   const [batch] = await db
     .select({ name: batches.name, courseId: batches.courseId })
@@ -26,7 +26,8 @@ export async function resolveBatchVideoObjectKey(
   if (!batch) {
     throw new VideoUploadAuthError("Batch not found.", 404);
   }
-  if (opts?.mentorCourseId && batch.courseId !== opts.mentorCourseId) {
+  const allowed = opts?.mentorCourseIds ?? (opts?.mentorCourseId ? [opts.mentorCourseId] : []);
+  if (allowed.length && (!batch.courseId || !allowed.includes(batch.courseId))) {
     throw new VideoUploadAuthError("You can only upload to your assigned course.", 403);
   }
 
@@ -37,7 +38,7 @@ export async function resolveBatchVideoObjectKey(
 export async function resolveLiveClassVideoObjectKey(
   liveClassId: string,
   filename: string,
-  opts?: { mentorUserId?: string; mentorCourseId?: string | null }
+  opts?: { mentorUserId?: string; mentorCourseId?: string | null; mentorCourseIds?: string[] }
 ) {
   const [row] = await db
     .select({
@@ -58,7 +59,8 @@ export async function resolveLiveClassVideoObjectKey(
   if (opts?.mentorUserId && row.mentorId !== opts.mentorUserId) {
     throw new VideoUploadAuthError("You can only record your own live classes.", 403);
   }
-  if (opts?.mentorCourseId && row.courseId !== opts.mentorCourseId) {
+  const allowed = opts?.mentorCourseIds ?? (opts?.mentorCourseId ? [opts.mentorCourseId] : []);
+  if (allowed.length && (!row.courseId || !allowed.includes(row.courseId))) {
     throw new VideoUploadAuthError("You can only record classes for your assigned course.", 403);
   }
 

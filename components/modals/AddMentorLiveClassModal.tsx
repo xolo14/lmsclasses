@@ -30,8 +30,9 @@ interface AddMentorLiveClassModalProps {
   onOpenChange: (open: boolean) => void;
   mentorId: string;
   mentorName: string;
-  courseId: string;
-  courseTitle: string;
+  courseId?: string;
+  courseTitle?: string;
+  courses?: { id: string; title: string }[];
 }
 
 type BatchOption = {
@@ -46,8 +47,15 @@ export function AddMentorLiveClassModal({
   mentorName,
   courseId,
   courseTitle,
+  courses = [],
 }: AddMentorLiveClassModalProps) {
   const queryClient = useQueryClient();
+  const courseOptions = courses.length
+    ? courses
+    : courseId
+      ? [{ id: courseId, title: courseTitle || "Assigned course" }]
+      : [];
+  const defaultCourseId = courseOptions[0]?.id || courseId || "";
 
   const {
     register,
@@ -59,7 +67,7 @@ export function AddMentorLiveClassModal({
   } = useForm<LiveClassInput>({
     resolver: zodResolver(liveClassSchema),
     defaultValues: {
-      courseId,
+      courseId: defaultCourseId,
       mentorId,
       title: "",
       meetingLink: "",
@@ -69,17 +77,18 @@ export function AddMentorLiveClassModal({
   });
 
   const selectedBatchId = watch("batchId");
+  const selectedCourseId = watch("courseId") || defaultCourseId;
 
   const { data: batches = [] } = useQuery<BatchOption[]>({
-    queryKey: ["batches", courseId],
-    queryFn: () => fetch(`/api/batches?courseId=${courseId}`).then((r) => r.json()),
-    enabled: open && !!courseId,
+    queryKey: ["batches", selectedCourseId],
+    queryFn: () => fetch(`/api/batches?courseId=${selectedCourseId}`).then((r) => r.json()),
+    enabled: open && !!selectedCourseId,
   });
 
   useEffect(() => {
     if (open) {
       reset({
-        courseId,
+        courseId: defaultCourseId,
         mentorId,
         batchId: undefined,
         title: "",
@@ -88,7 +97,7 @@ export function AddMentorLiveClassModal({
         duration: 60,
       });
     }
-  }, [open, courseId, mentorId, reset]);
+  }, [open, defaultCourseId, mentorId, reset]);
 
   const mutation = useMutation({
     mutationFn: async (data: LiveClassInput) => {
@@ -96,7 +105,7 @@ export function AddMentorLiveClassModal({
         method: "POST",
         body: wrapApiForm({
           ...data,
-          courseId,
+          courseId: data.courseId || selectedCourseId,
           mentorId,
         }),
       });
@@ -122,13 +131,35 @@ export function AddMentorLiveClassModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
-          {/* Auto-selected Course */}
           <div className="space-y-2">
-            <Label className="text-muted-foreground">Course (Auto-Selected)</Label>
-            <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/50 text-sm font-medium">
-              <BookOpen className="h-4 w-4 text-primary" />
-              <span>{courseTitle}</span>
-            </div>
+            <Label className={courseOptions.length > 1 ? undefined : "text-muted-foreground"}>
+              {courseOptions.length > 1 ? "Course *" : "Course (Auto-Selected)"}
+            </Label>
+            {courseOptions.length > 1 ? (
+              <Select
+                value={selectedCourseId}
+                onValueChange={(val) => {
+                  setValue("courseId", val, { shouldValidate: true });
+                  setValue("batchId", undefined);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a course" />
+                </SelectTrigger>
+                <SelectContent>
+                  {courseOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/50 text-sm font-medium">
+                <BookOpen className="h-4 w-4 text-primary" />
+                <span>{courseOptions[0]?.title || courseTitle}</span>
+              </div>
+            )}
           </div>
 
           {/* Auto-selected Mentor */}

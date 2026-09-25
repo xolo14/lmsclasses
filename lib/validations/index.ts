@@ -105,6 +105,7 @@ export const mentorSchema = z
     email: emailField("Invalid email"),
     phone: z.string().optional(),
     courseId: z.string().optional().nullable(),
+    courseIds: z.array(z.string().uuid()).optional(),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(1, "Confirm password is required"),
   })
@@ -119,6 +120,7 @@ export const editMentorSchema = z
     email: emailField("Invalid email"),
     phone: z.string().optional(),
     courseId: z.string().optional().nullable(),
+    courseIds: z.array(z.string().uuid()).optional(),
     password: z
       .string()
       .min(6, "Password must be at least 6 characters")
@@ -348,5 +350,6 @@ export const patchStaffUserSchema = z.object({
   password: z.preprocess(emptyToUndefined, z.string().min(6).optional()),
   isActive: z.boolean().optional(),
   courseId: z.preprocess(emptyToUndefined, z.string().uuid().nullable().optional()),
+  courseIds: z.array(z.string().uuid()).optional(),
 });
 

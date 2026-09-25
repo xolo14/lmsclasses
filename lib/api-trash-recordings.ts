@@ -18,6 +18,7 @@ import { classRecordingSchema } from "@/lib/validations";
 import { readApiJson } from "@/lib/api-url-transport";
 import { clearAllTrashImmediate, TRASH_RETENTION_DAYS, type TrashEntityType } from "@/lib/trash";
 import { hasRecordedAccess } from "@/lib/content-access";
+import { mentorHasCourseAccess } from "@/lib/mentor-courses";
 
 const TRASH_TABLES = {
   organisation: { table: organisations, id: organisations.id, label: organisations.name },
@@ -256,13 +257,8 @@ export async function GETClassRecordings(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   } else if (role === "mentor") {
-    const [mentor] = await db
-      .select({ courseId: users.courseId })
-      .from(users)
-      .where(eq(users.id, session!.user.id))
-      .limit(1);
-    const mentorCourseId = mentor?.courseId ?? session!.user.courseId;
-    if (!mentorCourseId || batch.courseId !== mentorCourseId) {
+    const allowed = batch.courseId ? await mentorHasCourseAccess(session!.user.id, batch.courseId) : false;
+    if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   } else if (role === "org_admin") {
@@ -308,13 +304,8 @@ export async function POSTClassRecording(request: Request) {
   }
 
   if (session!.user.role === "mentor") {
-    const [mentor] = await db
-      .select({ courseId: users.courseId })
-      .from(users)
-      .where(eq(users.id, session!.user.id))
-      .limit(1);
-    const mentorCourseId = mentor?.courseId ?? session!.user.courseId;
-    if (!mentorCourseId || parsed.data.courseId !== mentorCourseId) {
+    const allowed = await mentorHasCourseAccess(session!.user.id, parsed.data.courseId);
+    if (!allowed) {
       return NextResponse.json({ error: "You can only upload recordings for your assigned course." }, { status: 403 });
     }
   }
@@ -374,13 +365,8 @@ export async function PATCHClassRecording(request: Request, id: string) {
   }
 
   if (session!.user.role === "mentor") {
-    const [mentor] = await db
-      .select({ courseId: users.courseId })
-      .from(users)
-      .where(eq(users.id, session!.user.id))
-      .limit(1);
-    const mentorCourseId = mentor?.courseId ?? session!.user.courseId;
-    if (!mentorCourseId || existing.courseId !== mentorCourseId) {
+    const allowed = await mentorHasCourseAccess(session!.user.id, existing.courseId);
+    if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   }

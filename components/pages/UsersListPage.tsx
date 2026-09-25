@@ -21,7 +21,9 @@ type User = UserRow & {
   isActive: boolean;
   createdAt: string;
   courseId?: string | null;
+  courseIds?: string[];
   courseTitle?: string | null;
+  courseTitles?: string[];
 };
 
 export function UsersListPage({
@@ -29,11 +31,13 @@ export function UsersListPage({
   title,
   addTitle,
   ModalComponent,
+  allowMultipleCourses = false,
 }: {
   apiPath: string;
   title: string;
   addTitle: string;
   ModalComponent: React.ComponentType<any>;
+  allowMultipleCourses?: boolean;
 }) {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -69,15 +73,26 @@ export function UsersListPage({
       ? [
           {
             accessorKey: "courseTitle",
-            header: "Assigned Course",
-            cell: ({ row }: { row: { original: User } }) =>
-              row.original.courseTitle ? (
-                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
-                  {row.original.courseTitle}
-                </Badge>
-              ) : (
-                <span className="text-xs text-muted-foreground italic">Not Assigned</span>
-              ),
+            header: "Assigned Courses",
+            cell: ({ row }: { row: { original: User } }) => {
+              const titles = row.original.courseTitles?.length
+                ? row.original.courseTitles
+                : row.original.courseTitle
+                  ? [row.original.courseTitle]
+                  : [];
+              if (!titles.length) {
+                return <span className="text-xs text-muted-foreground italic">Not Assigned</span>;
+              }
+              return (
+                <div className="flex flex-wrap gap-1">
+                  {titles.map((title) => (
+                    <Badge key={title} variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                      {title}
+                    </Badge>
+                  ))}
+                </div>
+              );
+            },
           },
         ]
       : []),
@@ -163,6 +178,7 @@ export function UsersListPage({
           if (!open) setEditUser(undefined);
         }}
         user={editUser}
+        allowMultipleCourses={allowMultipleCourses}
       />
     </div>
   );

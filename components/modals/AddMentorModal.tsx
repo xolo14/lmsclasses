@@ -33,7 +33,9 @@ export type MentorUserRow = {
   email: string;
   phone?: string | null;
   courseId?: string | null;
+  courseIds?: string[];
   courseTitle?: string | null;
+  courseTitles?: string[];
 };
 
 interface AddMentorModalProps {
@@ -42,6 +44,7 @@ interface AddMentorModalProps {
   apiPath?: string;
   title?: string;
   user?: MentorUserRow;
+  allowMultipleCourses?: boolean;
 }
 
 type LiveCourseOption = {
@@ -56,6 +59,7 @@ export function AddMentorModal({
   apiPath = "/api/mentors",
   title = "Add Mentor",
   user,
+  allowMultipleCourses = false,
 }: AddMentorModalProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
@@ -81,7 +85,12 @@ export function AddMentorModal({
             name: user.name,
             email: user.email,
             phone: user.phone ?? "",
-            courseId: user.courseId || "",
+            courseId: user.courseIds?.[0] || user.courseId || "",
+            courseIds: user.courseIds?.length
+              ? user.courseIds
+              : user.courseId
+                ? [user.courseId]
+                : [],
             password: "",
             confirmPassword: "",
           }
@@ -90,6 +99,7 @@ export function AddMentorModal({
             email: "",
             phone: "",
             courseId: "",
+            courseIds: [],
             password: "",
             confirmPassword: "",
           },
@@ -109,6 +119,13 @@ export function AddMentorModal({
   });
 
   const selectedCourseId = watch("courseId") || "";
+  const selectedCourseIds = watch("courseIds") || [];
+  const existingCount = user?.courseIds?.length
+    ? user.courseIds.length
+    : user?.courseId
+      ? 1
+      : 0;
+  const managerLockedMulti = !allowMultipleCourses && existingCount > 1;
 
   useEffect(() => {
     if (open) {
@@ -121,17 +138,31 @@ export function AddMentorModal({
     mutationFn: async (data: EditMentorInput) => {
       const url = isEdit ? `${apiPath}/${user!.id}` : apiPath;
       const method = isEdit ? "PATCH" : "POST";
+      const coursePayload = managerLockedMulti
+        ? {}
+        : {
+            courseIds: allowMultipleCourses
+              ? data.courseIds ?? []
+              : data.courseId
+                ? [data.courseId]
+                : [],
+            courseId: allowMultipleCourses
+              ? (data.courseIds?.[0] ?? null)
+              : data.courseId
+                ? data.courseId
+                : null,
+          };
       const payload = isEdit
         ? {
             name: data.name,
             email: data.email,
             phone: data.phone,
-            courseId: data.courseId ? data.courseId : null,
+            ...coursePayload,
             ...(data.password ? { password: data.password } : {}),
           }
         : {
             ...data,
-            courseId: data.courseId ? data.courseId : null,
+            ...coursePayload,
           };
 
       const res = await fetch(url, {
@@ -146,7 +177,7 @@ export function AddMentorModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mentors"] });
       if (!isEdit) {
-        reset({ name: "", email: "", phone: "", courseId: "", password: "", confirmPassword: "" });
+        reset({ name: "", email: "", phone: "", courseId: "", courseIds: [], password: "", confirmPassword: "" });
       }
       onOpenChange(false);
     },
@@ -180,25 +211,66 @@ export function AddMentorModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Assign Course (Optional)</Label>
-            <Select
-              value={selectedCourseId || "none"}
-              onValueChange={(val) => setValue("courseId", val === "none" ? "" : val, { shouldValidate: true })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a Live Course (Optional)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">-- No Course Assigned --</SelectItem>
-                {courses.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>{allowMultipleCourses ? "Assign Courses (Optional)" : "Assign Course (Optional)"}</Label>
+            {allowMultipleCourses ? (
+              <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
+                {courses.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No live courses available.</p>
+                ) : (
+                  courses.map((c) => {
+                    const checked = selectedCourseIds.includes(c.id);
+                    return (
+                      <label key={c.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const next = checked
+                              ? selectedCourseIds.filter((id) => id !== c.id)
+                              : [...selectedCourseIds, c.id];
+                            setValue("courseIds", next, { shouldValidate: true });
+                            setValue("courseId", next[0] ?? "", { shouldValidate: true });
+                          }}
+                        />
+                        <span>{c.title}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            ) : managerLockedMulti ? (
+              <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-sm">
+                <p>{(user?.courseTitles ?? []).join(", ") || user?.courseTitle}</p>
+                <p className="text-xs text-muted-foreground">
+                  This mentor already has multiple Super Admin courses. A manager cannot add more.
+                </p>
+              </div>
+            ) : (
+              <Select
+                value={selectedCourseId || "none"}
+                onValueChange={(val) => {
+                  const next = val === "none" ? "" : val;
+                  setValue("courseId", next, { shouldValidate: true });
+                  setValue("courseIds", next ? [next] : [], { shouldValidate: true });
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a Live Course (Optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">-- No Course Assigned --</SelectItem>
+                  {courses.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <p className="text-xs text-muted-foreground">
-              Optional: Select a live course to assign to this mentor, or leave unassigned.
+              {allowMultipleCourses
+                ? "Super Admin can assign more than one live course."
+                : "Managers can assign only one live course."}
             </p>
             {errors.courseId && <p className="text-sm text-destructive">{errors.courseId.message}</p>}
           </div>

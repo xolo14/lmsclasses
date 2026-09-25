@@ -189,6 +189,21 @@ export const users = pgTable("users", {
   index("users_course_id_idx").on(table.courseId),
 ]);
 
+export const mentorCourses = pgTable("mentor_courses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  mentorId: uuid("mentor_id")
+    .references(() => users.id)
+    .notNull(),
+  courseId: uuid("course_id")
+    .references((): AnyPgColumn => liveCourses.id)
+    .notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("mentor_courses_mentor_course_uidx").on(table.mentorId, table.courseId),
+  index("mentor_courses_mentor_id_idx").on(table.mentorId),
+  index("mentor_courses_course_id_idx").on(table.courseId),
+]);
+
 export const liveCourses = pgTable("live_courses", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
@@ -910,6 +925,7 @@ export const issuedCertificates = pgTable(
 );
 
 export type User = typeof users.$inferSelect;
+export type MentorCourse = typeof mentorCourses.$inferSelect;
 export type Organisation = typeof organisations.$inferSelect;
 export type LiveCourse = typeof liveCourses.$inferSelect;
 export type RecordCourse = typeof recordCourses.$inferSelect;

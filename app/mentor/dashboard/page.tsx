@@ -7,19 +7,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Film, Video, Users, Layers, ArrowRight, AlertCircle } from "lucide-react";
 
+type MentorCourse = {
+  id: string;
+  title: string;
+  description: string | null;
+  level: string | null;
+  language: string | null;
+  totalHours: number | null;
+  totalLiveHours: number | null;
+  batchCount: number;
+  recordingCount: number;
+  studentCount: number;
+};
+
 type MentorCourseResponse = {
-  course: {
-    id: string;
-    title: string;
-    description: string | null;
-    level: string | null;
-    language: string | null;
-    totalHours: number | null;
-    totalLiveHours: number | null;
-    batchCount: number;
-    recordingCount: number;
-    studentCount: number;
-  } | null;
+  course: MentorCourse | null;
+  courses?: MentorCourse[];
 };
 
 export default function MentorDashboardPage() {
@@ -35,7 +38,11 @@ export default function MentorDashboardPage() {
     return <div className="text-muted-foreground p-6">Loading dashboard...</div>;
   }
 
-  const course = data?.course;
+  const courses = data?.courses?.length ? data.courses : data?.course ? [data.course] : [];
+  const course = courses[0];
+  const batchCount = courses.reduce((sum, row) => sum + (row.batchCount || 0), 0);
+  const recordingCount = courses.reduce((sum, row) => sum + (row.recordingCount || 0), 0);
+  const studentCount = courses.reduce((sum, row) => sum + (row.studentCount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -74,8 +81,8 @@ export default function MentorDashboardPage() {
                 <Layers className="h-4 w-4 text-primary" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{course.batchCount}</div>
-                <p className="text-xs text-muted-foreground mt-1">Batches under your course</p>
+                <div className="text-2xl font-bold">{batchCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Batches under your courses</p>
               </CardContent>
             </Card>
 
@@ -87,7 +94,7 @@ export default function MentorDashboardPage() {
                 <Film className="h-4 w-4 text-primary" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{course.recordingCount}</div>
+                <div className="text-2xl font-bold">{recordingCount}</div>
                 <p className="text-xs text-muted-foreground mt-1">Uploaded batch recordings</p>
               </CardContent>
             </Card>
@@ -100,7 +107,7 @@ export default function MentorDashboardPage() {
                 <Users className="h-4 w-4 text-primary" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{course.studentCount}</div>
+                <div className="text-2xl font-bold">{studentCount}</div>
                 <p className="text-xs text-muted-foreground mt-1">Active course learners</p>
               </CardContent>
             </Card>
@@ -108,53 +115,60 @@ export default function MentorDashboardPage() {
 
           {/* Assigned Course Card */}
           <div>
-            <h2 className="text-lg font-semibold mb-3">My Assigned Course</h2>
-            <Card className="hover:border-primary/50 transition-colors">
-              <CardHeader className="space-y-2">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="h-5 w-5 text-primary" />
-                      <CardTitle className="text-xl">{course.title}</CardTitle>
+            <h2 className="text-lg font-semibold mb-3">
+              {courses.length > 1 ? "My Assigned Courses" : "My Assigned Course"}
+            </h2>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {courses.map((row) => (
+                <Card key={row.id} className="hover:border-primary/50 transition-colors">
+                  <CardHeader className="space-y-2">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-5 w-5 text-primary" />
+                          <CardTitle className="text-xl">{row.title}</CardTitle>
+                        </div>
+                        <CardDescription className="line-clamp-2">
+                          {row.description || "No description provided for this course."}
+                        </CardDescription>
+                      </div>
+                      <Badge variant="outline" className="shrink-0 bg-primary/10 text-primary border-primary/20">
+                        {row.level || "Live Course"}
+                      </Badge>
                     </div>
-                    <CardDescription className="line-clamp-2">
-                      {course.description || "No description provided for this course."}
-                    </CardDescription>
-                  </div>
-                  <Badge variant="outline" className="shrink-0 bg-primary/10 text-primary border-primary/20">
-                    {course.level || "Live Course"}
-                  </Badge>
-                </div>
-              </CardHeader>
+                  </CardHeader>
 
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  {course.language && (
-                    <span className="bg-muted px-2 py-1 rounded">Language: {course.language}</span>
-                  )}
-                  {course.totalHours && (
-                    <span className="bg-muted px-2 py-1 rounded">Total: {course.totalHours} hrs</span>
-                  )}
-                  {course.totalLiveHours && (
-                    <span className="bg-muted px-2 py-1 rounded">Live: {course.totalLiveHours} hrs</span>
-                  )}
-                </div>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      {row.language && (
+                        <span className="bg-muted px-2 py-1 rounded">Language: {row.language}</span>
+                      )}
+                      {row.totalHours && (
+                        <span className="bg-muted px-2 py-1 rounded">Total: {row.totalHours} hrs</span>
+                      )}
+                      {row.totalLiveHours && (
+                        <span className="bg-muted px-2 py-1 rounded">Live: {row.totalLiveHours} hrs</span>
+                      )}
+                      <span className="bg-muted px-2 py-1 rounded">{row.batchCount} batches</span>
+                    </div>
 
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <Button asChild className="gap-2">
-                    <Link href={`/mentor/recording-classes/${course.id}`}>
-                      <Film className="h-4 w-4" /> View Recording Classes & Batches
-                      <ArrowRight className="h-4 w-4 ml-1" />
-                    </Link>
-                  </Button>
-                  <Button variant="outline" asChild className="gap-2">
-                    <Link href="/mentor/live-classes">
-                      <Video className="h-4 w-4" /> Schedule & View Live Classes
-                    </Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                    <div className="flex flex-wrap gap-3 pt-2">
+                      <Button asChild className="gap-2">
+                        <Link href={`/mentor/recording-classes/${row.id}`}>
+                          <Film className="h-4 w-4" /> View Recording Classes & Batches
+                          <ArrowRight className="h-4 w-4 ml-1" />
+                        </Link>
+                      </Button>
+                      <Button variant="outline" asChild className="gap-2">
+                        <Link href="/mentor/live-classes">
+                          <Video className="h-4 w-4" /> Schedule & View Live Classes
+                        </Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         </div>
       )}

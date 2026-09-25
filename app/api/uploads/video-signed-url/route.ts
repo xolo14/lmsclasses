@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/api-auth";
 import { getSignedUploadUrl, UPLOAD_SIGNED_URL_TTL_MS } from "@/lib/gcs";
 import { MAX_VIDEO_UPLOAD_BYTES, getVideoSizeError } from "@/lib/video-upload";
 import { resolveBatchVideoObjectKey } from "@/lib/video-upload-server";
+import { getMentorCourseIds } from "@/lib/mentor-courses";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
  * Note: signed PUTs require CORS to be configured on the bucket.
  */
 export async function POST(request: Request) {
-  const { error } = await requireAuth(["super_admin", "manager", "mentor"]);
+  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
   try {
@@ -38,7 +39,10 @@ export async function POST(request: Request) {
 
     const { objectKey, folderName, safeFilename } = await resolveBatchVideoObjectKey(
       String(batchId),
-      String(filename)
+      String(filename),
+      session!.user.role === "mentor"
+        ? { mentorCourseIds: await getMentorCourseIds(session!.user.id) }
+        : undefined
     );
 
     const mimeType = (typeof contentType === "string" && contentType.trim()) || "video/mp4";

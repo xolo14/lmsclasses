@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { db } from "@/lib/db";
-import { users, liveCourses, batches, classRecordings, studentCourses } from "@/lib/db/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { liveCourses, batches, classRecordings, studentCourses } from "@/lib/db/schema";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { getMentorCourseIds } from "@/lib/mentor-courses";
 
 export const dynamic = "force-dynamic";
 
@@ -10,28 +11,12 @@ export async function GET() {
   const { error, session } = await requireAuth(["mentor"]);
   if (error) return error;
 
-  let mentor;
-  try {
-    const [row] = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        courseId: users.courseId,
-      })
-      .from(users)
-      .where(eq(users.id, session!.user.id))
-      .limit(1);
-    mentor = row;
-  } catch {
-    return NextResponse.json({ course: null });
+  const courseIds = await getMentorCourseIds(session!.user.id);
+  if (!courseIds.length) {
+    return NextResponse.json({ course: null, courses: [] });
   }
 
-  if (!mentor || !mentor.courseId) {
-    return NextResponse.json({ course: null });
-  }
-
-  const [course] = await db
+  const courseRows = await db
     .select({
       id: liveCourses.id,
       title: liveCourses.title,
@@ -45,34 +30,47 @@ export async function GET() {
       createdAt: liveCourses.createdAt,
     })
     .from(liveCourses)
-    .where(and(eq(liveCourses.id, mentor.courseId), isNull(liveCourses.deletedAt)))
-    .limit(1);
+    .where(and(inArray(liveCourses.id, courseIds), isNull(liveCourses.deletedAt)));
 
-  if (!course) {
-    return NextResponse.json({ course: null });
+  const ordered = courseIds
+    .map((id) => courseRows.find((row) => row.id === id))
+    .filter((row): row is NonNullable<typeof row> => !!row);
+
+  if (!ordered.length) {
+    return NextResponse.json({ course: null, courses: [] });
   }
 
-  const [batchCountRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(batches)
-    .where(and(eq(batches.courseId, course.id), isNull(batches.deletedAt)));
+  const [batchCounts, recordingCounts, studentCounts] = await Promise.all([
+    db
+      .select({ courseId: batches.courseId, count: sql<number>`count(*)::int` })
+      .from(batches)
+      .where(and(inArray(batches.courseId, courseIds), isNull(batches.deletedAt)))
+      .groupBy(batches.courseId),
+    db
+      .select({ courseId: classRecordings.courseId, count: sql<number>`count(*)::int` })
+      .from(classRecordings)
+      .where(and(inArray(classRecordings.courseId, courseIds), isNull(classRecordings.deletedAt)))
+      .groupBy(classRecordings.courseId),
+    db
+      .select({ courseId: studentCourses.liveCourseId, count: sql<number>`count(*)::int` })
+      .from(studentCourses)
+      .where(and(inArray(studentCourses.liveCourseId, courseIds), eq(studentCourses.isActive, true)))
+      .groupBy(studentCourses.liveCourseId),
+  ]);
 
-  const [recordingCountRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(classRecordings)
-    .where(and(eq(classRecordings.courseId, course.id), isNull(classRecordings.deletedAt)));
+  const batchMap = new Map(batchCounts.map((row) => [row.courseId, row.count]));
+  const recordingMap = new Map(recordingCounts.map((row) => [row.courseId, row.count]));
+  const studentMap = new Map(studentCounts.map((row) => [row.courseId, row.count]));
 
-  const [studentCountRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(studentCourses)
-    .where(and(eq(studentCourses.liveCourseId, course.id), eq(studentCourses.isActive, true)));
+  const courses = ordered.map((course) => ({
+    ...course,
+    batchCount: batchMap.get(course.id) ?? 0,
+    recordingCount: recordingMap.get(course.id) ?? 0,
+    studentCount: studentMap.get(course.id) ?? 0,
+  }));
 
   return NextResponse.json({
-    course: {
-      ...course,
-      batchCount: batchCountRow?.count ?? 0,
-      recordingCount: recordingCountRow?.count ?? 0,
-      studentCount: studentCountRow?.count ?? 0,
-    },
+    course: courses[0],
+    courses,
   });
 }
