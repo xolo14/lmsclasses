@@ -30,6 +30,7 @@ import { fetchAllStudents } from "@/lib/students-client";
 import { formatDateTime } from "@/lib/utils";
 
 type OrganisationOption = { id: string; name: string };
+type CourseOption = { id: string; title: string; kind: "live" | "record" };
 
 type Student = {
   id: string;
@@ -174,7 +175,8 @@ export default function SuperAdminEnrollmentsPage() {
   const queryClient = useQueryClient();
   const [editStudent, setEditStudent] = useState<Student | undefined>();
   const [organisationFilter, setOrganisationFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [courseFilter, setCourseFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
 
@@ -187,17 +189,40 @@ export default function SuperAdminEnrollmentsPage() {
     },
   });
 
+  const { data: courses = [] } = useQuery<CourseOption[]>({
+    queryKey: ["enrollment-course-options"],
+    queryFn: async () => {
+      const [liveRes, recordRes] = await Promise.all([
+        fetch("/api/live-courses"),
+        fetch("/api/record-courses"),
+      ]);
+      const [liveData, recordData] = await Promise.all([liveRes.json(), recordRes.json()]);
+      const liveOpts = (Array.isArray(liveData) ? liveData : []).map((c: { id: string; title: string }) => ({
+        id: c.id,
+        title: c.title,
+        kind: "live" as const,
+      }));
+      const recordOpts = (Array.isArray(recordData) ? recordData : []).map((c: { id: string; title: string }) => ({
+        id: c.id,
+        title: c.title,
+        kind: "record" as const,
+      }));
+      return [...liveOpts, ...recordOpts].sort((a, b) => a.title.localeCompare(b.title));
+    },
+  });
+
   const {
     data: enrollments = [],
     isLoading: enrollmentsLoading,
     isError: enrollmentsError,
     error: enrollmentsErr,
   } = useQuery<EnrollmentApiRow[]>({
-    queryKey: ["enrollments-list", organisationFilter, statusFilter],
+    queryKey: ["enrollments-list", organisationFilter, courseFilter, typeFilter],
     queryFn: async () => {
       const params = new URLSearchParams({ limit: "500" });
       if (organisationFilter !== "all") params.set("orgId", organisationFilter);
-      if (statusFilter) params.set("status", statusFilter);
+      if (courseFilter !== "all") params.set("courseId", courseFilter);
+      if (typeFilter) params.set("courseType", typeFilter);
       const res = await fetch(`/api/enrollments?${params}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to load enrollments");
@@ -211,18 +236,18 @@ export default function SuperAdminEnrollmentsPage() {
       fetchAllStudents({
         organisationId: organisationFilter === "all" ? undefined : organisationFilter,
       }),
-    enabled: !statusFilter,
+    enabled: !typeFilter && courseFilter === "all",
   });
 
   const rows = useMemo(() => {
     const enrolled = enrollments.map(fromEnrollment);
-    if (statusFilter) return enrolled;
+    if (typeFilter || courseFilter !== "all") return enrolled;
     const enrolledIds = new Set(enrollments.map((e) => e.studentId));
     const extras = students
       .filter((s) => !enrolledIds.has(s.id))
       .map(fromUnenrolledStudent);
     return [...enrolled, ...extras];
-  }, [enrollments, students, statusFilter]);
+  }, [enrollments, students, typeFilter, courseFilter]);
 
   const deleteStudent = useMutation({
     mutationFn: async (id: string) => {
@@ -382,7 +407,7 @@ export default function SuperAdminEnrollmentsPage() {
     },
   ];
 
-  const isLoading = enrollmentsLoading || (!statusFilter && studentsLoading);
+  const isLoading = enrollmentsLoading || (!typeFilter && studentsLoading);
 
   return (
     <div className="space-y-6">
@@ -426,6 +451,7 @@ export default function SuperAdminEnrollmentsPage() {
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
         <div className="space-y-1 sm:min-w-[280px]">
           <Label htmlFor="org-filter" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
             Filter by Organisation
@@ -446,32 +472,66 @@ export default function SuperAdminEnrollmentsPage() {
           </Select>
         </div>
 
+        <div className="space-y-1 sm:min-w-[280px]">
+          <Label htmlFor="course-filter" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+            Filter by Course
+          </Label>
+          <Select value={courseFilter} onValueChange={setCourseFilter}>
+            <SelectTrigger id="course-filter">
+              <SelectValue placeholder="All courses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All courses</SelectItem>
+              {courses.map((course) => (
+                <SelectItem key={course.id} value={course.id}>
+                  {course.title} ({course.kind === "live" ? "Live" : "Recorded"})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        </div>
+
         <div className="flex gap-2 flex-wrap items-center">
           <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mr-1">
-            Status:
+            Type:
           </span>
-          {["", "active", "paused", "revoked", "completed"].map((s) => (
+          {([
+            { value: "", label: "All" },
+            { value: "live", label: "Live" },
+            { value: "record", label: "Record" },
+          ] as const).map((s) => (
             <button
-              key={s || "all"}
+              key={s.value || "all"}
               type="button"
-              onClick={() => setStatusFilter(s)}
+              onClick={() => setTypeFilter(s.value)}
               className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider border rounded-sm transition-colors ${
-                statusFilter === s
+                typeFilter === s.value
                   ? "bg-swiss-red text-white border-swiss-red"
                   : "border-swiss-black/15 text-swiss-muted hover:border-swiss-black/30"
               }`}
             >
-              {s || "All"}
+              {s.label}
             </button>
           ))}
         </div>
       </div>
 
-      {organisationFilter !== "all" && (
+      {(organisationFilter !== "all" || courseFilter !== "all") && (
         <p className="text-xs text-muted-foreground">
-          {organisationFilter === "direct"
-            ? "Showing students enrolled directly by super admin."
-            : `Showing students for ${organisations.find((o) => o.id === organisationFilter)?.name ?? "selected organisation"}.`}
+          {[
+            organisationFilter === "direct"
+              ? "Showing students enrolled directly by super admin"
+              : organisationFilter !== "all"
+                ? `Showing students for ${organisations.find((o) => o.id === organisationFilter)?.name ?? "selected organisation"}`
+                : null,
+            courseFilter !== "all"
+              ? `in ${courses.find((c) => c.id === courseFilter)?.title ?? "selected course"}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          .
         </p>
       )}
 

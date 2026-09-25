@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   batches,
@@ -783,6 +783,7 @@ export async function listEnrollmentsForAdmin(filters: {
   studentId?: string;
   orgId?: string;
   courseId?: string;
+  courseType?: "live" | "record";
   status?: EnrollmentStatus;
   accessType?: EnrollmentAccessType;
   limit?: number;
@@ -803,6 +804,11 @@ export async function listEnrollmentsForAdmin(filters: {
         eq(studentCourses.recordCourseId, filters.courseId)
       )!
     );
+  }
+  if (filters.courseType === "live") {
+    conditions.push(isNotNull(studentCourses.liveCourseId));
+  } else if (filters.courseType === "record") {
+    conditions.push(isNotNull(studentCourses.recordCourseId));
   }
 
   return db

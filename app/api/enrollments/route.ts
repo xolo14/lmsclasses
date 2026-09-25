@@ -13,6 +13,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const studentId = searchParams.get("studentId") ?? undefined;
   const courseId = searchParams.get("courseId") ?? undefined;
+  const courseTypeParam = searchParams.get("courseType");
+  const courseType =
+    courseTypeParam === "live" || courseTypeParam === "record" ? courseTypeParam : undefined;
   const status = searchParams.get("status") as EnrollmentStatus | null;
   const accessType = searchParams.get("accessType") as EnrollmentAccessType | null;
   const limit = Math.min(parseInt(searchParams.get("limit") ?? "100", 10), 500);
@@ -30,6 +33,7 @@ export async function GET(request: Request) {
     studentId,
     orgId,
     courseId,
+    courseType,
     status: status ?? undefined,
     accessType: accessType ?? undefined,
     limit,
