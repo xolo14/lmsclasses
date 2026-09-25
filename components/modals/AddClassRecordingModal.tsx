@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -29,11 +29,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UploadCloud, Film, CheckCircle2, AlertCircle, Link as LinkIcon, X } from "lucide-react";
 
+export type ClassRecordingEditRow = {
+  id: string;
+  weekName: string;
+  topicName: string;
+  videoUrl: string;
+};
+
 interface AddClassRecordingModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courseId: string;
   batchId: string;
+  recording?: ClassRecordingEditRow | null;
 }
 
 export function AddClassRecordingModal({
@@ -41,11 +49,13 @@ export function AddClassRecordingModal({
   onOpenChange,
   courseId,
   batchId,
+  recording = null,
 }: AddClassRecordingModalProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
+  const isEdit = !!recording;
+  const [uploadMode, setUploadMode] = useState<"file" | "url">(recording ? "url" : "file");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadStatus, setUploadStatus] = useState<string>("");
@@ -60,18 +70,49 @@ export function AddClassRecordingModal({
     formState: { errors },
   } = useForm<ClassRecordingInput>({
     resolver: zodResolver(classRecordingSchema),
-    defaultValues: { courseId, batchId, videoUrl: "" },
+    defaultValues: {
+      courseId,
+      batchId,
+      weekName: recording?.weekName ?? "",
+      topicName: recording?.topicName ?? "",
+      videoUrl: recording?.videoUrl ?? "",
+    },
   });
 
   const handleResetModal = () => {
-    reset({ courseId, batchId, weekName: "", topicName: "", videoUrl: "" });
+    reset({
+      courseId,
+      batchId,
+      weekName: recording?.weekName ?? "",
+      topicName: recording?.topicName ?? "",
+      videoUrl: recording?.videoUrl ?? "",
+    });
     setSelectedFile(null);
     setUploadProgress(0);
     setUploadStatus("");
     setError("");
     setIsUploading(false);
+    setUploadMode(recording ? "url" : "file");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  useEffect(() => {
+    if (!open) return;
+    reset({
+      courseId,
+      batchId,
+      weekName: recording?.weekName ?? "",
+      topicName: recording?.topicName ?? "",
+      videoUrl: recording?.videoUrl ?? "",
+    });
+    setSelectedFile(null);
+    setUploadProgress(0);
+    setUploadStatus("");
+    setError("");
+    setIsUploading(false);
+    setUploadMode(recording ? "url" : "file");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [open, recording, courseId, batchId, reset]);
 
   const uploadFileToGcs = async (file: File): Promise<string> => {
     setUploadStatus("Starting upload session...");
@@ -109,10 +150,13 @@ export function AddClassRecordingModal({
       let finalVideoUrl = data.videoUrl;
 
       if (uploadMode === "file") {
-        if (!selectedFile) {
+        if (selectedFile) {
+          finalVideoUrl = await uploadFileToGcs(selectedFile);
+        } else if (isEdit && recording?.videoUrl) {
+          finalVideoUrl = recording.videoUrl;
+        } else {
           throw new Error("Please select a video file to upload.");
         }
-        finalVideoUrl = await uploadFileToGcs(selectedFile);
       }
 
       if (!finalVideoUrl || !finalVideoUrl.trim()) {
@@ -133,8 +177,8 @@ export function AddClassRecordingModal({
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid recording data");
       }
 
-      const res = await fetch("/api/media/save", {
-        method: "POST",
+      const res = await fetch(isEdit ? `/api/media/${recording.id}` : "/api/media/save", {
+        method: isEdit ? "PATCH" : "POST",
         body: wrapApiForm(parsed.data),
         credentials: "same-origin",
       });
@@ -213,9 +257,11 @@ export function AddClassRecordingModal({
     >
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Upload Recorded Class</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Recorded Class" : "Upload Recorded Class"}</DialogTitle>
           <DialogDescription>
-            Upload a video file or paste a GCS key / video URL for this batch.
+            {isEdit
+              ? "Update week, topic, or replace the current video. The existing URL is filled in below."
+              : "Upload a video file or paste a GCS key / video URL for this batch."}
           </DialogDescription>
         </DialogHeader>
 
@@ -342,6 +388,11 @@ export function AddClassRecordingModal({
               {errors.videoUrl && (
                 <p className="text-sm text-destructive">{errors.videoUrl.message}</p>
               )}
+              {isEdit && recording?.videoUrl ? (
+                <p className="text-xs text-muted-foreground break-all">
+                  Current URL: {recording.videoUrl}
+                </p>
+              ) : null}
               <p className="text-xs text-muted-foreground">
                 Paste an existing GCS object key or a video URL.
               </p>
@@ -382,9 +433,12 @@ export function AddClassRecordingModal({
             </Button>
             <Button
               type="submit"
-              disabled={isUploading || (uploadMode === "file" && !selectedFile)}
+              disabled={
+                isUploading ||
+                (uploadMode === "file" && !selectedFile && !recording?.videoUrl)
+              }
             >
-              {isUploading ? "Uploading..." : "Upload Recording"}
+              {isUploading ? "Saving..." : isEdit ? "Save Changes" : "Upload Recording"}
             </Button>
           </DialogFooter>
         </form>

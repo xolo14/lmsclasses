@@ -6,7 +6,7 @@ import { useParams, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
-import { Plus, Trash2, ArrowLeft, Play, FileSpreadsheet, AlertCircle } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, Play, FileSpreadsheet, AlertCircle, Pencil } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
 import { Button } from "@/components/ui/button";
 import { AddClassRecordingModal } from "@/components/modals/AddClassRecordingModal";
@@ -34,6 +34,7 @@ export default function BatchRecordingsPage() {
   const { data: session } = useSession();
   const canDelete = session?.user?.role === "super_admin" || session?.user?.role === "manager";
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingRecording, setEditingRecording] = useState<Recording | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [watchRecording, setWatchRecording] = useState<{ url: string; title: string } | null>(null);
@@ -104,15 +105,28 @@ export default function BatchRecordingsPage() {
             id: "actions",
             header: "Actions",
             cell: ({ row }) => (
-              <Button
-                variant="destructive"
-                size="sm"
-                aria-label="Move recording to trash"
-                disabled={deleteRecording.isPending}
-                onClick={() => confirmDelete(row.original)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label="Edit recording"
+                  onClick={() => {
+                    setEditingRecording(row.original);
+                    setModalOpen(true);
+                  }}
+                >
+                  <Pencil className="h-3 w-3 mr-1" /> Edit
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  aria-label="Move recording to trash"
+                  disabled={deleteRecording.isPending}
+                  onClick={() => confirmDelete(row.original)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
             ),
           } satisfies ColumnDef<Recording>,
         ]
@@ -136,7 +150,13 @@ export default function BatchRecordingsPage() {
           <Button variant="outline" onClick={() => setImportModalOpen(true)} className="w-full sm:w-auto">
             <FileSpreadsheet className="h-4 w-4 mr-2" /> Bulk Import
           </Button>
-          <Button onClick={() => setModalOpen(true)} className="w-full sm:w-auto">
+          <Button
+            onClick={() => {
+              setEditingRecording(null);
+              setModalOpen(true);
+            }}
+            className="w-full sm:w-auto"
+          >
             <Plus className="h-4 w-4 mr-2" /> Upload Recording
           </Button>
         </div>
@@ -150,9 +170,13 @@ export default function BatchRecordingsPage() {
       <DataTable columns={columns} data={recordings} searchPlaceholder="Search recordings..." />
       <AddClassRecordingModal
         open={modalOpen}
-        onOpenChange={setModalOpen}
+        onOpenChange={(open) => {
+          setModalOpen(open);
+          if (!open) setEditingRecording(null);
+        }}
         courseId={courseId}
         batchId={batchId}
+        recording={editingRecording}
       />
       <WatchRecordingModal
         open={!!watchRecording}

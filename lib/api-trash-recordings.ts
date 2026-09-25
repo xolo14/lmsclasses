@@ -346,7 +346,7 @@ export async function POSTClassRecording(request: Request) {
 }
 
 export async function PATCHClassRecording(request: Request, id: string) {
-  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
+  const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
   const body = await readApiJson(request);
