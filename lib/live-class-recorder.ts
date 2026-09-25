@@ -96,7 +96,109 @@ export type MeetCapture = {
   stop: () => void;
   hasTabAudio: boolean;
   hasMicAudio: boolean;
+  displaySurface?: string;
+  sourceVideoTrack: MediaStreamTrack | null;
 };
+
+/** 720p only. Combined ~1.3 Mbps ≈ 560 MB/hour; Chrome may overshoot, target stays under 800 MB. */
+export const LIVE_RECORD_WIDTH = 1280;
+export const LIVE_RECORD_HEIGHT = 720;
+export const LIVE_RECORD_FPS = 24;
+export const LIVE_RECORD_VIDEO_BPS = 1_200_000;
+export const LIVE_RECORD_AUDIO_BPS = 96_000;
+export const LIVE_RECORD_TOTAL_BPS = 1_300_000;
+
+/**
+ * Downscale any captured tab to 1280×720 so MediaRecorder never encodes 1080p.
+ */
+async function scaleVideoTo720p(source: MediaStream): Promise<{ stream: MediaStream; stop: () => void }> {
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.setAttribute("playsinline", "");
+  video.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0";
+  video.srcObject = new MediaStream(source.getVideoTracks());
+  document.body.appendChild(video);
+  try {
+    await video.play();
+  } catch {
+    /* draw loop still starts once frames arrive */
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = LIVE_RECORD_WIDTH;
+  canvas.height = LIVE_RECORD_HEIGHT;
+  const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+  if (!ctx) {
+    video.srcObject = null;
+    video.remove();
+    return { stream: source, stop: () => undefined };
+  }
+
+  let raf = 0;
+  let running = true;
+  const draw = () => {
+    if (!running) return;
+    const sw = video.videoWidth;
+    const sh = video.videoHeight;
+    if (sw > 0 && sh > 0) {
+      const scale = Math.min(LIVE_RECORD_WIDTH / sw, LIVE_RECORD_HEIGHT / sh);
+      const w = Math.round(sw * scale);
+      const h = Math.round(sh * scale);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, LIVE_RECORD_WIDTH, LIVE_RECORD_HEIGHT);
+      ctx.drawImage(
+        video,
+        Math.floor((LIVE_RECORD_WIDTH - w) / 2),
+        Math.floor((LIVE_RECORD_HEIGHT - h) / 2),
+        w,
+        h
+      );
+    }
+    raf = requestAnimationFrame(draw);
+  };
+  draw();
+
+  const canvasStream = canvas.captureStream(LIVE_RECORD_FPS);
+  return {
+    stream: canvasStream,
+    stop: () => {
+      running = false;
+      cancelAnimationFrame(raf);
+      video.pause();
+      video.srcObject = null;
+      video.remove();
+      stopMediaStream(canvasStream);
+    },
+  };
+}
+
+export function createLiveMediaRecorder(stream: MediaStream, mimeType: string): MediaRecorder {
+  const attempts: MediaRecorderOptions[] = [
+    {
+      mimeType,
+      videoBitsPerSecond: LIVE_RECORD_VIDEO_BPS,
+      audioBitsPerSecond: LIVE_RECORD_AUDIO_BPS,
+      bitsPerSecond: LIVE_RECORD_TOTAL_BPS,
+    },
+    {
+      mimeType,
+      videoBitsPerSecond: LIVE_RECORD_VIDEO_BPS,
+      audioBitsPerSecond: LIVE_RECORD_AUDIO_BPS,
+    },
+    { mimeType },
+  ];
+  let lastError: unknown;
+  for (const opts of attempts) {
+    try {
+      return new MediaRecorder(stream, opts);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Could not start the recorder.");
+}
 
 /**
  * Capture the Meet Chrome tab (with tab audio) and mix in the teacher's microphone
@@ -111,9 +213,9 @@ export async function captureMeetTab(): Promise<MeetCapture> {
 
   const display = await navigator.mediaDevices.getDisplayMedia({
     video: {
-      frameRate: { ideal: 30, max: 30 },
-      width: { ideal: 1920, max: 1920 },
-      height: { ideal: 1080, max: 1080 },
+      frameRate: { ideal: LIVE_RECORD_FPS, max: LIVE_RECORD_FPS },
+      width: { ideal: LIVE_RECORD_WIDTH, max: LIVE_RECORD_WIDTH },
+      height: { ideal: LIVE_RECORD_HEIGHT, max: LIVE_RECORD_HEIGHT },
       displaySurface: "browser",
     },
     audio: true,
@@ -125,9 +227,20 @@ export async function captureMeetTab(): Promise<MeetCapture> {
     suppressLocalAudioPlayback: false,
   } as DisplayMediaStreamOptions);
 
-  if (!display.getVideoTracks().length) {
+  const sourceVideoTrack = display.getVideoTracks()[0] ?? null;
+  if (!sourceVideoTrack) {
     stopMediaStream(display);
     throw new Error("No video track. Choose the Google Meet tab in the browser picker.");
+  }
+
+  try {
+    await sourceVideoTrack.applyConstraints({
+      width: { ideal: LIVE_RECORD_WIDTH, max: LIVE_RECORD_WIDTH },
+      height: { ideal: LIVE_RECORD_HEIGHT, max: LIVE_RECORD_HEIGHT },
+      frameRate: { ideal: LIVE_RECORD_FPS, max: LIVE_RECORD_FPS },
+    });
+  } catch {
+    /* Chrome often ignores display-media max; canvas scale below still forces 720p */
   }
 
   enableTracks(display.getAudioTracks());
@@ -150,13 +263,15 @@ export async function captureMeetTab(): Promise<MeetCapture> {
 
   const micAudio = mic?.getAudioTracks().filter((t) => t.readyState === "live") ?? [];
   const mixed = await mixAudioTracks([...tabAudio, ...micAudio]);
+  const scaled = await scaleVideoTo720p(display);
 
   const stream = new MediaStream();
-  for (const track of display.getVideoTracks()) stream.addTrack(track);
+  for (const track of scaled.stream.getVideoTracks()) stream.addTrack(track);
   const audioTracks = mixed.stream?.getAudioTracks() ?? [];
   for (const track of audioTracks) stream.addTrack(track);
 
   const stop = () => {
+    scaled.stop();
     mixed.stop();
     stopMediaStream(display);
     stopMediaStream(mic);
@@ -168,6 +283,8 @@ export async function captureMeetTab(): Promise<MeetCapture> {
     stop,
     hasTabAudio: tabAudio.length > 0,
     hasMicAudio: micAudio.length > 0,
+    displaySurface: sourceVideoTrack.getSettings().displaySurface,
+    sourceVideoTrack,
   };
 }
 

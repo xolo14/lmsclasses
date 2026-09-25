@@ -26,6 +26,7 @@ import {
 import { wrapApiForm } from "@/lib/api-url-transport";
 import {
   captureMeetTab,
+  createLiveMediaRecorder,
   focusMeetPopup,
   formatElapsed,
   meetPopupIsOpen,
@@ -272,9 +273,8 @@ export function LiveClassStudio({
       return;
     }
 
-    const { stream, stop, hasTabAudio, hasMicAudio } = capture;
-    const videoTrack = stream.getVideoTracks()[0];
-    const surface = videoTrack?.getSettings().displaySurface;
+    const { stream, stop, hasTabAudio, hasMicAudio, displaySurface, sourceVideoTrack } = capture;
+    const surface = displaySurface;
 
     if (surface === "monitor") {
       stop();
@@ -311,10 +311,7 @@ export function LiveClassStudio({
 
     let recorder: MediaRecorder;
     try {
-      recorder = new MediaRecorder(stream, {
-        mimeType,
-        audioBitsPerSecond: 128_000,
-      });
+      recorder = createLiveMediaRecorder(stream, mimeType);
     } catch {
       stop();
       captureStopRef.current = null;
@@ -336,8 +333,8 @@ export function LiveClassStudio({
     };
     recorder.onstop = () => finalizeRecording(recorder.mimeType || mimeType);
 
-    if (videoTrack) {
-      videoTrack.addEventListener("ended", () => {
+    if (sourceVideoTrack) {
+      sourceVideoTrack.addEventListener("ended", () => {
         if (recorderRef.current?.state === "recording") recorderRef.current.stop();
       });
     }
