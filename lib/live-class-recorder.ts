@@ -201,8 +201,8 @@ export function createLiveMediaRecorder(stream: MediaStream, mimeType: string): 
 }
 
 /**
- * Capture the Meet Chrome tab (with tab audio) and mix in the teacher's microphone
- * so the recording is not silent when they share a window instead of a tab.
+ * Capture a Chrome tab, a window, or the entire screen (plus tab/system audio
+ * when available) and mix in the teacher's microphone.
  */
 export async function captureMeetTab(): Promise<MeetCapture> {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia) {
@@ -216,13 +216,12 @@ export async function captureMeetTab(): Promise<MeetCapture> {
       frameRate: { ideal: LIVE_RECORD_FPS, max: LIVE_RECORD_FPS },
       width: { ideal: LIVE_RECORD_WIDTH, max: LIVE_RECORD_WIDTH },
       height: { ideal: LIVE_RECORD_HEIGHT, max: LIVE_RECORD_HEIGHT },
-      displaySurface: "browser",
     },
     audio: true,
     preferCurrentTab: false,
     selfBrowserSurface: "exclude",
     systemAudio: "include",
-    monitorTypeSurfaces: "exclude",
+    monitorTypeSurfaces: "include",
     surfaceSwitching: "include",
     suppressLocalAudioPlayback: false,
   } as DisplayMediaStreamOptions);
@@ -230,7 +229,7 @@ export async function captureMeetTab(): Promise<MeetCapture> {
   const sourceVideoTrack = display.getVideoTracks()[0] ?? null;
   if (!sourceVideoTrack) {
     stopMediaStream(display);
-    throw new Error("No video track. Choose the Google Meet tab in the browser picker.");
+    throw new Error("No video track. Choose a Chrome tab, a window, or the entire screen.");
   }
 
   try {

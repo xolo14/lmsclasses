@@ -265,7 +265,7 @@ export function LiveClassStudio({
       const name = err instanceof DOMException ? err.name : "";
       if (name === "NotAllowedError") {
         setError(
-          "Permission denied. Click Start recording again, pick the Google Meet Chrome tab, and enable “Also share tab audio”."
+          "Permission denied. Click Start recording again and pick a Chrome tab, a window, or the entire screen."
         );
       } else {
         setError(err instanceof Error ? err.message : "Could not start screen capture.");
@@ -276,25 +276,21 @@ export function LiveClassStudio({
     const { stream, stop, hasTabAudio, hasMicAudio, displaySurface, sourceVideoTrack } = capture;
     const surface = displaySurface;
 
-    if (surface === "monitor") {
-      stop();
-      setError(
-        "You shared the whole screen. Click Start recording and pick the Google Meet Chrome tab instead."
-      );
-      return;
-    }
-
     if (!hasTabAudio && !hasMicAudio) {
       stop();
       setError(
-        "No audio was captured. Pick Chrome Tab → Google Meet, turn on “Also share tab audio”, and allow the microphone when asked."
+        "No audio was captured. Allow the microphone, or pick Chrome Tab → Google Meet and turn on “Also share tab audio”."
       );
       return;
     }
 
     if (!hasTabAudio) {
       setWarning(
-        "Meet tab audio was not shared, so only your microphone is in this recording. Stop and share the Google Meet Chrome tab with “Also share tab audio” to include students."
+        surface === "monitor"
+          ? "You shared the entire screen. Student voices are included only if system audio is on; otherwise this recording has your microphone. Share the Google Meet Chrome tab with “Also share tab audio” for the clearest class audio."
+          : surface === "window"
+            ? "You shared a window, so only your microphone is in this recording. Share the Google Meet Chrome tab with “Also share tab audio” if you need student voices."
+            : "Meet tab audio was not shared, so only your microphone is in this recording. Stop and share the Google Meet Chrome tab with “Also share tab audio” to include students."
       );
     }
 
@@ -566,11 +562,12 @@ export function LiveClassStudio({
             <li>Open Google Meet (it opens as a browser tab).</li>
             <li>
               Click Start recording. In Chrome pick <strong>Chrome Tab</strong> → the{" "}
-              <strong>Google Meet</strong> tab (not this LMS page).
+              <strong>Google Meet</strong> tab, <strong>Window</strong>, or{" "}
+              <strong>Entire screen</strong>. Do not pick this LMS page.
             </li>
             <li>
-              Turn on <strong>Also share tab audio</strong>, then Share. Allow the microphone
-              when asked (your voice is mixed in).
+              For a tab, turn on <strong>Also share tab audio</strong>. For a window or entire
+              screen, allow the microphone (and system audio if Chrome offers it).
             </li>
             <li>Stop → preview → upload. A copy stays in History for 7 days until you upload or delete it.</li>
           </ol>
