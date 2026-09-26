@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import { Plus, Trash2, ArrowLeft, Play, FileSpreadsheet, AlertCircle, Pencil } from "lucide-react";
@@ -31,8 +30,6 @@ export default function BatchRecordingsPage() {
   const courseId = params.courseId as string;
   const batchId = params.batchId as string;
   const queryClient = useQueryClient();
-  const { data: session } = useSession();
-  const canDelete = session?.user?.role === "super_admin" || session?.user?.role === "manager";
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRecording, setEditingRecording] = useState<Recording | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -98,39 +95,34 @@ export default function BatchRecordingsPage() {
       header: "Uploaded",
       cell: ({ row }) => formatDateTime(row.original.createdAt),
     },
-    // Delete is restricted to super_admin / manager (enforced by the API as well).
-    ...(canDelete
-      ? [
-          {
-            id: "actions",
-            header: "Actions",
-            cell: ({ row }) => (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label="Edit recording"
-                  onClick={() => {
-                    setEditingRecording(row.original);
-                    setModalOpen(true);
-                  }}
-                >
-                  <Pencil className="h-3 w-3 mr-1" /> Edit
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  aria-label="Move recording to trash"
-                  disabled={deleteRecording.isPending}
-                  onClick={() => confirmDelete(row.original)}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            ),
-          } satisfies ColumnDef<Recording>,
-        ]
-      : []),
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Edit recording"
+            onClick={() => {
+              setEditingRecording(row.original);
+              setModalOpen(true);
+            }}
+          >
+            <Pencil className="h-3 w-3 mr-1" /> Edit
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            aria-label="Move recording to trash"
+            disabled={deleteRecording.isPending}
+            onClick={() => confirmDelete(row.original)}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      ),
+    },
   ];
 
   if (isLoading) return <div className="text-muted-foreground">Loading...</div>;
