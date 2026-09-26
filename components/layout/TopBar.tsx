@@ -97,8 +97,7 @@ export function TopBar({ userName, userRole, onMenuClick, brandLogoUrl }: TopBar
             <DropdownMenuItem
               onSelect={(event) => {
                 event.preventDefault();
-                const next = userRole === "hr" ? "/hr/login" : "/login";
-                window.location.assign(`/api/logout?next=${encodeURIComponent(next)}`);
+                window.location.assign("/api/logout");
               }}
               className="cursor-pointer flex w-full items-center gap-2 px-2 py-1.5 text-sm text-destructive focus:text-destructive focus:bg-destructive/10"
             >

@@ -20,8 +20,8 @@ const SESSION_COOKIES = [
   "__Host-next-auth.csrf-token",
 ] as const;
 
-function loginPath(next: string | null): "/login" | "/hr/login" {
-  return next === "/hr/login" ? "/hr/login" : "/login";
+function afterLogoutPath(): "/" {
+  return "/";
 }
 
 function expireCookie(response: NextResponse, name: string) {
@@ -41,8 +41,7 @@ function expireCookie(response: NextResponse, name: string) {
 
 /** GET so Hostinger WAF / login rate-limits cannot block sign-out. */
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const dest = loginPath(searchParams.get("next"));
+  const dest = afterLogoutPath();
   const response = NextResponse.redirect(new URL(dest, request.url), 302);
 
   for (const name of SESSION_COOKIES) {
