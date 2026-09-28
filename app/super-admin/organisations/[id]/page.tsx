@@ -1,15 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
+import { Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SecondaryOrgAdminModal } from "@/components/modals/SecondaryOrgAdminModal";
 import { formatDate, formatCurrency } from "@/lib/utils";
 
 export default function OrganisationDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const [secondaryOpen, setSecondaryOpen] = useState(false);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ["organisation", id],
@@ -46,6 +51,15 @@ export default function OrganisationDetailPage() {
             <p className="text-sm text-muted-foreground">Admin</p>
             <p className="font-medium">{org.adminName}</p>
             <p className="text-sm">{org.adminEmail}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => setSecondaryOpen(true)}
+            >
+              <Mail className="h-3 w-3 mr-1" /> Secondary mail
+            </Button>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Contact</p>
@@ -100,6 +114,12 @@ export default function OrganisationDetailPage() {
           </div>
         </TabsContent>
       </Tabs>
+      <SecondaryOrgAdminModal
+        open={secondaryOpen}
+        onOpenChange={setSecondaryOpen}
+        organisationId={id}
+        organisationName={org.name}
+      />
     </div>
   );
 }

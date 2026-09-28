@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Mail } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SecondaryOrgAdminModal } from "@/components/modals/SecondaryOrgAdminModal";
 
 type EditOrgInput = z.infer<typeof editOrganisationSchema>;
 
@@ -57,6 +58,7 @@ export function AddOrganisationAdminModal({
   const [jobPortalAccess, setJobPortalAccess] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [secondaryOpen, setSecondaryOpen] = useState(false);
   const isEdit = !!organisation;
 
   const formValues = useMemo<EditOrgInput>(
@@ -95,6 +97,8 @@ export function AddOrganisationAdminModal({
       setStatusActive(organisation?.isActive ?? true);
       setJobPortalAccess(organisation?.jobPortalAccess ?? false);
       setError("");
+    } else {
+      setSecondaryOpen(false);
     }
   }, [open, formValues, reset, organisation]);
 
@@ -126,6 +130,7 @@ export function AddOrganisationAdminModal({
   });
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[min(90dvh,90vh)] overflow-y-auto">
         <DialogHeader>
@@ -234,6 +239,16 @@ export function AddOrganisationAdminModal({
             </div>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
+          {isEdit && organisation && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setSecondaryOpen(true)}
+            >
+              <Mail className="h-4 w-4 mr-2" /> Secondary mail
+            </Button>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={mutation.isPending}>
@@ -243,5 +258,14 @@ export function AddOrganisationAdminModal({
         </form>
       </DialogContent>
     </Dialog>
+    {isEdit && organisation && (
+      <SecondaryOrgAdminModal
+        open={secondaryOpen}
+        onOpenChange={setSecondaryOpen}
+        organisationId={organisation.id}
+        organisationName={organisation.name}
+      />
+    )}
+    </>
   );
 }
