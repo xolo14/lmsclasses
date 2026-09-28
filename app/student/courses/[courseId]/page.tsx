@@ -13,7 +13,7 @@ export default async function StudentCourseDetailPage({
 }) {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "student") {
-    redirect("/login");
+    redirect("/");
   }
 
   const { courseId } = await params;

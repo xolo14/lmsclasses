@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
 import { PortalLayout } from "@/components/layout/PortalLayout";
 import { HrSidebar } from "@/components/layout/Sidebar";
+import { requirePortalSession } from "@/lib/require-portal";
 
 export default async function HrPortalLayout({
   children,
@@ -9,9 +9,7 @@ export default async function HrPortalLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "hr") {
-    redirect("/hr/login");
-  }
+  requirePortalSession(session, "hr");
 
   return (
     <PortalLayout

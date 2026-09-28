@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,36 +21,52 @@ const SESSION_COOKIES = [
   "__Host-next-auth.csrf-token",
 ] as const;
 
-function afterLogoutPath(): "/" {
-  return "/";
-}
-
 function expireCookie(response: NextResponse, name: string) {
-  const secure = name.startsWith("__Secure-") || name.startsWith("__Host-");
-  response.cookies.delete(name);
-  response.cookies.set({
-    name,
-    value: "",
-    path: "/",
-    maxAge: 0,
-    expires: new Date(0),
-    httpOnly: true,
-    sameSite: "lax",
-    secure,
-  });
+  try {
+    const hostPrefixed = name.startsWith("__Host-");
+    const secure = hostPrefixed || name.startsWith("__Secure-");
+    response.cookies.set({
+      name,
+      value: "",
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+      httpOnly: true,
+      sameSite: "lax",
+      secure,
+    });
+  } catch {
+    /* Hostinger / Next will reject some __Host- names; still redirect home. */
+  }
 }
 
-/** GET so Hostinger WAF / login rate-limits cannot block sign-out. */
-export async function GET(request: Request) {
-  const dest = afterLogoutPath();
-  const response = NextResponse.redirect(new URL(dest, request.url), 302);
-
+function withExpiredCookies(response: NextResponse) {
   for (const name of SESSION_COOKIES) {
     expireCookie(response, name);
-    for (let i = 0; i < 6; i++) expireCookie(response, `${name}.${i}`);
+    expireCookie(response, `${name}.0`);
   }
-
   response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
   response.headers.set("Pragma", "no-cache");
   return response;
+}
+
+function homePage(request: Request): NextResponse {
+  try {
+    return withExpiredCookies(NextResponse.redirect(publicUrl(request, "/"), 302));
+  } catch {
+    const html =
+      '<!doctype html><meta http-equiv="refresh" content="0;url=/"><script>location.replace("/")</script>';
+    return new NextResponse(html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+}
+
+/** GET so Hostinger WAF / login rate-limits cannot block sign-out. Always land on `/`. */
+export async function GET(request: Request) {
+  return homePage(request);
 }

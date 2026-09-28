@@ -1,10 +1,10 @@
 import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
 import { PortalLayout } from "@/components/layout/PortalLayout";
 import { StudentSidebar } from "@/components/layout/Sidebar";
 import { db } from "@/lib/db";
 import { organisations, studentCourses, users } from "@/lib/db/schema";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { requirePortalSession } from "@/lib/require-portal";
 
 /** Prefer DB user.org, then an active enrollment's org (JWT organisationId is often stale/null). */
 async function resolveStudentOrganisationId(studentId: string): Promise<string | null> {
@@ -38,9 +38,7 @@ export default async function StudentLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "student") {
-    redirect("/login");
-  }
+  requirePortalSession(session, "student");
 
   const organisationId = await resolveStudentOrganisationId(session.user.id);
 

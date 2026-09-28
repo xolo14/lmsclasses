@@ -1,7 +1,8 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
-import { ROLE_ROUTES } from "@/lib/utils";
+import { publicUrl } from "@/lib/app-url";
+import { portalHomeForRole, ROLE_ROUTES } from "@/lib/utils";
 
 const { auth } = NextAuth(authConfig);
 
@@ -31,77 +32,64 @@ function withAuthNoCache(response: NextResponse, pathname: string) {
   return withSecurityHeaders(response);
 }
 
+function redirectPath(req: Request, path: string) {
+  return withSecurityHeaders(NextResponse.redirect(publicUrl(req, path), 302));
+}
+
 export default auth((req) => {
-  const { pathname } = req.nextUrl;
-  const host = req.headers.get("host")?.split(":")[0]?.toLowerCase() ?? "";
+  try {
+    const { pathname } = req.nextUrl;
 
-  // Canonical host: www → apex
-  if (host === "www.lmsclasses.com") {
-    const url = req.nextUrl.clone();
-    url.host = "lmsclasses.com";
-    url.protocol = "https:";
-    return withSecurityHeaders(NextResponse.redirect(url, 301));
-  }
+    const role = req.auth?.user?.role;
 
-  const role = req.auth?.user?.role;
-  const homeForRole = (r: string | undefined) => {
-    if (r === "mentor") return "/mentor/dashboard";
-    if (r === "student") return "/student/courses";
-    if (r === "hr") return "/hr/dashboard";
-    if (r && ROLE_ROUTES[r as keyof typeof ROLE_ROUTES]) {
-      return `${ROLE_ROUTES[r as keyof typeof ROLE_ROUTES]}/dashboard`;
+    const publicPaths = ["/login", "/hr/login", "/hr/register", "/"];
+    const isPublic =
+      publicPaths.some((p) => pathname === p) ||
+      pathname.startsWith("/courses") ||
+      pathname.startsWith("/demo") ||
+      pathname.startsWith("/api/video") ||
+      pathname.startsWith("/api/auth") ||
+      pathname === "/api/logout" ||
+      pathname.startsWith("/api/public") ||
+      pathname.startsWith("/api/cron") ||
+      pathname.startsWith("/pay/") ||
+      pathname.startsWith("/api/hr/register") ||
+      pathname.startsWith("/api/health") ||
+      pathname.startsWith("/api/bootstrap") ||
+      pathname.startsWith("/api/payments/webhook") ||
+      pathname.startsWith("/api/external") ||
+      pathname.startsWith("/api/widget") ||
+      pathname.startsWith("/api/enroll") ||
+      pathname.startsWith("/enroll") ||
+      pathname.startsWith("/verify") ||
+      pathname.startsWith("/widget/") ||
+      pathname === "/api/payments/create-order";
+
+    if (isPublic) {
+      return withAuthNoCache(NextResponse.next(), pathname);
     }
-    return "/login";
-  };
 
-  const publicPaths = ["/login", "/hr/login", "/hr/register", "/"];
-  const isPublic =
-    publicPaths.some((p) => pathname === p) ||
-    pathname.startsWith("/courses") ||
-    pathname.startsWith("/demo") ||
-    pathname.startsWith("/api/video") ||
-    pathname.startsWith("/api/auth") ||
-    pathname === "/api/logout" ||
-    pathname.startsWith("/api/public") ||
-    pathname.startsWith("/api/cron") ||
-    pathname.startsWith("/pay/") ||
-    pathname.startsWith("/api/hr/register") ||
-    pathname.startsWith("/api/health") ||
-    pathname.startsWith("/api/bootstrap") ||
-    pathname.startsWith("/api/payments/webhook") ||
-    pathname.startsWith("/api/external") ||
-    pathname.startsWith("/api/widget") ||
-    pathname.startsWith("/api/enroll") ||
-    pathname.startsWith("/enroll") ||
-    pathname.startsWith("/verify") ||
-    pathname.startsWith("/widget/") ||
-    pathname === "/api/payments/create-order";
+    if (!role) {
+      if (pathname.startsWith("/hr")) {
+        return redirectPath(req, "/hr/login");
+      }
+      return redirectPath(req, "/login");
+    }
 
-  if (isPublic) {
-    if (role && (pathname === "/login" || pathname === "/")) {
-      return withSecurityHeaders(NextResponse.redirect(new URL(homeForRole(role), req.url)));
+    const home = portalHomeForRole(role);
+    for (const [r, prefix] of Object.entries(ROLE_ROUTES)) {
+      if (pathname.startsWith(prefix) && role !== r) {
+        if (home === pathname) {
+          return withAuthNoCache(NextResponse.next(), pathname);
+        }
+        return redirectPath(req, home);
+      }
     }
-    if (role === "hr" && (pathname === "/hr/login" || pathname === "/hr/register")) {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/hr/dashboard", req.url)));
-    }
+
     return withAuthNoCache(NextResponse.next(), pathname);
+  } catch {
+    return withSecurityHeaders(NextResponse.next());
   }
-
-  if (!role) {
-    if (pathname.startsWith("/hr")) {
-      return withSecurityHeaders(NextResponse.redirect(new URL("/hr/login", req.url)));
-    }
-    return withSecurityHeaders(NextResponse.redirect(new URL("/login", req.url)));
-  }
-
-  for (const [r, prefix] of Object.entries(ROLE_ROUTES)) {
-    if (pathname.startsWith(prefix) && role !== r) {
-      // Still signed in — send them to their own home. /login would bounce them back.
-      return withSecurityHeaders(NextResponse.redirect(new URL(homeForRole(role), req.url)));
-    }
-  }
-
-  return withAuthNoCache(NextResponse.next(), pathname);
 });
 
 export const config = {

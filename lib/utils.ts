@@ -87,6 +87,15 @@ export const ROLE_ROUTES: Record<string, string> = {
   hr: "/hr",
 };
 
+/** Portal landing for a signed-in role. Never returns /login (that caused redirect loops). */
+export function portalHomeForRole(role: string | undefined | null): string {
+  if (role === "mentor") return "/mentor/dashboard";
+  if (role === "student") return "/student/courses";
+  if (role === "hr") return "/hr/dashboard";
+  if (role && ROLE_ROUTES[role]) return `${ROLE_ROUTES[role]}/dashboard`;
+  return "/";
+}
+
 export const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
   org_admin: "Organisation Admin",

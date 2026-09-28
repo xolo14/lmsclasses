@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
 import { PortalLayout } from "@/components/layout/PortalLayout";
 import { MentorSidebar } from "@/components/layout/Sidebar";
+import { requirePortalSession } from "@/lib/require-portal";
 
 export default async function MentorLayout({
   children,
@@ -9,9 +9,7 @@ export default async function MentorLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "mentor") {
-    redirect("/login");
-  }
+  requirePortalSession(session, "mentor");
 
   return (
     <PortalLayout

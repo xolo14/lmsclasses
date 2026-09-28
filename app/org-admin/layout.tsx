@@ -1,5 +1,4 @@
 import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
 import Script from "next/script";
 import { eq } from "drizzle-orm";
 import { PortalLayout } from "@/components/layout/PortalLayout";
@@ -7,6 +6,7 @@ import { OrgAdminSidebar } from "@/components/layout/Sidebar";
 import { db } from "@/lib/db";
 import { organisations } from "@/lib/db/schema";
 import { resolveOrganisationId } from "@/lib/api-auth";
+import { requirePortalSession } from "@/lib/require-portal";
 
 export default async function OrgAdminLayout({
   children,
@@ -14,9 +14,7 @@ export default async function OrgAdminLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "org_admin") {
-    redirect("/login");
-  }
+  requirePortalSession(session, "org_admin");
 
   const organisationId = await resolveOrganisationId(session);
   const [org] = organisationId

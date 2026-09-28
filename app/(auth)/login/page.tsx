@@ -63,7 +63,7 @@ export default function LoginPage() {
       } else if (role && ROLE_ROUTES[role]) {
         window.location.href = `${ROLE_ROUTES[role]}/dashboard`;
       } else {
-        window.location.href = "/login";
+        window.location.href = "/";
       }
     } catch (err: any) {
       console.error("[Login Error]", err);
