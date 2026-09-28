@@ -200,6 +200,107 @@ export function createLiveMediaRecorder(stream: MediaStream, mimeType: string): 
   throw lastError instanceof Error ? lastError : new Error("Could not start the recorder.");
 }
 
+/** Join paused/interrupted segments into one file for preview and upload. */
+export async function stitchVideoBlobs(parts: Blob[]): Promise<Blob> {
+  const usable = parts.filter((p) => p.size >= 1024);
+  if (usable.length === 0) return new Blob([], { type: "video/webm" });
+  if (usable.length === 1) return usable[0]!;
+
+  const fallback = () => new Blob(usable, { type: usable[0]!.type || "video/webm" });
+  const mimeType = pickRecorderMimeType({ audio: true }) || "video/webm";
+  const video = document.createElement("video");
+  video.playsInline = true;
+  video.setAttribute("playsinline", "");
+  video.preload = "auto";
+  video.volume = 1;
+  video.style.cssText =
+    "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
+  document.body.appendChild(video);
+
+  const urls = usable.map((p) => URL.createObjectURL(p));
+  const revoke = () => {
+    for (const url of urls) URL.revokeObjectURL(url);
+    video.removeAttribute("src");
+    video.load();
+    video.remove();
+  };
+
+  try {
+    video.src = urls[0]!;
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("Could not read a recording segment."));
+    });
+
+    const w = video.videoWidth || LIVE_RECORD_WIDTH;
+    const h = video.videoHeight || LIVE_RECORD_HEIGHT;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { alpha: false });
+    if (!ctx) {
+      revoke();
+      return fallback();
+    }
+
+    let drawing = true;
+    const draw = () => {
+      if (!drawing) return;
+      if (video.readyState >= 2) ctx.drawImage(video, 0, 0, w, h);
+      requestAnimationFrame(draw);
+    };
+    draw();
+
+    const canvasStream = canvas.captureStream(LIVE_RECORD_FPS);
+    const mixed = new MediaStream(canvasStream.getVideoTracks());
+    const audioCtx = new AudioContext();
+    if (audioCtx.state === "suspended") await audioCtx.resume().catch(() => undefined);
+    const dest = audioCtx.createMediaStreamDestination();
+    const elSrc = audioCtx.createMediaElementSource(video);
+    elSrc.connect(dest);
+    for (const track of dest.stream.getAudioTracks()) mixed.addTrack(track);
+
+    const recChunks: Blob[] = [];
+    const recorder = createLiveMediaRecorder(mixed, mimeType);
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) recChunks.push(event.data);
+    };
+    const stopped = new Promise<Blob>((resolve) => {
+      recorder.onstop = () =>
+        resolve(new Blob(recChunks, { type: recorder.mimeType || mimeType }));
+    });
+    recorder.start(500);
+
+    for (let i = 0; i < urls.length; i++) {
+      if (i > 0) {
+        video.src = urls[i]!;
+        await new Promise<void>((resolve, reject) => {
+          video.onloadeddata = () => resolve();
+          video.onerror = () => reject(new Error("Could not read a recording segment."));
+        });
+      }
+      await video.play();
+      await new Promise<void>((resolve, reject) => {
+        video.onended = () => resolve();
+        video.onerror = () => reject(new Error("Could not play a recording segment."));
+      });
+    }
+
+    if (recorder.state !== "inactive") recorder.stop();
+    const out = await stopped;
+    drawing = false;
+    stopMediaStream(canvasStream);
+    stopMediaStream(mixed);
+    elSrc.disconnect();
+    void audioCtx.close().catch(() => undefined);
+    revoke();
+    return out.size >= 1024 ? out : fallback();
+  } catch {
+    revoke();
+    return fallback();
+  }
+}
+
 /**
  * Capture a Chrome tab, a window, or the entire screen (plus tab/system audio
  * when available) and mix in the teacher's microphone.

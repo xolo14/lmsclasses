@@ -8,7 +8,8 @@ import {
   studentCourses,
 } from "@/lib/db/schema";
 import { orgAdminVisibleBatches } from "@/lib/batch-scope";
-import { hasLiveAccess, hasRecordedAccess } from "@/lib/content-access";
+import { hasClassRecordingAccess, hasRecordedAccess } from "@/lib/content-access";
+import { liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
 import { parseGcsObjectKey } from "@/lib/gcs";
 import { getMentorCourseIds } from "@/lib/mentor-courses";
 import { isPublicCourseDemoReference } from "@/lib/public-demo-access";
@@ -55,7 +56,11 @@ export async function assertVideoEntitlement(
         .from(classRecordings)
         .where(and(or(...courseIds.map((id) => eq(classRecordings.courseId, id)))!, isNull(classRecordings.deletedAt))),
       db
-        .select({ recordingUrl: liveClasses.recordingUrl })
+        .select({
+          recordingUrl: liveClasses.recordingUrl,
+          recordingUrlB: liveClasses.recordingUrlB,
+          recordingUrlC: liveClasses.recordingUrlC,
+        })
         .from(liveClasses)
         .where(and(or(...courseIds.map((id) => eq(liveClasses.courseId, id)))!, isNull(liveClasses.deletedAt))),
       db
@@ -65,7 +70,7 @@ export async function assertVideoEntitlement(
     ]);
     return (
       classRecs.some((r) => keysMatch(r.videoUrl, requested)) ||
-      liveRecs.some((r) => keysMatch(r.recordingUrl, requested)) ||
+      liveRecs.some((r) => liveRecordingSlotsFromRow(r).some((s) => keysMatch(s.url, requested))) ||
       courseRecs.some((r) => keysMatch(r.videoUrl, requested))
     );
   }
@@ -77,20 +82,21 @@ export async function assertVideoEntitlement(
       .where(eq(studentCourses.studentId, session.user.id));
 
     const recorded = enrollments.filter((e) => hasRecordedAccess(e));
-    const liveWatch = enrollments.filter((e) => hasLiveAccess(e) || hasRecordedAccess(e));
-    const batchIds = recorded.map((e) => e.batchId).filter((id): id is string => !!id);
+    const liveWatch = enrollments.filter((e) => hasClassRecordingAccess(e));
+    const classRecordingBatchIds = liveWatch
+      .map((e) => e.batchId)
+      .filter((id): id is string => !!id);
     const recordCourseIds = recorded
       .map((e) => e.recordCourseId)
-      .filter((id): id is string => !!id);
-    const liveCourseIds = recorded
-      .map((e) => e.liveCourseId)
       .filter((id): id is string => !!id);
     const liveWatchCourseIds = liveWatch
       .map((e) => e.liveCourseId)
       .filter((id): id is string => !!id);
 
-    const checks: Promise<{ videoUrl?: string | null; recordingUrl?: string | null }[]>[] = [];
-    if (batchIds.length) {
+    const checks: Promise<
+      { videoUrl?: string | null; recordingUrl?: string | null; recordingUrlB?: string | null; recordingUrlC?: string | null }[]
+    >[] = [];
+    if (classRecordingBatchIds.length) {
       checks.push(
         db
           .select({ videoUrl: classRecordings.videoUrl })
@@ -98,10 +104,7 @@ export async function assertVideoEntitlement(
           .where(
             and(
               isNull(classRecordings.deletedAt),
-              or(
-                ...batchIds.map((id) => eq(classRecordings.batchId, id)),
-                ...liveCourseIds.map((id) => eq(classRecordings.courseId, id))
-              )!
+              or(...classRecordingBatchIds.map((id) => eq(classRecordings.batchId, id)))!
             )
           )
       );
@@ -117,7 +120,11 @@ export async function assertVideoEntitlement(
     if (liveWatchCourseIds.length) {
       checks.push(
         db
-          .select({ recordingUrl: liveClasses.recordingUrl })
+          .select({
+            recordingUrl: liveClasses.recordingUrl,
+            recordingUrlB: liveClasses.recordingUrlB,
+            recordingUrlC: liveClasses.recordingUrlC,
+          })
           .from(liveClasses)
           .where(
             and(
@@ -128,7 +135,11 @@ export async function assertVideoEntitlement(
       );
     }
     const rows = (await Promise.all(checks)).flat();
-    return rows.some((r) => keysMatch(r.videoUrl ?? r.recordingUrl, requested));
+    return rows.some(
+      (r) =>
+        keysMatch(r.videoUrl, requested) ||
+        liveRecordingSlotsFromRow(r).some((s) => keysMatch(s.url, requested))
+    );
   }
 
   if (role === "org_admin") {

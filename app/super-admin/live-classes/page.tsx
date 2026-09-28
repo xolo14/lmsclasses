@@ -16,6 +16,7 @@ import { EditLiveClassModal } from "@/components/modals/EditLiveClassModal";
 import { formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { openMeetPopup } from "@/lib/live-class-recorder";
+import { liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
 
 type LiveClass = {
   id: string;
@@ -30,6 +31,8 @@ type LiveClass = {
   status: string;
   meetingLink: string;
   recordingUrl?: string;
+  recordingUrlB?: string | null;
+  recordingUrlC?: string | null;
   duration?: number;
 };
 
@@ -154,23 +157,29 @@ export default function LiveClassesPage() {
     {
       accessorKey: "recordingUrl",
       header: "Recording",
-      cell: ({ row }) =>
-        row.original.recordingUrl ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              setWatchRecording({
-                url: row.original.recordingUrl!,
-                title: row.original.title,
-              })
-            }
-          >
-            <Play className="h-3 w-3 mr-1" /> Watch
-          </Button>
-        ) : (
-          "—"
-        ),
+      cell: ({ row }) => {
+        const slots = liveRecordingSlotsFromRow(row.original);
+        if (slots.length === 0) return "—";
+        return (
+          <div className="flex flex-wrap gap-1">
+            {slots.map((slot) => (
+              <Button
+                key={slot.slot}
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setWatchRecording({
+                    url: slot.url,
+                    title: `${row.original.title} (${slot.slot})`,
+                  })
+                }
+              >
+                <Play className="h-3 w-3 mr-1" /> Watch {slot.slot}
+              </Button>
+            ))}
+          </div>
+        );
+      },
     },
     {
       id: "actions",

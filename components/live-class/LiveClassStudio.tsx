@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   Circle,
   ExternalLink,
+  Pause,
   Play,
   Square,
   Trash2,
@@ -33,8 +34,16 @@ import {
   openMeetPopup,
   pickRecorderMimeType,
   recordingFilename,
+  stitchVideoBlobs,
   stopMediaStream,
 } from "@/lib/live-class-recorder";
+import {
+  firstEmptyLiveRecordingSlot,
+  LIVE_RECORDING_SLOTS,
+  liveRecordingSlotTitle,
+  liveRecordingSlotsFromRow,
+  type LiveRecordingSlot,
+} from "@/lib/live-recording-slots";
 import {
   deleteLiveTake,
   getLiveTake,
@@ -43,7 +52,7 @@ import {
   type LocalLiveTakeMeta,
 } from "@/lib/live-class-take-store";
 
-type Phase = "idle" | "recording" | "preview" | "uploading";
+type Phase = "idle" | "recording" | "paused" | "interrupted" | "preview" | "uploading";
 
 type LiveClassDetail = {
   id: string;
@@ -54,6 +63,8 @@ type LiveClassDetail = {
   scheduledAt: string;
   duration: number | null;
   recordingUrl: string | null;
+  recordingUrlB: string | null;
+  recordingUrlC: string | null;
   status: string | null;
 };
 
@@ -76,6 +87,10 @@ export function LiveClassStudio({
   const captureStopRef = useRef<(() => void) | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const segmentsRef = useRef<Blob[]>([]);
+  const stopReasonRef = useRef<"user" | "interrupt">("user");
+  const accumulatedMsRef = useRef(0);
+  const tickStartRef = useRef(0);
   const timerRef = useRef<number | null>(null);
   const startedAtRef = useRef(0);
   const previewUrlRef = useRef("");
@@ -92,8 +107,12 @@ export function LiveClassStudio({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [meetOpen, setMeetOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
+  const [watchUrl, setWatchUrl] = useState("");
+  const [watchTitle, setWatchTitle] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
   const [savedKey, setSavedKey] = useState("");
+  const [savedSlot, setSavedSlot] = useState<LiveRecordingSlot | null>(null);
+  const [recordSlot, setRecordSlot] = useState<LiveRecordingSlot>("A");
   const [takes, setTakes] = useState<LocalLiveTakeMeta[]>([]);
   const [historyError, setHistoryError] = useState("");
   const [historyPlayUrl, setHistoryPlayUrl] = useState("");
@@ -112,7 +131,9 @@ export function LiveClassStudio({
     },
   });
 
-  const busy = phase === "recording" || phase === "uploading";
+  const sessionActive =
+    phase === "recording" || phase === "paused" || phase === "interrupted" || phase === "uploading";
+  const busy = sessionActive;
 
   const refreshTakes = useCallback(async () => {
     try {
@@ -138,6 +159,9 @@ export function LiveClassStudio({
   const resetMedia = () => {
     recorderRef.current = null;
     chunksRef.current = [];
+    segmentsRef.current = [];
+    stopReasonRef.current = "user";
+    accumulatedMsRef.current = 0;
     captureStopRef.current?.();
     captureStopRef.current = null;
     stopMediaStream(streamRef.current);
@@ -166,7 +190,14 @@ export function LiveClassStudio({
   }, []);
 
   useEffect(() => {
-    if (phase !== "recording" && phase !== "uploading") return;
+    if (!liveClass) return;
+    setRecordSlot(firstEmptyLiveRecordingSlot(liveClass));
+    // First load only — after that the user picks A/B/C.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveClassId, !!liveClass]);
+
+  useEffect(() => {
+    if (phase !== "recording" && phase !== "uploading" && phase !== "paused" && phase !== "interrupted") return;
     const onLeave = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
@@ -176,7 +207,7 @@ export function LiveClassStudio({
   }, [phase]);
 
   useEffect(() => {
-    if (phase === "recording" && streamRef.current && livePreviewRef.current) {
+    if ((phase === "recording" || phase === "paused") && streamRef.current && livePreviewRef.current) {
       livePreviewRef.current.srcObject = streamRef.current;
       livePreviewRef.current.muted = true;
       void livePreviewRef.current.play().catch(() => undefined);
@@ -208,38 +239,48 @@ export function LiveClassStudio({
     setPhase("preview");
   };
 
-  const finalizeRecording = (blobType: string) => {
+  const stopTick = () => {
+    if (tickStartRef.current) {
+      accumulatedMsRef.current += Date.now() - tickStartRef.current;
+      tickStartRef.current = 0;
+    }
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setElapsed(Math.floor(accumulatedMsRef.current / 1000));
+  };
+
+  const startTick = () => {
+    tickStartRef.current = Date.now();
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = window.setInterval(() => {
+      setElapsed(Math.floor((accumulatedMsRef.current + Date.now() - tickStartRef.current) / 1000));
+    }, 250);
+  };
+
+  const clearCapture = () => {
     captureStopRef.current?.();
     captureStopRef.current = null;
     stopMediaStream(streamRef.current);
     streamRef.current = null;
     if (livePreviewRef.current) livePreviewRef.current.srcObject = null;
-    if (timerRef.current) {
-      window.clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    recorderRef.current = null;
+  };
 
-    const blob = new Blob(chunksRef.current, { type: blobType || "video/webm" });
-    chunksRef.current = [];
-    if (blob.size < 1024) {
-      setError("The recording is empty. Share the Google Meet Chrome tab and try again.");
-      setPhase("idle");
-      return;
-    }
-
-    const title = liveClass?.title || "live-class";
+  const presentBlob = (blob: Blob) => {
+    const title = liveRecordingSlotTitle(liveClass?.title || "live-class", recordSlot);
     const file = new File([blob], recordingFilename(title), {
       type: blob.type || "video/webm",
     });
     showPreview(file, null);
-
     void (async () => {
       try {
         const meta = await saveLiveTake({
           liveClassId,
           title,
           blob,
-          durationSeconds: Math.floor((Date.now() - startedAtRef.current) / 1000),
+          durationSeconds: Math.floor(accumulatedMsRef.current / 1000),
         });
         currentTakeIdRef.current = meta.id;
         await refreshTakes();
@@ -253,11 +294,64 @@ export function LiveClassStudio({
     })();
   };
 
-  const startRecording = async () => {
-    setError("");
+  const finishToPreview = async (blobType: string) => {
+    stopTick();
+    const part = new Blob(chunksRef.current, { type: blobType || "video/webm" });
+    chunksRef.current = [];
+    if (part.size >= 1024) segmentsRef.current.push(part);
+    clearCapture();
+
+    if (segmentsRef.current.length === 0) {
+      setError("The recording is empty. Share the Google Meet Chrome tab and try again.");
+      setPhase("idle");
+      return;
+    }
+
     setWarning("");
-    setSavedMessage("");
-    setSavedKey("");
+    const blob = await stitchVideoBlobs(segmentsRef.current);
+    segmentsRef.current = [];
+    if (blob.size < 1024) {
+      setError("The recording is empty. Share the Google Meet Chrome tab and try again.");
+      setPhase("idle");
+      return;
+    }
+    presentBlob(blob);
+  };
+
+  const handleRecorderStop = (blobType: string) => {
+    const reason = stopReasonRef.current;
+    stopReasonRef.current = "user";
+    if (reason === "interrupt") {
+      stopTick();
+      const part = new Blob(chunksRef.current, { type: blobType || "video/webm" });
+      chunksRef.current = [];
+      if (part.size >= 1024) segmentsRef.current.push(part);
+      clearCapture();
+      if (segmentsRef.current.length === 0) {
+        setError("Sharing stopped before any video was captured. Start again.");
+        setPhase("idle");
+        return;
+      }
+      setWarning(
+        "Sharing was interrupted. Click Continue to keep recording this video, or Finish to preview what you have."
+      );
+      setPhase("interrupted");
+      return;
+    }
+    void finishToPreview(blobType);
+  };
+
+  const attachCapture = async (mode: "start" | "continue") => {
+    setError("");
+    if (mode === "start") {
+      setWarning("");
+      setSavedMessage("");
+      segmentsRef.current = [];
+      chunksRef.current = [];
+      accumulatedMsRef.current = 0;
+      setElapsed(0);
+    }
+
     let capture: Awaited<ReturnType<typeof captureMeetTab>>;
     try {
       capture = await captureMeetTab();
@@ -265,7 +359,7 @@ export function LiveClassStudio({
       const name = err instanceof DOMException ? err.name : "";
       if (name === "NotAllowedError") {
         setError(
-          "Permission denied. Click Start recording again and pick a Chrome tab, a window, or the entire screen."
+          "Permission denied. Click Continue or Start recording again and pick a Chrome tab, a window, or the entire screen."
         );
       } else {
         setError(err instanceof Error ? err.message : "Could not start screen capture.");
@@ -320,34 +414,67 @@ export function LiveClassStudio({
       if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
     };
     recorder.onerror = () => {
-      setError("The recorder stopped unexpectedly. Try again.");
-      captureStopRef.current?.();
-      captureStopRef.current = null;
-      stopMediaStream(streamRef.current);
-      streamRef.current = null;
-      setPhase("idle");
+      stopReasonRef.current = "interrupt";
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        recorderRef.current.stop();
+      } else {
+        handleRecorderStop(recorder.mimeType || mimeType);
+      }
     };
-    recorder.onstop = () => finalizeRecording(recorder.mimeType || mimeType);
+    recorder.onstop = () => handleRecorderStop(recorder.mimeType || mimeType);
 
     if (sourceVideoTrack) {
       sourceVideoTrack.addEventListener("ended", () => {
-        if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+        const current = recorderRef.current;
+        if (!current || current.state === "inactive") return;
+        stopReasonRef.current = "interrupt";
+        current.stop();
       });
     }
 
     recorder.start(1000);
     startedAtRef.current = Date.now();
-    setElapsed(0);
-    timerRef.current = window.setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000));
-    }, 250);
+    startTick();
     setPhase("recording");
     focusMeetPopup(liveClassId);
   };
 
-  const stopRecording = () => {
+  const startRecording = async () => {
+    await attachCapture("start");
+  };
+
+  const continueRecording = async () => {
     const recorder = recorderRef.current;
-    if (recorder && recorder.state !== "inactive") recorder.stop();
+    if (phase === "paused" && recorder?.state === "paused") {
+      setError("");
+      recorder.resume();
+      startTick();
+      setPhase("recording");
+      return;
+    }
+    await attachCapture("continue");
+  };
+
+  const pauseRecording = () => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== "recording") return;
+    if (typeof recorder.pause !== "function") {
+      setError("Pause is not available in this browser. Use Stop, or Continue after an interrupt.");
+      return;
+    }
+    recorder.pause();
+    stopTick();
+    setPhase("paused");
+  };
+
+  const stopRecording = () => {
+    stopReasonRef.current = "user";
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+      return;
+    }
+    void finishToPreview("video/webm");
   };
 
   const discardPreview = () => {
@@ -384,7 +511,7 @@ export function LiveClassStudio({
 
       const res = await fetch("/api/media/save-live", {
         method: "POST",
-        body: wrapApiForm({ liveClassId: liveClass.id, recordingUrl: session.objectKey }),
+        body: wrapApiForm({ liveClassId: liveClass.id, recordingUrl: session.objectKey, slot: recordSlot }),
         credentials: "same-origin",
       });
       const raw = await res.text();
@@ -410,8 +537,22 @@ export function LiveClassStudio({
       setUploadProgress(100);
       resetMedia();
       setPhase("idle");
-      setSavedMessage("Recording saved. Students can watch it in the course.");
+      const filled = liveRecordingSlotsFromRow({
+        ...liveClass,
+        [recordSlot === "B" ? "recordingUrlB" : recordSlot === "C" ? "recordingUrlC" : "recordingUrl"]:
+          session.objectKey,
+      }).length;
+      setSavedMessage(
+        `Video ${recordSlot} saved (${filled} of 3). Students can watch it in the course.`
+      );
       setSavedKey(session.objectKey);
+      setSavedSlot(recordSlot);
+      const nextRow = {
+        ...liveClass,
+        [recordSlot === "B" ? "recordingUrlB" : recordSlot === "C" ? "recordingUrlC" : "recordingUrl"]:
+          session.objectKey,
+      };
+      setRecordSlot(firstEmptyLiveRecordingSlot(nextRow));
       queryClient.invalidateQueries({ queryKey: ["live-class", liveClassId] });
       queryClient.invalidateQueries({ queryKey: ["live-classes"] });
     } catch (err) {
@@ -501,7 +642,12 @@ export function LiveClassStudio({
     );
   }
 
-  const playbackUrl = savedKey || liveClass.recordingUrl;
+  const filledSlots = liveRecordingSlotsFromRow({
+    ...liveClass,
+    ...(savedSlot === "A" && savedKey ? { recordingUrl: savedKey } : {}),
+    ...(savedSlot === "B" && savedKey ? { recordingUrlB: savedKey } : {}),
+    ...(savedSlot === "C" && savedKey ? { recordingUrlC: savedKey } : {}),
+  });
 
   return (
     <div className="space-y-6">
@@ -546,7 +692,11 @@ export function LiveClassStudio({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={openMeet} disabled={!liveClass.meetingLink || busy}>
+            <Button
+              type="button"
+              onClick={openMeet}
+              disabled={!liveClass.meetingLink || phase === "recording" || phase === "uploading"}
+            >
               <ExternalLink className="mr-2 h-4 w-4" />
               {meetOpen ? "Focus Google Meet" : "Open Google Meet"}
             </Button>
@@ -558,6 +708,28 @@ export function LiveClassStudio({
 
         <section className="space-y-4 rounded-lg border bg-card p-4">
           <h2 className="font-semibold">Record</h2>
+          <p className="text-sm text-muted-foreground">
+            This Meet link can have 3 student videos: A, B, and C. Pick a letter, then record.
+            Recording again on a letter that is already filled replaces that video only.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {LIVE_RECORDING_SLOTS.map((letter) => {
+              const filled = filledSlots.some((s) => s.slot === letter);
+              return (
+                <Button
+                  key={letter}
+                  type="button"
+                  size="sm"
+                  variant={recordSlot === letter ? "default" : "outline"}
+                  disabled={phase !== "idle" && phase !== "preview"}
+                  onClick={() => setRecordSlot(letter)}
+                >
+                  {letter}
+                  {filled ? " · saved" : ""}
+                </Button>
+              );
+            })}
+          </div>
           <ol className="list-decimal space-y-1 pl-4 text-sm text-muted-foreground">
             <li>Open Google Meet (it opens as a browser tab).</li>
             <li>
@@ -569,15 +741,26 @@ export function LiveClassStudio({
               For a tab, turn on <strong>Also share tab audio</strong>. For a window or entire
               screen, allow the microphone (and system audio if Chrome offers it).
             </li>
-            <li>Stop → preview → upload. A copy stays in History for 7 days until you upload or delete it.</li>
+            <li>
+              Use Pause and Continue if you need a break. If sharing stops suddenly, Continue keeps
+              the same video. Stop → preview → upload to video {recordSlot}.
+            </li>
           </ol>
 
-          {phase === "recording" && (
+          {(phase === "recording" || phase === "paused") && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="inline-flex items-center gap-2 font-semibold text-red-500">
-                  <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
-                  Recording
+                <span
+                  className={`inline-flex items-center gap-2 font-semibold ${
+                    phase === "paused" ? "text-amber-600" : "text-red-500"
+                  }`}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      phase === "paused" ? "bg-amber-500" : "animate-pulse bg-red-500"
+                    }`}
+                  />
+                  {phase === "paused" ? `Paused · video ${recordSlot}` : `Recording video ${recordSlot}`}
                 </span>
                 <span className="font-mono tabular-nums">{formatElapsed(elapsed)}</span>
               </div>
@@ -591,9 +774,16 @@ export function LiveClassStudio({
             </div>
           )}
 
+          {phase === "interrupted" && (
+            <p className="text-sm font-medium">
+              Video {recordSlot} paused at {formatElapsed(elapsed)}. Continue to share again, or
+              Finish to preview.
+            </p>
+          )}
+
           {phase === "preview" && previewUrl && (
             <div className="space-y-2">
-              <p className="text-sm font-medium">Preview</p>
+              <p className="text-sm font-medium">Preview · video {recordSlot}</p>
               <video
                 className="aspect-video w-full rounded-md bg-black"
                 src={previewUrl}
@@ -623,9 +813,10 @@ export function LiveClassStudio({
             </div>
           )}
 
-          {(savedMessage || playbackUrl) && phase === "idle" && (
+          {(savedMessage || filledSlots.length > 0) && phase === "idle" && (
             <p className="text-sm text-emerald-700 dark:text-emerald-400">
-              {savedMessage || "A recording is already saved. Uploading again replaces the student playback link."}
+              {savedMessage ||
+                `${filledSlots.length} of 3 videos saved (${filledSlots.map((s) => s.slot).join(", ")}). Pick a letter to record or replace.`}
             </p>
           )}
 
@@ -647,19 +838,53 @@ export function LiveClassStudio({
             {phase === "idle" && (
               <>
                 <Button type="button" onClick={() => void startRecording()}>
-                  <Circle className="mr-2 h-4 w-4 fill-red-500 text-red-500" /> Start recording
+                  <Circle className="mr-2 h-4 w-4 fill-red-500 text-red-500" /> Start recording {recordSlot}
                 </Button>
-                {playbackUrl && (
-                  <Button type="button" variant="outline" onClick={() => setWatchOpen(true)}>
-                    <Play className="mr-2 h-4 w-4" /> Watch recording
+                {filledSlots.map((slot) => (
+                  <Button
+                    key={slot.slot}
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setWatchUrl(slot.url);
+                      setWatchTitle(`${liveClass.title} (${slot.slot})`);
+                      setWatchOpen(true);
+                    }}
+                  >
+                    <Play className="mr-2 h-4 w-4" /> Watch {slot.slot}
                   </Button>
-                )}
+                ))}
               </>
             )}
             {phase === "recording" && (
-              <Button type="button" variant="destructive" onClick={stopRecording}>
-                <Square className="mr-2 h-4 w-4" /> Stop
-              </Button>
+              <>
+                <Button type="button" variant="outline" onClick={pauseRecording}>
+                  <Pause className="mr-2 h-4 w-4" /> Pause
+                </Button>
+                <Button type="button" variant="destructive" onClick={stopRecording}>
+                  <Square className="mr-2 h-4 w-4" /> Stop
+                </Button>
+              </>
+            )}
+            {phase === "paused" && (
+              <>
+                <Button type="button" onClick={() => void continueRecording()}>
+                  <Play className="mr-2 h-4 w-4" /> Continue
+                </Button>
+                <Button type="button" variant="destructive" onClick={stopRecording}>
+                  <Square className="mr-2 h-4 w-4" /> Stop
+                </Button>
+              </>
+            )}
+            {phase === "interrupted" && (
+              <>
+                <Button type="button" onClick={() => void continueRecording()}>
+                  <Play className="mr-2 h-4 w-4" /> Continue
+                </Button>
+                <Button type="button" variant="outline" onClick={stopRecording}>
+                  Finish
+                </Button>
+              </>
             )}
             {phase === "preview" && (
               <>
@@ -667,7 +892,7 @@ export function LiveClassStudio({
                   Discard
                 </Button>
                 <Button type="button" onClick={() => void uploadRecording()}>
-                  <UploadCloud className="mr-2 h-4 w-4" /> Upload
+                  <UploadCloud className="mr-2 h-4 w-4" /> Upload {recordSlot}
                 </Button>
               </>
             )}
@@ -758,8 +983,8 @@ export function LiveClassStudio({
       <WatchRecordingModal
         open={watchOpen}
         onOpenChange={setWatchOpen}
-        videoUrl={playbackUrl ?? ""}
-        title={liveClass.title}
+        videoUrl={watchUrl}
+        title={watchTitle || liveClass.title}
       />
     </div>
   );

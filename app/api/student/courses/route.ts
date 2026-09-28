@@ -28,6 +28,7 @@ export async function GET() {
       certificate: e.certificate,
       nextLiveClassAt: e.nextLiveClassAt,
       hasLiveAccess: e.liveAccess && !!e.batchId,
+      hasClassRecordingAccess: (e.liveAccess || e.recordedAccess) && !!e.batchId,
     })),
   });
 }

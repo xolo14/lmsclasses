@@ -155,7 +155,7 @@ export default function MentorDashboardPage() {
                     <div className="flex flex-wrap gap-3 pt-2">
                       <Button asChild className="gap-2">
                         <Link href={`/mentor/recording-classes/${row.id}`}>
-                          <Film className="h-4 w-4" /> View Recording Classes & Batches
+                          <Film className="h-4 w-4" /> View Live Recordings & Batches
                           <ArrowRight className="h-4 w-4 ml-1" />
                         </Link>
                       </Button>

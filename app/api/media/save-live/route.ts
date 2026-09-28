@@ -7,6 +7,7 @@ import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { readApiJson } from "@/lib/api-url-transport";
 import { videoReferenceSchema } from "@/lib/validations/video-reference";
+import { liveRecordingColumn, liveRecordingSlotTitle, type LiveRecordingSlot } from "@/lib/live-recording-slots";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 const saveSchema = z.object({
   liveClassId: z.string().uuid(),
   recordingUrl: videoReferenceSchema,
+  slot: z.enum(["A", "B", "C"]).optional().default("A"),
 });
 
 /** Attach a GCS object key as the private recording for a live class. */
@@ -29,7 +31,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const { liveClassId, recordingUrl } = parsed.data;
+  const { liveClassId, recordingUrl, slot } = parsed.data;
+  const recordingSlot = slot as LiveRecordingSlot;
+  const column = liveRecordingColumn(recordingSlot);
 
   const [existing] = await db
     .select({
@@ -51,39 +55,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "You can only save recordings for your own classes." }, { status: 403 });
   }
 
+  const topicName = liveRecordingSlotTitle(existing.title, recordingSlot);
+
   try {
     const [updated] = await db
       .update(liveClasses)
-      .set({ recordingUrl, status: "completed" })
+      .set({ [column]: recordingUrl, status: "completed" })
       .where(eq(liveClasses.id, liveClassId))
-      .returning({ id: liveClasses.id, recordingUrl: liveClasses.recordingUrl, status: liveClasses.status });
+      .returning({
+        id: liveClasses.id,
+        recordingUrl: liveClasses.recordingUrl,
+        recordingUrlB: liveClasses.recordingUrlB,
+        recordingUrlC: liveClasses.recordingUrlC,
+        status: liveClasses.status,
+      });
 
     if (existing.batchId) {
       try {
+        const copyWhere = and(
+          eq(classRecordings.courseId, existing.courseId),
+          eq(classRecordings.batchId, existing.batchId),
+          eq(classRecordings.weekName, "Live recording"),
+          isNull(classRecordings.deletedAt)
+        );
         const [copy] = await db
           .select({ id: classRecordings.id })
           .from(classRecordings)
-          .where(
-            and(
-              eq(classRecordings.courseId, existing.courseId),
-              eq(classRecordings.batchId, existing.batchId),
-              eq(classRecordings.weekName, "Live recording"),
-              eq(classRecordings.topicName, existing.title),
-              isNull(classRecordings.deletedAt)
-            )
-          )
+          .where(and(copyWhere, eq(classRecordings.topicName, topicName)))
           .limit(1);
-        if (copy) {
+        const [legacy] =
+          !copy && recordingSlot === "A"
+            ? await db
+                .select({ id: classRecordings.id })
+                .from(classRecordings)
+                .where(and(copyWhere, eq(classRecordings.topicName, existing.title)))
+                .limit(1)
+            : [undefined];
+        const targetId = copy?.id ?? legacy?.id;
+        if (targetId) {
           await db
             .update(classRecordings)
-            .set({ videoUrl: recordingUrl, uploadedBy: session!.user.id })
-            .where(eq(classRecordings.id, copy.id));
+            .set({ videoUrl: recordingUrl, topicName, uploadedBy: session!.user.id })
+            .where(eq(classRecordings.id, targetId));
         } else {
           await db.insert(classRecordings).values({
             courseId: existing.courseId,
             batchId: existing.batchId,
             weekName: "Live recording",
-            topicName: existing.title,
+            topicName,
             videoUrl: recordingUrl,
             uploadedBy: session!.user.id,
           });
@@ -99,7 +118,7 @@ export async function POST(request: Request) {
       action: "SAVED_LIVE_CLASS_RECORDING",
       entity: "LiveClass",
       entityId: liveClassId,
-      metadata: { recordingUrl },
+      metadata: { recordingUrl, slot: recordingSlot },
       ipAddress: getClientIp(request),
     });
 

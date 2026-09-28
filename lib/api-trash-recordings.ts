@@ -17,7 +17,7 @@ import { logAction, getClientIp } from "@/lib/audit";
 import { classRecordingSchema } from "@/lib/validations";
 import { readApiJson } from "@/lib/api-url-transport";
 import { clearAllTrashImmediate, TRASH_RETENTION_DAYS, type TrashEntityType } from "@/lib/trash";
-import { hasRecordedAccess } from "@/lib/content-access";
+import { hasClassRecordingAccess } from "@/lib/content-access";
 import { mentorHasCourseAccess } from "@/lib/mentor-courses";
 
 const TRASH_TABLES = {
@@ -249,11 +249,12 @@ export async function GETClassRecordings(request: Request) {
       .where(
         and(
           eq(studentCourses.studentId, session!.user.id),
-          eq(studentCourses.batchId, batchId)
+          eq(studentCourses.batchId, batchId),
+          eq(studentCourses.isActive, true)
         )
       )
       .limit(1);
-    if (!enrollment || !hasRecordedAccess(enrollment)) {
+    if (!enrollment || !hasClassRecordingAccess(enrollment)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   } else if (role === "mentor") {
@@ -449,11 +450,12 @@ export async function GETStudentRecordings(studentId: string) {
     .where(
       and(
         eq(studentCourses.studentId, studentId),
+        eq(studentCourses.isActive, true),
         isNotNull(studentCourses.liveCourseId)
       )
     );
 
-  const accessible = enrollments.filter((e) => hasRecordedAccess(e));
+  const accessible = enrollments.filter((e) => hasClassRecordingAccess(e));
 
   if (accessible.length === 0) {
     return NextResponse.json([]);

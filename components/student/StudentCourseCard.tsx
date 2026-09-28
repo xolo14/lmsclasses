@@ -16,6 +16,7 @@ export type StudentEnrollment = {
   batchId?: string | null;
   enrollmentSource: string;
   hasLiveAccess: boolean;
+  hasClassRecordingAccess?: boolean;
 };
 
 function SourceBadge({ source }: { source: string }) {
@@ -50,6 +51,7 @@ function AccessRow({
 
 export function StudentCourseCard({ enrollment }: { enrollment: StudentEnrollment }) {
   const lockedHint = "Not available for your enrollment";
+  const hasRecordings = enrollment.hasClassRecordingAccess ?? enrollment.hasLiveAccess;
 
   return (
     <Card className="overflow-hidden">
@@ -84,7 +86,7 @@ export function StudentCourseCard({ enrollment }: { enrollment: StudentEnrollmen
           />
           <AccessRow
             label="Live Recordings"
-            enabled={enrollment.hasLiveAccess}
+            enabled={hasRecordings}
             lockedHint={lockedHint}
           />
         </div>

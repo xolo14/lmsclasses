@@ -32,7 +32,8 @@ import { notifyStudentsLiveClassMeetingLink } from "@/lib/live-class-whatsapp";
 import { generatePassword, generateLmsId } from "@/lib/razorpay";
 import { softDeleteOrganisationCascade } from "@/lib/organisation-cascade";
 import { freeOneSlot, consumeOneSlot, getSlotSummary, resolveCourse } from "@/lib/enrollment-service";
-import { hasLiveAccess, hasRecordedAccess } from "@/lib/content-access";
+import { getBatchClassRecordings, hasClassRecordingAccess, hasLiveAccess } from "@/lib/content-access";
+import { liveRecordingSlotTitle, liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
 import { formatDateTime, parseDatetimeLocalAsIst } from "@/lib/utils";
 import {
   assertLiveCoursesExist,
@@ -2081,6 +2082,8 @@ export async function GETLiveClasses(request: Request) {
       scheduledAt: liveClasses.scheduledAt,
       duration: liveClasses.duration,
       recordingUrl: liveClasses.recordingUrl,
+      recordingUrlB: liveClasses.recordingUrlB,
+      recordingUrlC: liveClasses.recordingUrlC,
       status: liveClasses.status,
       createdAt: liveClasses.createdAt,
     })
@@ -2111,6 +2114,8 @@ export async function GETLiveClass(_request: Request, id: string) {
       scheduledAt: liveClasses.scheduledAt,
       duration: liveClasses.duration,
       recordingUrl: liveClasses.recordingUrl,
+      recordingUrlB: liveClasses.recordingUrlB,
+      recordingUrlC: liveClasses.recordingUrlC,
       status: liveClasses.status,
     })
     .from(liveClasses)
@@ -2683,7 +2688,8 @@ export async function GETStudentLiveClasses(
     .where(
       and(
         eq(studentCourses.studentId, studentId),
-        eq(studentCourses.liveCourseId, courseId)
+        eq(studentCourses.liveCourseId, courseId),
+        eq(studentCourses.isActive, true)
       )
     )
     .limit(1);
@@ -2693,7 +2699,7 @@ export async function GETStudentLiveClasses(
   }
 
   const wantsRecordings = tab === "recordings" || tab === "completed";
-  if (wantsRecordings ? !hasRecordedAccess(enrollment) && !hasLiveAccess(enrollment) : !hasLiveAccess(enrollment)) {
+  if (wantsRecordings ? !hasClassRecordingAccess(enrollment) : !hasLiveAccess(enrollment)) {
     return NextResponse.json({ error: "Access expired or not granted" }, { status: 403 });
   }
 
@@ -2716,7 +2722,13 @@ export async function GETStudentLiveClasses(
   if (tab === "completed" || tab === "recordings") {
     conditions.push(eq(liveClasses.status, "completed"));
     if (tab === "recordings") {
-      conditions.push(isNotNull(liveClasses.recordingUrl));
+      conditions.push(
+        or(
+          isNotNull(liveClasses.recordingUrl),
+          isNotNull(liveClasses.recordingUrlB),
+          isNotNull(liveClasses.recordingUrlC)
+        )!
+      );
     }
   } else {
     conditions.push(inArray(liveClasses.status, ["scheduled", "live"]));
@@ -2734,6 +2746,8 @@ export async function GETStudentLiveClasses(
       scheduledAt: liveClasses.scheduledAt,
       duration: liveClasses.duration,
       recordingUrl: liveClasses.recordingUrl,
+      recordingUrlB: liveClasses.recordingUrlB,
+      recordingUrlC: liveClasses.recordingUrlC,
       status: liveClasses.status,
     })
     .from(liveClasses)
@@ -2741,5 +2755,32 @@ export async function GETStudentLiveClasses(
     .where(and(...conditions))
     .orderBy(desc(liveClasses.scheduledAt));
 
-  return NextResponse.json(classes);
+  const studioRows =
+    tab === "recordings"
+      ? classes.flatMap((row) =>
+          liveRecordingSlotsFromRow(row).map((slot) => ({
+            ...row,
+            id: `${row.id}-${slot.slot}`,
+            title: liveRecordingSlotTitle(row.title, slot.slot),
+            recordingUrl: slot.url,
+          }))
+        )
+      : classes;
+
+  if (tab === "recordings" && enrollment.batchId) {
+    const batchRecs = await getBatchClassRecordings(courseId, enrollment.batchId);
+    const mapped = batchRecs.map((r) => ({
+      id: r.id,
+      title: r.topicName,
+      mentorName: r.weekName,
+      meetingLink: null as string | null,
+      scheduledAt: r.createdAt,
+      duration: null as number | null,
+      recordingUrl: r.videoUrl,
+      status: "completed",
+    }));
+    return NextResponse.json([...mapped, ...studioRows]);
+  }
+
+  return NextResponse.json(studioRows);
 }

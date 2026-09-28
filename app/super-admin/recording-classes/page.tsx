@@ -28,7 +28,7 @@ export default function RecordingClassesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl sm:text-2xl font-bold">Recording Classes</h1>
+        <h1 className="text-xl sm:text-2xl font-bold">Live Recordings</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Ongoing courses with active batches. Select a course to manage recorded videos per batch.
         </p>

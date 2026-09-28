@@ -10,12 +10,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayerModal } from "@/components/student/VideoPlayerModal";
 import { prefetchVideoUrl } from "@/lib/video-prefetch";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { liveClassHasAnyRecording, liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
 
 type CourseContent = {
   enrollment: {
     batchId: string | null;
     enrollmentSource: string;
     hasLiveAccess: boolean;
+    hasClassRecordingAccess?: boolean;
   };
   courseRecordings: {
     id: string;
@@ -33,6 +35,8 @@ type CourseContent = {
     meetingLink: string | null;
     status: string | null;
     recordingUrl: string | null;
+    recordingUrlB?: string | null;
+    recordingUrlC?: string | null;
   }[];
   liveClassRecordings: {
     id: string;
@@ -40,6 +44,13 @@ type CourseContent = {
     scheduledAt: Date | string;
     recordingUrl: string | null;
     duration: number | null;
+  }[];
+  batchClassRecordings?: {
+    id: string;
+    weekName: string;
+    topicName: string;
+    videoUrl: string;
+    createdAt: Date | string | null;
   }[];
 };
 
@@ -77,6 +88,7 @@ export function StudentCourseDetail({
   const [video, setVideo] = useState<{ url: string; title: string } | null>(null);
   const { enrollment } = content;
   const hasLive = enrollment.hasLiveAccess;
+  const hasRecordings = enrollment.hasClassRecordingAccess ?? hasLive;
   const batchId = enrollment.batchId;
 
   const { data: liveStatuses } = useQuery({
@@ -107,13 +119,15 @@ export function StudentCourseDetail({
 
   const displayedLiveClasses = content.liveClasses.map((cls) => {
     const statusUpdate = Array.isArray(liveStatuses)
-      ? liveStatuses.find((u: any) => u.id === cls.id)
+      ? liveStatuses.find((u: { id: string; status: string }) => u.id === cls.id)
       : null;
     if (statusUpdate) {
       return { ...cls, status: statusUpdate.status };
     }
     return cls;
   });
+  const batchClassRecordings = content.batchClassRecordings ?? [];
+  const liveRecordingCount = content.liveClassRecordings.length + batchClassRecordings.length;
 
   const downloadIcs = (cls: CourseContent["liveClasses"][number]) => {
     const start = new Date(cls.scheduledAt);
@@ -128,7 +142,12 @@ export function StudentCourseDetail({
     URL.revokeObjectURL(url);
   };
 
-  const defaultTab = courseType === "record" ? "recordings" : "live";
+  const defaultTab =
+    courseType === "record"
+      ? "recordings"
+      : content.liveClasses.length === 0 && liveRecordingCount > 0
+        ? "live-recordings"
+        : "live";
 
   return (
     <div className="space-y-6">
@@ -145,7 +164,7 @@ export function StudentCourseDetail({
           {courseType === "live" && (
             <>
               <span>{content.liveClasses.length} live classes</span>
-              <span>{content.liveClassRecordings.length} live recordings</span>
+              <span>{liveRecordingCount} live recordings</span>
             </>
           )}
         </div>
@@ -207,7 +226,7 @@ export function StudentCourseDetail({
               <TabsTrigger value="live" disabled={!hasLive} title={!hasLive ? "Not available for your enrollment" : undefined}>
                 Live Classes
               </TabsTrigger>
-              <TabsTrigger value="live-recordings" disabled={!hasLive} title={!hasLive ? "Not available for your enrollment" : undefined}>
+              <TabsTrigger value="live-recordings" disabled={!hasRecordings} title={!hasRecordings ? "Not available for your enrollment" : undefined}>
                 Live Recordings
               </TabsTrigger>
             </>
@@ -284,10 +303,10 @@ export function StudentCourseDetail({
                             {cls.status === "scheduled" && (
                               <Badge className="bg-amber-500/20 text-amber-400">Upcoming</Badge>
                             )}
-                            {cls.status === "completed" && !cls.recordingUrl && (
+                            {cls.status === "completed" && !liveClassHasAnyRecording(cls) && (
                               <Badge variant="secondary">Recording Pending</Badge>
                             )}
-                            {cls.status === "completed" && cls.recordingUrl && (
+                            {cls.status === "completed" && liveClassHasAnyRecording(cls) && (
                               <Badge className="bg-emerald-500/20 text-emerald-400">Completed</Badge>
                             )}
                             {cls.status === "cancelled" && (
@@ -307,18 +326,21 @@ export function StudentCourseDetail({
                                 </a>
                               </Button>
                             )}
-                            {cls.status === "completed" && cls.recordingUrl && (
+                            {cls.status === "completed" &&
+                              liveRecordingSlotsFromRow(cls).map((slot) => (
                               <Button
+                                key={slot.slot}
                                 size="sm"
-                                onMouseEnter={() => prefetchVideoUrl(cls.recordingUrl!)}
-                                onFocus={() => prefetchVideoUrl(cls.recordingUrl!)}
+                                className="mr-1 mb-1"
+                                onMouseEnter={() => prefetchVideoUrl(slot.url)}
+                                onFocus={() => prefetchVideoUrl(slot.url)}
                                 onClick={() =>
-                                  setVideo({ url: cls.recordingUrl!, title: cls.title })
+                                  setVideo({ url: slot.url, title: `${cls.title} (${slot.slot})` })
                                 }
                               >
-                                Watch Recording
+                                Watch {slot.slot}
                               </Button>
-                            )}
+                            ))}
                           </td>
                         </tr>
                       ))}
@@ -329,14 +351,33 @@ export function StudentCourseDetail({
             </TabsContent>
 
             <TabsContent value="live-recordings" className="mt-4">
-              {!hasLive ? (
+              {!hasRecordings ? (
                 <LockedPanel />
-              ) : content.liveClassRecordings.length === 0 ? (
+              ) : liveRecordingCount === 0 ? (
                 <p className="py-8 text-center text-muted-foreground">
                   No recordings available yet. Check back after your live sessions.
                 </p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
+                  {batchClassRecordings.map((rec) => (
+                    <Card key={rec.id}>
+                      <CardContent className="space-y-2 py-4">
+                        <p className="text-xs text-muted-foreground">{rec.weekName}</p>
+                        <p className="font-medium">{rec.topicName}</p>
+                        {rec.createdAt && (
+                          <p className="text-xs text-muted-foreground">{formatDate(rec.createdAt)}</p>
+                        )}
+                        <Button
+                          className="w-full"
+                          onMouseEnter={() => prefetchVideoUrl(rec.videoUrl)}
+                          onFocus={() => prefetchVideoUrl(rec.videoUrl)}
+                          onClick={() => setVideo({ url: rec.videoUrl, title: rec.topicName })}
+                        >
+                          <Play className="mr-2 h-4 w-4" /> Play
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
                   {content.liveClassRecordings.map((rec) => (
                     <Card key={rec.id}>
                       <CardContent className="space-y-2 py-4">

@@ -42,7 +42,7 @@ export default async function StudentLayout({
 
   const organisationId = await resolveStudentOrganisationId(session.user.id);
 
-  const [orgSettings, recordEnrollment] = await Promise.all([
+  const [orgSettings, recordEnrollment, liveBatchEnrollment] = await Promise.all([
     organisationId
       ? db
           .select({
@@ -66,6 +66,19 @@ export default async function StudentLayout({
       )
       .limit(1)
       .then((rows) => rows[0] ?? null),
+    db
+      .select({ id: studentCourses.id })
+      .from(studentCourses)
+      .where(
+        and(
+          eq(studentCourses.studentId, session.user.id),
+          eq(studentCourses.isActive, true),
+          isNotNull(studentCourses.liveCourseId),
+          isNotNull(studentCourses.batchId)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
   ]);
 
   const brandLogoUrl = orgSettings?.logoUrl?.trim() || null;
@@ -76,7 +89,7 @@ export default async function StudentLayout({
         <StudentSidebar
           brandLogoUrl={brandLogoUrl}
           jobPortalAccess={orgSettings?.jobPortalAccess ?? true}
-          hasRecordCourseEnrollment={!!recordEnrollment}
+          hasRecordCourseEnrollment={!!recordEnrollment || !!liveBatchEnrollment}
         />
       }
       userName={session.user.name}

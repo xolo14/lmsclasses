@@ -487,6 +487,8 @@ export const liveClasses = pgTable("live_classes", {
   scheduledAt: timestamp("scheduled_at").notNull(),
   duration: integer("duration_minutes"),
   recordingUrl: text("recording_url"),
+  recordingUrlB: text("recording_url_b"),
+  recordingUrlC: text("recording_url_c"),
   status: liveClassStatusEnum("status").default("scheduled"),
   createdBy: uuid("created_by").references(() => users.id),
   deletedAt: timestamp("deleted_at"),

@@ -5,8 +5,13 @@ import {
   recordCourses,
   courseRecordings,
   liveClasses,
+  classRecordings,
 } from "@/lib/db/schema";
-import { eq, and, isNotNull, isNull, asc } from "drizzle-orm";
+import { eq, and, isNotNull, isNull, asc, desc, or } from "drizzle-orm";
+import {
+  liveRecordingSlotTitle,
+  liveRecordingSlotsFromRow,
+} from "@/lib/live-recording-slots";
 
 export type AccessEnrollment = {
   isActive?: boolean | null;
@@ -46,6 +51,11 @@ export function hasRecordedAccess(enrollment: AccessEnrollment, now = new Date()
   if (!enrollmentStillValid(enrollment)) return false;
   if (enrollment.recordedAccess === false) return false;
   return inAccessWindow(enrollment.recordedAccessFrom, enrollment.recordedAccessUntil, now);
+}
+
+/** Batch class recordings belong to live courses, so live-enrolled students must see them too. */
+export function hasClassRecordingAccess(enrollment: AccessEnrollment, now = new Date()) {
+  return hasLiveAccess(enrollment, now) || hasRecordedAccess(enrollment, now);
 }
 
 /**
@@ -144,6 +154,8 @@ export async function getLiveClassesForStudent(batchId: string | null) {
       meetingLink: liveClasses.meetingLink,
       status: liveClasses.status,
       recordingUrl: liveClasses.recordingUrl,
+      recordingUrlB: liveClasses.recordingUrlB,
+      recordingUrlC: liveClasses.recordingUrlC,
     })
     .from(liveClasses)
     .where(and(eq(liveClasses.batchId, batchId), isNull(liveClasses.deletedAt)))
@@ -154,12 +166,14 @@ export async function getLiveClassesForStudent(batchId: string | null) {
 export async function getLiveClassRecordingsForStudent(batchId: string | null) {
   if (!batchId) return [];
 
-  return db
+  const rows = await db
     .select({
       id: liveClasses.id,
       title: liveClasses.title,
       scheduledAt: liveClasses.scheduledAt,
       recordingUrl: liveClasses.recordingUrl,
+      recordingUrlB: liveClasses.recordingUrlB,
+      recordingUrlC: liveClasses.recordingUrlC,
       duration: liveClasses.duration,
     })
     .from(liveClasses)
@@ -167,11 +181,48 @@ export async function getLiveClassRecordingsForStudent(batchId: string | null) {
       and(
         eq(liveClasses.batchId, batchId),
         eq(liveClasses.status, "completed"),
-        isNotNull(liveClasses.recordingUrl),
-        isNull(liveClasses.deletedAt)
+        isNull(liveClasses.deletedAt),
+        or(
+          isNotNull(liveClasses.recordingUrl),
+          isNotNull(liveClasses.recordingUrlB),
+          isNotNull(liveClasses.recordingUrlC)
+        )
       )
     )
     .orderBy(asc(liveClasses.scheduledAt));
+
+  return rows.flatMap((row) =>
+    liveRecordingSlotsFromRow(row).map((slot) => ({
+      id: `${row.id}-${slot.slot}`,
+      title: liveRecordingSlotTitle(row.title, slot.slot),
+      scheduledAt: row.scheduledAt,
+      recordingUrl: slot.url,
+      duration: row.duration,
+    }))
+  );
+}
+
+/** Batch class recordings (Recording Classes uploads) for a live-course batch. */
+export async function getBatchClassRecordings(courseId: string, batchId: string | null) {
+  if (!batchId) return [];
+
+  return db
+    .select({
+      id: classRecordings.id,
+      weekName: classRecordings.weekName,
+      topicName: classRecordings.topicName,
+      videoUrl: classRecordings.videoUrl,
+      createdAt: classRecordings.createdAt,
+    })
+    .from(classRecordings)
+    .where(
+      and(
+        eq(classRecordings.courseId, courseId),
+        eq(classRecordings.batchId, batchId),
+        isNull(classRecordings.deletedAt)
+      )
+    )
+    .orderBy(desc(classRecordings.createdAt));
 }
 
 export async function getStudentCourseContent(studentId: string, courseId: string) {
@@ -180,6 +231,14 @@ export async function getStudentCourseContent(studentId: string, courseId: strin
       batchId: studentCourses.batchId,
       enrollmentSource: studentCourses.enrollmentSource,
       courseTitle: liveCourses.title,
+      isActive: studentCourses.isActive,
+      status: studentCourses.status,
+      liveAccess: studentCourses.liveAccess,
+      recordedAccess: studentCourses.recordedAccess,
+      liveAccessFrom: studentCourses.liveAccessFrom,
+      liveAccessUntil: studentCourses.liveAccessUntil,
+      recordedAccessFrom: studentCourses.recordedAccessFrom,
+      recordedAccessUntil: studentCourses.recordedAccessUntil,
     })
     .from(studentCourses)
     .innerJoin(liveCourses, eq(liveCourses.id, studentCourses.liveCourseId))
@@ -194,19 +253,25 @@ export async function getStudentCourseContent(studentId: string, courseId: strin
 
   if (liveEnrollment) {
     const batchId = liveEnrollment.batchId ?? null;
-    const liveClassList = await getLiveClassesForStudent(batchId);
-    const liveRecordings = await getLiveClassRecordingsForStudent(batchId);
+    const [liveClassList, liveRecordings, batchClassRecordings] = await Promise.all([
+      getLiveClassesForStudent(batchId),
+      getLiveClassRecordingsForStudent(batchId),
+      getBatchClassRecordings(courseId, batchId),
+    ]);
     return {
       courseTitle: liveEnrollment.courseTitle,
       courseType: "live",
       enrollment: {
         batchId: liveEnrollment.batchId,
         enrollmentSource: liveEnrollment.enrollmentSource,
-        hasLiveAccess: liveEnrollment.batchId !== null,
+        hasLiveAccess: hasLiveAccess(liveEnrollment) && liveEnrollment.batchId !== null,
+        hasClassRecordingAccess:
+          hasClassRecordingAccess(liveEnrollment) && liveEnrollment.batchId !== null,
       },
       courseRecordings: [],
       liveClasses: liveClassList,
       liveClassRecordings: liveRecordings,
+      batchClassRecordings,
     };
   }
 
@@ -235,10 +300,12 @@ export async function getStudentCourseContent(studentId: string, courseId: strin
         batchId: null,
         enrollmentSource: recordEnrollment.enrollmentSource,
         hasLiveAccess: false,
+        hasClassRecordingAccess: false,
       },
       courseRecordings: recordings,
       liveClasses: [],
       liveClassRecordings: [],
+      batchClassRecordings: [],
     };
   }
 

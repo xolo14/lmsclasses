@@ -136,7 +136,7 @@ export function SuperAdminSidebar(props: Omit<SidebarProps, "items" | "title">) 
     { label: "Mentors", href: "/super-admin/mentors", icon: UserCheck },
     { label: "Live Classes", href: "/super-admin/live-classes", icon: Video },
     { label: "Certificates", href: "/super-admin/certificates", icon: Award },
-    { label: "Recording Classes", href: "/super-admin/recording-classes", icon: Film },
+    { label: "Live Recordings", href: "/super-admin/recording-classes", icon: Film },
     { label: "Trash", href: "/super-admin/trash", icon: Trash2 },
     { label: "Audit Logs", href: "/super-admin/audit-logs", icon: ScrollText },
     { label: "Settings", href: "/super-admin/settings", icon: Settings },
@@ -156,7 +156,7 @@ export function ManagerSidebar(props: Omit<SidebarProps, "items" | "title">) {
     { label: "Batches", href: "/manager/batches", icon: Layers },
     { label: "Mentors", href: "/manager/mentors", icon: UserCheck },
     { label: "Live Classes", href: "/manager/live-classes", icon: Video },
-    { label: "Recording Classes", href: "/manager/recording-classes", icon: Film },
+    { label: "Live Recordings", href: "/manager/recording-classes", icon: Film },
     { label: "Trash", href: "/manager/trash", icon: Trash2 },
     { label: "Settings", href: "/manager/settings", icon: Settings },
   ];
@@ -202,7 +202,7 @@ export function StudentSidebar({
   const items: NavItem[] = [
     { label: "My Classes", href: "/student/courses", icon: Video },
     ...(hasRecordCourseEnrollment
-      ? [{ label: "Recording Classes", href: "/student/recording-classes", icon: Film }]
+      ? [{ label: "Live Recordings", href: "/student/recording-classes", icon: Film }]
       : []),
     { label: "Certificates", href: "/student/certificates", icon: Award },
     ...(jobPortalAccess
