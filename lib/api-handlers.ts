@@ -34,6 +34,11 @@ import { softDeleteOrganisationCascade } from "@/lib/organisation-cascade";
 import { freeOneSlot, consumeOneSlot, getSlotSummary, resolveCourse } from "@/lib/enrollment-service";
 import { getBatchClassRecordings, hasClassRecordingAccess, hasLiveAccess } from "@/lib/content-access";
 import { liveRecordingSlotTitle, liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
+import {
+  liveRecordingSlotColumnsMissing,
+  setLiveRecordingSlotColumnsAvailable,
+  withLiveRecordingSlotColumns,
+} from "@/lib/live-recording-query";
 import { formatDateTime, parseDatetimeLocalAsIst } from "@/lib/utils";
 import {
   assertLiveCoursesExist,
@@ -75,7 +80,11 @@ export async function autoCompletePastLiveClasses(filters?: { courseId?: string;
   if (filters?.courseId) conditions.push(eq(liveClasses.courseId, filters.courseId));
   if (filters?.mentorId) conditions.push(eq(liveClasses.mentorId, filters.mentorId));
 
-  await db.update(liveClasses).set({ status: "completed" }).where(and(...conditions));
+  try {
+    await db.update(liveClasses).set({ status: "completed" }).where(and(...conditions));
+  } catch (err) {
+    console.error("[autoCompletePastLiveClasses]", err);
+  }
 }
 
 // ============ ORGANISATIONS ============
@@ -2052,77 +2061,122 @@ export async function GETLiveClasses(request: Request) {
   const mentorId = session!.user.role === "mentor" ? session!.user.id : undefined;
   await autoCompletePastLiveClasses(mentorId ? { mentorId } : undefined);
 
+  const endedSql = sql`(${liveClasses.scheduledAt} + (COALESCE(${liveClasses.duration}, 60) * INTERVAL '1 minute')) < NOW()`;
+  const upcomingSql = sql`(${liveClasses.scheduledAt} + (COALESCE(${liveClasses.duration}, 60) * INTERVAL '1 minute')) >= NOW()`;
+
   const conditions = [isNull(liveClasses.deletedAt)];
 
   if (tab === "completed") {
-    // BUG FIX: mentors must still see cancelled classes for their records
-    conditions.push(inArray(liveClasses.status, ["completed", "cancelled"]));
+    conditions.push(
+      or(
+        inArray(liveClasses.status, ["completed", "cancelled"]),
+        and(inArray(liveClasses.status, ["scheduled", "live"]), endedSql)
+      )!
+    );
   } else {
     conditions.push(inArray(liveClasses.status, ["scheduled", "live"]));
-    conditions.push(
-      sql`(${liveClasses.scheduledAt} + (COALESCE(${liveClasses.duration}, 60) * INTERVAL '1 minute')) >= NOW()`
-    );
+    conditions.push(upcomingSql);
   }
 
   if (mentorId) {
     conditions.push(eq(liveClasses.mentorId, mentorId));
   }
 
-  const result = await db
-    .select({
-      id: liveClasses.id,
-      title: liveClasses.title,
-      courseId: liveClasses.courseId,
-      courseTitle: liveCourses.title,
-      batchId: liveClasses.batchId,
-      batchName: batches.name,
-      mentorId: liveClasses.mentorId,
-      mentorName: users.name,
-      meetingLink: liveClasses.meetingLink,
-      scheduledAt: liveClasses.scheduledAt,
-      duration: liveClasses.duration,
-      recordingUrl: liveClasses.recordingUrl,
-      recordingUrlB: liveClasses.recordingUrlB,
-      recordingUrlC: liveClasses.recordingUrlC,
-      status: liveClasses.status,
-      createdAt: liveClasses.createdAt,
-    })
-    .from(liveClasses)
-    .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
-    .leftJoin(batches, eq(liveClasses.batchId, batches.id))
-    .leftJoin(users, eq(liveClasses.mentorId, users.id))
-    .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(liveClasses.scheduledAt));
+  const where = conditions.length ? and(...conditions) : undefined;
 
-  return NextResponse.json(result);
+  const coreSelect = {
+    id: liveClasses.id,
+    title: liveClasses.title,
+    courseId: liveClasses.courseId,
+    courseTitle: liveCourses.title,
+    batchId: liveClasses.batchId,
+    batchName: batches.name,
+    mentorId: liveClasses.mentorId,
+    mentorName: users.name,
+    meetingLink: liveClasses.meetingLink,
+    scheduledAt: liveClasses.scheduledAt,
+    duration: liveClasses.duration,
+    recordingUrl: liveClasses.recordingUrl,
+    status: liveClasses.status,
+    createdAt: liveClasses.createdAt,
+  };
+
+  try {
+    const result = await db
+      .select({
+        ...coreSelect,
+        recordingUrlB: liveClasses.recordingUrlB,
+        recordingUrlC: liveClasses.recordingUrlC,
+      })
+      .from(liveClasses)
+      .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
+      .leftJoin(batches, eq(liveClasses.batchId, batches.id))
+      .leftJoin(users, eq(liveClasses.mentorId, users.id))
+      .where(where)
+      .orderBy(desc(liveClasses.scheduledAt));
+    setLiveRecordingSlotColumnsAvailable(true);
+    return NextResponse.json(result);
+  } catch (err) {
+    if (!liveRecordingSlotColumnsMissing(err)) throw err;
+    setLiveRecordingSlotColumnsAvailable(false);
+    console.error("[GETLiveClasses] falling back without extra recording columns", err);
+    const result = await db
+      .select(coreSelect)
+      .from(liveClasses)
+      .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
+      .leftJoin(batches, eq(liveClasses.batchId, batches.id))
+      .leftJoin(users, eq(liveClasses.mentorId, users.id))
+      .where(where)
+      .orderBy(desc(liveClasses.scheduledAt));
+    return NextResponse.json(result.map((row) => ({ ...row, recordingUrlB: null, recordingUrlC: null })));
+  }
 }
 
 export async function GETLiveClass(_request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
 
-  const [row] = await db
-    .select({
-      id: liveClasses.id,
-      title: liveClasses.title,
-      courseId: liveClasses.courseId,
-      courseTitle: liveCourses.title,
-      batchId: liveClasses.batchId,
-      batchName: batches.name,
-      mentorId: liveClasses.mentorId,
-      meetingLink: liveClasses.meetingLink,
-      scheduledAt: liveClasses.scheduledAt,
-      duration: liveClasses.duration,
-      recordingUrl: liveClasses.recordingUrl,
-      recordingUrlB: liveClasses.recordingUrlB,
-      recordingUrlC: liveClasses.recordingUrlC,
-      status: liveClasses.status,
-    })
-    .from(liveClasses)
-    .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
-    .leftJoin(batches, eq(liveClasses.batchId, batches.id))
-    .where(and(eq(liveClasses.id, id), isNull(liveClasses.deletedAt)))
-    .limit(1);
+  const core = {
+    id: liveClasses.id,
+    title: liveClasses.title,
+    courseId: liveClasses.courseId,
+    courseTitle: liveCourses.title,
+    batchId: liveClasses.batchId,
+    batchName: batches.name,
+    mentorId: liveClasses.mentorId,
+    meetingLink: liveClasses.meetingLink,
+    scheduledAt: liveClasses.scheduledAt,
+    duration: liveClasses.duration,
+    recordingUrl: liveClasses.recordingUrl,
+    status: liveClasses.status,
+  };
+
+  const rows = await withLiveRecordingSlotColumns(
+    () =>
+      db
+        .select({
+          ...core,
+          recordingUrlB: liveClasses.recordingUrlB,
+          recordingUrlC: liveClasses.recordingUrlC,
+        })
+        .from(liveClasses)
+        .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
+        .leftJoin(batches, eq(liveClasses.batchId, batches.id))
+        .where(and(eq(liveClasses.id, id), isNull(liveClasses.deletedAt)))
+        .limit(1),
+    async () => {
+      const legacy = await db
+        .select(core)
+        .from(liveClasses)
+        .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
+        .leftJoin(batches, eq(liveClasses.batchId, batches.id))
+        .where(and(eq(liveClasses.id, id), isNull(liveClasses.deletedAt)))
+        .limit(1);
+      return legacy.map((row) => ({ ...row, recordingUrlB: null, recordingUrlC: null }));
+    }
+  );
+
+  const row = rows[0];
 
   if (!row) {
     return NextResponse.json({ error: "Live class not found." }, { status: 404 });
@@ -2721,15 +2775,6 @@ export async function GETStudentLiveClasses(
 
   if (tab === "completed" || tab === "recordings") {
     conditions.push(eq(liveClasses.status, "completed"));
-    if (tab === "recordings") {
-      conditions.push(
-        or(
-          isNotNull(liveClasses.recordingUrl),
-          isNotNull(liveClasses.recordingUrlB),
-          isNotNull(liveClasses.recordingUrlC)
-        )!
-      );
-    }
   } else {
     conditions.push(inArray(liveClasses.status, ["scheduled", "live"]));
     conditions.push(
@@ -2737,23 +2782,55 @@ export async function GETStudentLiveClasses(
     );
   }
 
-  const classes = await db
-    .select({
-      id: liveClasses.id,
-      title: liveClasses.title,
-      mentorName: users.name,
-      meetingLink: liveClasses.meetingLink,
-      scheduledAt: liveClasses.scheduledAt,
-      duration: liveClasses.duration,
-      recordingUrl: liveClasses.recordingUrl,
-      recordingUrlB: liveClasses.recordingUrlB,
-      recordingUrlC: liveClasses.recordingUrlC,
-      status: liveClasses.status,
-    })
-    .from(liveClasses)
-    .leftJoin(users, eq(liveClasses.mentorId, users.id))
-    .where(and(...conditions))
-    .orderBy(desc(liveClasses.scheduledAt));
+  const classCore = {
+    id: liveClasses.id,
+    title: liveClasses.title,
+    mentorName: users.name,
+    meetingLink: liveClasses.meetingLink,
+    scheduledAt: liveClasses.scheduledAt,
+    duration: liveClasses.duration,
+    recordingUrl: liveClasses.recordingUrl,
+    status: liveClasses.status,
+  };
+
+  const classes = await withLiveRecordingSlotColumns(
+    () =>
+      db
+        .select({
+          ...classCore,
+          recordingUrlB: liveClasses.recordingUrlB,
+          recordingUrlC: liveClasses.recordingUrlC,
+        })
+        .from(liveClasses)
+        .leftJoin(users, eq(liveClasses.mentorId, users.id))
+        .where(
+          and(
+            ...conditions,
+            ...(tab === "recordings"
+              ? [
+                  or(
+                    isNotNull(liveClasses.recordingUrl),
+                    isNotNull(liveClasses.recordingUrlB),
+                    isNotNull(liveClasses.recordingUrlC)
+                  )!,
+                ]
+              : [])
+          )
+        )
+        .orderBy(desc(liveClasses.scheduledAt)),
+    () =>
+      db
+        .select(classCore)
+        .from(liveClasses)
+        .leftJoin(users, eq(liveClasses.mentorId, users.id))
+        .where(
+          and(
+            ...conditions,
+            ...(tab === "recordings" ? [isNotNull(liveClasses.recordingUrl)] : [])
+          )
+        )
+        .orderBy(desc(liveClasses.scheduledAt))
+  );
 
   const studioRows =
     tab === "recordings"

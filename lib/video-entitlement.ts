@@ -10,6 +10,7 @@ import {
 import { orgAdminVisibleBatches } from "@/lib/batch-scope";
 import { hasClassRecordingAccess, hasRecordedAccess } from "@/lib/content-access";
 import { liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
+import { withLiveRecordingSlotColumns } from "@/lib/live-recording-query";
 import { parseGcsObjectKey } from "@/lib/gcs";
 import { getMentorCourseIds } from "@/lib/mentor-courses";
 import { isPublicCourseDemoReference } from "@/lib/public-demo-access";
@@ -55,14 +56,22 @@ export async function assertVideoEntitlement(
         .select({ videoUrl: classRecordings.videoUrl })
         .from(classRecordings)
         .where(and(or(...courseIds.map((id) => eq(classRecordings.courseId, id)))!, isNull(classRecordings.deletedAt))),
-      db
-        .select({
-          recordingUrl: liveClasses.recordingUrl,
-          recordingUrlB: liveClasses.recordingUrlB,
-          recordingUrlC: liveClasses.recordingUrlC,
-        })
-        .from(liveClasses)
-        .where(and(or(...courseIds.map((id) => eq(liveClasses.courseId, id)))!, isNull(liveClasses.deletedAt))),
+      withLiveRecordingSlotColumns(
+        () =>
+          db
+            .select({
+              recordingUrl: liveClasses.recordingUrl,
+              recordingUrlB: liveClasses.recordingUrlB,
+              recordingUrlC: liveClasses.recordingUrlC,
+            })
+            .from(liveClasses)
+            .where(and(or(...courseIds.map((id) => eq(liveClasses.courseId, id)))!, isNull(liveClasses.deletedAt))),
+        () =>
+          db
+            .select({ recordingUrl: liveClasses.recordingUrl })
+            .from(liveClasses)
+            .where(and(or(...courseIds.map((id) => eq(liveClasses.courseId, id)))!, isNull(liveClasses.deletedAt)))
+      ),
       db
         .select({ videoUrl: courseRecordings.videoUrl })
         .from(courseRecordings)
@@ -119,19 +128,32 @@ export async function assertVideoEntitlement(
     }
     if (liveWatchCourseIds.length) {
       checks.push(
-        db
-          .select({
-            recordingUrl: liveClasses.recordingUrl,
-            recordingUrlB: liveClasses.recordingUrlB,
-            recordingUrlC: liveClasses.recordingUrlC,
-          })
-          .from(liveClasses)
-          .where(
-            and(
-              isNull(liveClasses.deletedAt),
-              or(...liveWatchCourseIds.map((id) => eq(liveClasses.courseId, id)))!
-            )
-          )
+        withLiveRecordingSlotColumns(
+          () =>
+            db
+              .select({
+                recordingUrl: liveClasses.recordingUrl,
+                recordingUrlB: liveClasses.recordingUrlB,
+                recordingUrlC: liveClasses.recordingUrlC,
+              })
+              .from(liveClasses)
+              .where(
+                and(
+                  isNull(liveClasses.deletedAt),
+                  or(...liveWatchCourseIds.map((id) => eq(liveClasses.courseId, id)))!
+                )
+              ),
+          () =>
+            db
+              .select({ recordingUrl: liveClasses.recordingUrl })
+              .from(liveClasses)
+              .where(
+                and(
+                  isNull(liveClasses.deletedAt),
+                  or(...liveWatchCourseIds.map((id) => eq(liveClasses.courseId, id)))!
+                )
+              )
+        )
       );
     }
     const rows = (await Promise.all(checks)).flat();

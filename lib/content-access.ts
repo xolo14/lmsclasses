@@ -12,6 +12,7 @@ import {
   liveRecordingSlotTitle,
   liveRecordingSlotsFromRow,
 } from "@/lib/live-recording-slots";
+import { withLiveRecordingSlotColumns } from "@/lib/live-recording-query";
 
 export type AccessEnrollment = {
   isActive?: boolean | null;
@@ -145,51 +146,86 @@ export async function getCourseRecordings(recordCourseId: string) {
 export async function getLiveClassesForStudent(batchId: string | null) {
   if (!batchId) return [];
 
-  return db
-    .select({
-      id: liveClasses.id,
-      title: liveClasses.title,
-      scheduledAt: liveClasses.scheduledAt,
-      duration: liveClasses.duration,
-      meetingLink: liveClasses.meetingLink,
-      status: liveClasses.status,
-      recordingUrl: liveClasses.recordingUrl,
-      recordingUrlB: liveClasses.recordingUrlB,
-      recordingUrlC: liveClasses.recordingUrlC,
-    })
-    .from(liveClasses)
-    .where(and(eq(liveClasses.batchId, batchId), isNull(liveClasses.deletedAt)))
-    .orderBy(asc(liveClasses.scheduledAt));
+  const core = {
+    id: liveClasses.id,
+    title: liveClasses.title,
+    scheduledAt: liveClasses.scheduledAt,
+    duration: liveClasses.duration,
+    meetingLink: liveClasses.meetingLink,
+    status: liveClasses.status,
+    recordingUrl: liveClasses.recordingUrl,
+  };
+
+  return withLiveRecordingSlotColumns(
+    () =>
+      db
+        .select({
+          ...core,
+          recordingUrlB: liveClasses.recordingUrlB,
+          recordingUrlC: liveClasses.recordingUrlC,
+        })
+        .from(liveClasses)
+        .where(and(eq(liveClasses.batchId, batchId), isNull(liveClasses.deletedAt)))
+        .orderBy(asc(liveClasses.scheduledAt)),
+    async () => {
+      const rows = await db
+        .select(core)
+        .from(liveClasses)
+        .where(and(eq(liveClasses.batchId, batchId), isNull(liveClasses.deletedAt)))
+        .orderBy(asc(liveClasses.scheduledAt));
+      return rows.map((row) => ({ ...row, recordingUrlB: null, recordingUrlC: null }));
+    }
+  );
 }
 
 /** Completed live session recordings for a batch — empty when batchId is null. */
 export async function getLiveClassRecordingsForStudent(batchId: string | null) {
   if (!batchId) return [];
 
-  const rows = await db
-    .select({
-      id: liveClasses.id,
-      title: liveClasses.title,
-      scheduledAt: liveClasses.scheduledAt,
-      recordingUrl: liveClasses.recordingUrl,
-      recordingUrlB: liveClasses.recordingUrlB,
-      recordingUrlC: liveClasses.recordingUrlC,
-      duration: liveClasses.duration,
-    })
-    .from(liveClasses)
-    .where(
-      and(
-        eq(liveClasses.batchId, batchId),
-        eq(liveClasses.status, "completed"),
-        isNull(liveClasses.deletedAt),
-        or(
-          isNotNull(liveClasses.recordingUrl),
-          isNotNull(liveClasses.recordingUrlB),
-          isNotNull(liveClasses.recordingUrlC)
+  const core = {
+    id: liveClasses.id,
+    title: liveClasses.title,
+    scheduledAt: liveClasses.scheduledAt,
+    recordingUrl: liveClasses.recordingUrl,
+    duration: liveClasses.duration,
+  };
+
+  const rows = await withLiveRecordingSlotColumns(
+    () =>
+      db
+        .select({
+          ...core,
+          recordingUrlB: liveClasses.recordingUrlB,
+          recordingUrlC: liveClasses.recordingUrlC,
+        })
+        .from(liveClasses)
+        .where(
+          and(
+            eq(liveClasses.batchId, batchId),
+            eq(liveClasses.status, "completed"),
+            isNull(liveClasses.deletedAt),
+            or(
+              isNotNull(liveClasses.recordingUrl),
+              isNotNull(liveClasses.recordingUrlB),
+              isNotNull(liveClasses.recordingUrlC)
+            )
+          )
         )
-      )
-    )
-    .orderBy(asc(liveClasses.scheduledAt));
+        .orderBy(asc(liveClasses.scheduledAt)),
+    () =>
+      db
+        .select(core)
+        .from(liveClasses)
+        .where(
+          and(
+            eq(liveClasses.batchId, batchId),
+            eq(liveClasses.status, "completed"),
+            isNotNull(liveClasses.recordingUrl),
+            isNull(liveClasses.deletedAt)
+          )
+        )
+        .orderBy(asc(liveClasses.scheduledAt))
+  );
 
   return rows.flatMap((row) =>
     liveRecordingSlotsFromRow(row).map((slot) => ({

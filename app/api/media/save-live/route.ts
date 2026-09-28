@@ -8,6 +8,7 @@ import { logAction, getClientIp } from "@/lib/audit";
 import { readApiJson } from "@/lib/api-url-transport";
 import { videoReferenceSchema } from "@/lib/validations/video-reference";
 import { liveRecordingColumn, liveRecordingSlotTitle, type LiveRecordingSlot } from "@/lib/live-recording-slots";
+import { liveRecordingSlotColumnsMissing } from "@/lib/live-recording-query";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,15 +61,13 @@ export async function POST(request: Request) {
   try {
     const [updated] = await db
       .update(liveClasses)
-      .set({ [column]: recordingUrl, status: "completed" })
+      .set(
+        recordingSlot === "A"
+          ? { recordingUrl, status: "completed" }
+          : { [column]: recordingUrl, status: "completed" }
+      )
       .where(eq(liveClasses.id, liveClassId))
-      .returning({
-        id: liveClasses.id,
-        recordingUrl: liveClasses.recordingUrl,
-        recordingUrlB: liveClasses.recordingUrlB,
-        recordingUrlC: liveClasses.recordingUrlC,
-        status: liveClasses.status,
-      });
+      .returning({ id: liveClasses.id, recordingUrl: liveClasses.recordingUrl, status: liveClasses.status });
 
     if (existing.batchId) {
       try {
@@ -124,6 +123,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, liveClass: updated });
   } catch (err) {
+    if (recordingSlot !== "A" && liveRecordingSlotColumnsMissing(err)) {
+      return NextResponse.json(
+        { error: "Recording slots B and C are not in the database yet. Run npm run db:push." },
+        { status: 503 }
+      );
+    }
     console.error("[save-live]", err);
     return NextResponse.json({ error: "Failed to save the live class recording." }, { status: 500 });
   }
