@@ -2214,6 +2214,9 @@ export async function POSTLiveClass(request: Request) {
     }
   }
 
+  const scheduledAt = parseDatetimeLocalAsIst(parsed.data.scheduledAt);
+  const meetingLink = parsed.data.meetingLink?.trim() || null;
+
   const [liveClass] = await db
     .insert(liveClasses)
     .values({
@@ -2221,53 +2224,12 @@ export async function POSTLiveClass(request: Request) {
       courseId: parsed.data.courseId,
       batchId: parsed.data.batchId || null,
       mentorId: parsed.data.mentorId,
-      meetingLink: parsed.data.meetingLink || null,
-      scheduledAt: parseDatetimeLocalAsIst(parsed.data.scheduledAt),
+      meetingLink,
+      scheduledAt,
       duration: parsed.data.duration,
       createdBy: session!.user.id,
     })
     .returning();
-
-  // PERF: Fetch mentor, course, and batch metadata in parallel with explicit column selections
-  const [[mentor], [course], [batch]] = await Promise.all([
-    db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, parsed.data.mentorId)).limit(1),
-    db.select({ title: liveCourses.title }).from(liveCourses).where(eq(liveCourses.id, parsed.data.courseId)).limit(1),
-    parsed.data.batchId
-      ? db.select({ name: batches.name }).from(batches).where(eq(batches.id, parsed.data.batchId)).limit(1)
-      : Promise.resolve([null] as any[]),
-  ]);
-
-  if (mentor && course) {
-    try {
-      await sendMentorLiveClassEmail({
-        email: mentor.email,
-        mentorName: mentor.name,
-        title: parsed.data.title,
-        courseName: course.title,
-        batchName: batch?.name,
-        scheduledAt: formatDateTime(parseDatetimeLocalAsIst(parsed.data.scheduledAt)),
-        meetingLink: parsed.data.meetingLink,
-      });
-    } catch (mailErr) {
-      console.error("[live-class] mentor email failed:", mailErr);
-    }
-  }
-
-  if (parsed.data.meetingLink?.trim()) {
-    try {
-      const wa = await notifyStudentsLiveClassMeetingLink({
-        liveClassId: liveClass.id,
-        courseId: parsed.data.courseId,
-        batchId: parsed.data.batchId || null,
-        title: parsed.data.title,
-        scheduledAt: parseDatetimeLocalAsIst(parsed.data.scheduledAt),
-        meetingLink: parsed.data.meetingLink,
-      });
-      console.log("[live-class] WhatsApp notify:", wa);
-    } catch (waErr) {
-      console.error("[live-class] WhatsApp notify failed:", waErr);
-    }
-  }
 
   await logAction({
     userId: session!.user.id,
@@ -2277,6 +2239,65 @@ export async function POSTLiveClass(request: Request) {
     entityId: liveClass.id,
     ipAddress: getClientIp(request),
   });
+
+  // Email + WhatsApp must not block the HTTP response (Hostinger gateway ~30–60s).
+  void (async () => {
+    try {
+      const [[mentor], [course], [batch]] = await Promise.all([
+        db
+          .select({ email: users.email, name: users.name })
+          .from(users)
+          .where(eq(users.id, parsed.data.mentorId))
+          .limit(1),
+        db
+          .select({ title: liveCourses.title })
+          .from(liveCourses)
+          .where(eq(liveCourses.id, parsed.data.courseId))
+          .limit(1),
+        parsed.data.batchId
+          ? db
+              .select({ name: batches.name })
+              .from(batches)
+              .where(eq(batches.id, parsed.data.batchId))
+              .limit(1)
+          : Promise.resolve([] as Array<{ name: string }>),
+      ]);
+
+      if (mentor && course) {
+        try {
+          await sendMentorLiveClassEmail({
+            email: mentor.email,
+            mentorName: mentor.name,
+            title: parsed.data.title,
+            courseName: course.title,
+            batchName: batch?.name,
+            scheduledAt: formatDateTime(scheduledAt),
+            meetingLink: meetingLink || undefined,
+          });
+        } catch (mailErr) {
+          console.error("[live-class] mentor email failed:", mailErr);
+        }
+      }
+
+      if (meetingLink) {
+        try {
+          const wa = await notifyStudentsLiveClassMeetingLink({
+            liveClassId: liveClass.id,
+            courseId: parsed.data.courseId,
+            batchId: parsed.data.batchId || null,
+            title: parsed.data.title,
+            scheduledAt,
+            meetingLink,
+          });
+          console.log("[live-class] WhatsApp notify:", wa);
+        } catch (waErr) {
+          console.error("[live-class] WhatsApp notify failed:", waErr);
+        }
+      }
+    } catch (err) {
+      console.error("[live-class] background notify failed:", err);
+    }
+  })();
 
   return NextResponse.json(liveClass, { status: 201 });
 }
@@ -2316,22 +2337,6 @@ export async function PATCHLiveClass(request: Request, id: string) {
   const meetingLinkChanged =
     !!newMeetingLink && newMeetingLink !== (existing.meetingLink?.trim() ?? "");
 
-  if (meetingLinkChanged && liveClass) {
-    try {
-      const wa = await notifyStudentsLiveClassMeetingLink({
-        liveClassId: liveClass.id,
-        courseId: liveClass.courseId,
-        batchId: liveClass.batchId,
-        title: liveClass.title,
-        scheduledAt: liveClass.scheduledAt ?? new Date(),
-        meetingLink: newMeetingLink,
-      });
-      console.log("[live-class] WhatsApp notify (update):", wa);
-    } catch (waErr) {
-      console.error("[live-class] WhatsApp notify (update) failed:", waErr);
-    }
-  }
-
   await logAction({
     userId: session!.user.id,
     role: session!.user.role,
@@ -2340,6 +2345,19 @@ export async function PATCHLiveClass(request: Request, id: string) {
     entityId: id,
     ipAddress: getClientIp(request),
   });
+
+  if (meetingLinkChanged && liveClass) {
+    void notifyStudentsLiveClassMeetingLink({
+      liveClassId: liveClass.id,
+      courseId: liveClass.courseId,
+      batchId: liveClass.batchId,
+      title: liveClass.title,
+      scheduledAt: liveClass.scheduledAt ?? new Date(),
+      meetingLink: newMeetingLink,
+    })
+      .then((wa) => console.log("[live-class] WhatsApp notify (update):", wa))
+      .catch((waErr) => console.error("[live-class] WhatsApp notify (update) failed:", waErr));
+  }
 
   return NextResponse.json(liveClass);
 }

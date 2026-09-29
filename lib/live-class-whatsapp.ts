@@ -82,8 +82,19 @@ export async function notifyStudentsLiveClassMeetingLink(opts: {
     .where(and(...enrollmentConditions));
 
   const seenPhones = new Set<string>();
+  const startedAt = Date.now();
+  /** Hard cap so a large batch cannot hang the Node worker forever. */
+  const MAX_NOTIFY_MS = 45_000;
+  const SEND_TIMEOUT_MS = 8_000;
 
   for (const student of students) {
+    if (Date.now() - startedAt > MAX_NOTIFY_MS) {
+      result.errors.push(
+        `Stopped early after ${Math.round(MAX_NOTIFY_MS / 1000)}s to avoid blocking the server.`
+      );
+      break;
+    }
+
     const phone = student.phone?.trim();
     if (!phone) {
       result.skippedNoPhone += 1;
@@ -94,16 +105,32 @@ export async function notifyStudentsLiveClassMeetingLink(opts: {
     if (seenPhones.has(phoneKey)) continue;
     seenPhones.add(phoneKey);
 
-    const sendResult = await sendLiveClassMeetingLinkWhatsApp({
-      studentName: student.name,
-      phone,
-      classTitle: opts.title,
-      courseName,
-      batchName,
-      scheduledAt: opts.scheduledAt,
-      meetingLink: opts.meetingLink.trim(),
-      liveClassId: opts.liveClassId,
-    });
+    let sendResult: Awaited<ReturnType<typeof sendLiveClassMeetingLinkWhatsApp>>;
+    try {
+      sendResult = await Promise.race([
+        sendLiveClassMeetingLinkWhatsApp({
+          studentName: student.name,
+          phone,
+          classTitle: opts.title,
+          courseName,
+          batchName,
+          scheduledAt: opts.scheduledAt,
+          meetingLink: opts.meetingLink.trim(),
+          liveClassId: opts.liveClassId,
+        }),
+        new Promise<Awaited<ReturnType<typeof sendLiveClassMeetingLinkWhatsApp>>>((resolve) => {
+          setTimeout(
+            () => resolve({ ok: false, error: `Timed out after ${SEND_TIMEOUT_MS}ms` }),
+            SEND_TIMEOUT_MS
+          );
+        }),
+      ]);
+    } catch (err) {
+      sendResult = {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
 
     if (sendResult.ok) {
       result.sent += 1;

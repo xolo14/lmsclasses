@@ -222,6 +222,7 @@ export async function sendMetaTemplateMessage(opts: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(8_000),
       body: JSON.stringify({
         messaging_product: "whatsapp",
         recipient_type: "individual",

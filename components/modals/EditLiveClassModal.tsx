@@ -88,8 +88,25 @@ export function EditLiveClassModal({
         method: "PATCH",
         body: wrapApiForm(data),
       });
-      if (!res.ok) throw new Error("Failed to update live class");
-      return res.json();
+      const raw = await res.text();
+      let json: { error?: unknown } = {};
+      if (raw) {
+        try {
+          json = JSON.parse(raw) as { error?: unknown };
+        } catch {
+          /* empty / HTML gateway body */
+        }
+      }
+      if (!res.ok) {
+        throw new Error(
+          typeof json.error === "string"
+            ? json.error
+            : res.status === 504 || res.status === 502
+              ? "The server timed out. Refresh the list — the update may already be saved."
+              : "Failed to update live class"
+        );
+      }
+      return json;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["live-classes"] });
