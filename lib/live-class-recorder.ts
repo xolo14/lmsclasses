@@ -135,17 +135,6 @@ export function createLiveMediaRecorder(stream: MediaStream, mimeType: string): 
 }
 
 /**
- * Join segments without re-encoding. Replaying a class through a canvas
- * freezes the tab for as long as the recording.
- */
-export async function stitchVideoBlobs(parts: Blob[]): Promise<Blob> {
-  const usable = parts.filter((p) => p.size >= 1024);
-  if (usable.length === 0) return new Blob([], { type: "video/webm" });
-  if (usable.length === 1) return usable[0]!;
-  return new Blob(usable, { type: usable[0]!.type || "video/webm" });
-}
-
-/**
  * Capture a Chrome tab, a window, or the entire screen (plus tab/system audio
  * when available) and mix in the teacher's microphone.
  */

@@ -34,7 +34,6 @@ import {
   openMeetPopup,
   pickRecorderMimeType,
   recordingFilename,
-  stitchVideoBlobs,
   stopMediaStream,
 } from "@/lib/live-class-recorder";
 import {
@@ -95,6 +94,7 @@ export function LiveClassStudio({
   const timerRef = useRef<number | null>(null);
   const startedAtRef = useRef(0);
   const previewUrlRef = useRef("");
+  const previewPartUrlsRef = useRef<string[]>([]);
   const historyPlayUrlRef = useRef("");
   const currentTakeIdRef = useRef<string | null>(null);
 
@@ -103,6 +103,8 @@ export function LiveClassStudio({
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
+  const [previewParts, setPreviewParts] = useState<string[]>([]);
+  const [previewPartIndex, setPreviewPartIndex] = useState(0);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -175,7 +177,11 @@ export function LiveClassStudio({
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = "";
     }
+    for (const url of previewPartUrlsRef.current) URL.revokeObjectURL(url);
+    previewPartUrlsRef.current = [];
     setPreviewUrl("");
+    setPreviewParts([]);
+    setPreviewPartIndex(0);
     setPreviewFile(null);
     setElapsed(0);
     setUploadProgress(0);
@@ -233,8 +239,12 @@ export function LiveClassStudio({
   const showPreview = (file: File, takeId: string | null) => {
     const url = URL.createObjectURL(file);
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    for (const partUrl of previewPartUrlsRef.current) URL.revokeObjectURL(partUrl);
+    previewPartUrlsRef.current = [];
     previewUrlRef.current = url;
     currentTakeIdRef.current = takeId;
+    setPreviewParts([]);
+    setPreviewPartIndex(0);
     setPreviewFile(file);
     setPreviewUrl(url);
     setPhase("preview");
@@ -319,20 +329,34 @@ export function LiveClassStudio({
       return;
     }
 
-    const joined = segmentsRef.current.length;
-    setWarning(
-      joined > 1
-        ? "Sharing stopped in the middle, so this preview joins those parts without re-encoding. If it does not play through, record the class again in one take."
-        : ""
-    );
-    const blob = await stitchVideoBlobs(segmentsRef.current);
+    const parts = segmentsRef.current.filter((part) => part.size >= 1024);
     segmentsRef.current = [];
-    if (blob.size < 1024) {
+    if (parts.length === 0) {
       setError("The recording is empty. Share the Google Meet Chrome tab and try again.");
       setPhase("idle");
       return;
     }
-    presentBlob(blob);
+    if (parts.length === 1) {
+      setWarning("");
+      presentBlob(parts[0]!);
+      return;
+    }
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = "";
+    }
+    for (const url of previewPartUrlsRef.current) URL.revokeObjectURL(url);
+    const urls = parts.map((part) => URL.createObjectURL(part));
+    previewPartUrlsRef.current = urls;
+    currentTakeIdRef.current = null;
+    setPreviewFile(null);
+    setPreviewUrl("");
+    setPreviewParts(urls);
+    setPreviewPartIndex(0);
+    setWarning(
+      "Sharing stopped in the middle, so this preview plays each part in order. Upload stays off because those parts are not one file. Record the class again in one take to upload it."
+    );
+    setPhase("preview");
   };
 
   const handleRecorderStop = (blobType: string) => {
@@ -798,14 +822,24 @@ export function LiveClassStudio({
             </p>
           )}
 
-          {phase === "preview" && previewUrl && (
+          {phase === "preview" && (previewUrl || previewParts.length > 0) && (
             <div className="space-y-2">
-              <p className="text-sm font-medium">Preview · video {recordSlot}</p>
+              <p className="text-sm font-medium">
+                Preview · video {recordSlot}
+                {previewParts.length > 1 ? ` · part ${previewPartIndex + 1} of ${previewParts.length}` : ""}
+              </p>
               <video
+                key={previewParts.length > 0 ? previewParts[previewPartIndex] : previewUrl}
                 className="aspect-video w-full rounded-md bg-black"
-                src={previewUrl}
+                src={previewParts.length > 0 ? previewParts[previewPartIndex] : previewUrl}
                 controls
                 playsInline
+                autoPlay={previewParts.length > 1}
+                onEnded={() => {
+                  if (previewPartIndex < previewParts.length - 1) {
+                    setPreviewPartIndex((index) => index + 1);
+                  }
+                }}
               />
               {previewFile && (
                 <p className="text-xs text-muted-foreground">
@@ -910,9 +944,15 @@ export function LiveClassStudio({
                 <Button type="button" variant="outline" onClick={discardPreview}>
                   Discard
                 </Button>
-                <Button type="button" onClick={() => void uploadRecording()}>
-                  <UploadCloud className="mr-2 h-4 w-4" /> Upload {recordSlot}
-                </Button>
+                {previewFile ? (
+                  <Button type="button" onClick={() => void uploadRecording()}>
+                    <UploadCloud className="mr-2 h-4 w-4" /> Upload {recordSlot}
+                  </Button>
+                ) : (
+                  <Button type="button" disabled>
+                    <UploadCloud className="mr-2 h-4 w-4" /> Upload unavailable
+                  </Button>
+                )}
               </>
             )}
           </div>

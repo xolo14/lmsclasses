@@ -7,7 +7,7 @@ import {
   liveClasses,
   classRecordings,
 } from "@/lib/db/schema";
-import { eq, and, isNotNull, isNull, asc, desc, or } from "drizzle-orm";
+import { eq, and, isNotNull, isNull, asc, desc, or, inArray, sql } from "drizzle-orm";
 import {
   liveRecordingDisplayTitle,
   liveRecordingSlotsFromRow,
@@ -290,11 +290,33 @@ export async function getStudentCourseContent(studentId: string, courseId: strin
 
   if (liveEnrollment) {
     const batchId = liveEnrollment.batchId ?? null;
+    try {
+      await db
+        .update(liveClasses)
+        .set({ status: "completed" })
+        .where(
+          and(
+            eq(liveClasses.courseId, courseId),
+            isNull(liveClasses.deletedAt),
+            inArray(liveClasses.status, ["scheduled", "live"]),
+            sql`(${liveClasses.scheduledAt} + (COALESCE(${liveClasses.duration}, 60) * INTERVAL '1 minute')) < NOW()`
+          )
+        );
+    } catch (err) {
+      console.error("[getStudentCourseContent] auto-complete failed:", err);
+    }
     const [liveClassList, liveRecordings, batchClassRecordings] = await Promise.all([
       getLiveClassesForStudent(batchId),
       getLiveClassRecordingsForStudent(batchId),
       getBatchClassRecordings(courseId, batchId),
     ]);
+    const batchKeys = new Set(
+      batchClassRecordings.map((row) => row.videoUrl.trim()).filter(Boolean)
+    );
+    const liveClassRecordings = liveRecordings.filter((row) => {
+      const key = row.recordingUrl?.trim();
+      return !!key && !batchKeys.has(key);
+    });
     return {
       courseTitle: liveEnrollment.courseTitle,
       courseType: "live",
@@ -307,7 +329,7 @@ export async function getStudentCourseContent(studentId: string, courseId: strin
       },
       courseRecordings: [],
       liveClasses: liveClassList,
-      liveClassRecordings: liveRecordings,
+      liveClassRecordings,
       batchClassRecordings,
     };
   }

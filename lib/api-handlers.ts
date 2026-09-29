@@ -2857,7 +2857,12 @@ export async function GETStudentLiveClasses(
       recordingUrl: r.videoUrl,
       status: "completed",
     }));
-    return NextResponse.json([...mapped, ...studioRows]);
+    const batchKeys = new Set(mapped.map((row) => row.recordingUrl.trim()).filter(Boolean));
+    const uniqueStudio = studioRows.filter((row) => {
+      const key = row.recordingUrl?.trim();
+      return !!key && !batchKeys.has(key);
+    });
+    return NextResponse.json([...mapped, ...uniqueStudio]);
   }
 
   return NextResponse.json(studioRows);
