@@ -175,46 +175,39 @@ export function StudentCourseDetail({
         </div>
       </div>
 
-      {courseId && (
+      {courseId && courseCerts.length > 0 && (
         <Card>
           <CardContent className="py-4">
             <div className="flex items-start gap-3">
               <Award className="h-5 w-5 text-primary mt-0.5" />
               <div className="flex-1">
                 <p className="font-medium">Certificate</p>
-                {courseCerts.length > 0 ? (
-                  <div className="mt-2 space-y-2">
-                    {courseCerts.map((c) => (
-                      <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                        <div>
-                          <p className="font-mono text-primary">{c.certificateNumber}</p>
-                          <p className="text-muted-foreground">
-                            Generated {formatDate(c.issuedAt)}
-                            {c.isLocked && c.unlockAt
-                              ? ` · Unlocks ${formatDate(c.unlockAt)}`
-                              : ""}
-                          </p>
-                        </div>
-                        {c.isLocked ? (
-                          <Button size="sm" variant="secondary" disabled>
-                            <Lock className="mr-1 h-3.5 w-3.5" /> Locked
-                          </Button>
-                        ) : (
-                          <Button size="sm" variant="secondary" asChild>
-                            <a href={`/api/certificates/${c.id}/download`}>
-                              <Download className="mr-1 h-3.5 w-3.5" /> Download
-                            </a>
-                          </Button>
-                        )}
+                <div className="mt-2 space-y-2">
+                  {courseCerts.map((c) => (
+                    <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <div>
+                        <p className="font-mono text-primary">{c.certificateNumber}</p>
+                        <p className="text-muted-foreground">
+                          Generated {formatDate(c.issuedAt)}
+                          {c.isLocked && c.unlockAt
+                            ? ` · Unlocks ${formatDate(c.unlockAt)}`
+                            : ""}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    With auto-issue, your certificate is generated on enrollment (locked) and
-                    unlocks after course duration — then you can download and receive email.
-                  </p>
-                )}
+                      {c.isLocked ? (
+                        <Button size="sm" variant="secondary" disabled>
+                          <Lock className="mr-1 h-3.5 w-3.5" /> Locked
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="secondary" asChild>
+                          <a href={`/api/certificates/${c.id}/download`}>
+                            <Download className="mr-1 h-3.5 w-3.5" /> Download
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </CardContent>
