@@ -9,7 +9,7 @@ import {
 } from "@/lib/db/schema";
 import { eq, and, isNotNull, isNull, asc, desc, or } from "drizzle-orm";
 import {
-  liveRecordingSlotTitle,
+  liveRecordingDisplayTitle,
   liveRecordingSlotsFromRow,
 } from "@/lib/live-recording-slots";
 import { withLiveRecordingSlotColumns } from "@/lib/live-recording-query";
@@ -227,15 +227,16 @@ export async function getLiveClassRecordingsForStudent(batchId: string | null) {
         .orderBy(asc(liveClasses.scheduledAt))
   );
 
-  return rows.flatMap((row) =>
-    liveRecordingSlotsFromRow(row).map((slot) => ({
+  return rows.flatMap((row) => {
+    const slots = liveRecordingSlotsFromRow(row);
+    return slots.map((slot) => ({
       id: `${row.id}-${slot.slot}`,
-      title: liveRecordingSlotTitle(row.title, slot.slot),
+      title: liveRecordingDisplayTitle(row.title, slot.slot, slots.length),
       scheduledAt: row.scheduledAt,
       recordingUrl: slot.url,
       duration: row.duration,
-    }))
-  );
+    }));
+  });
 }
 
 /** Batch class recordings (Recording Classes uploads) for a live-course batch. */

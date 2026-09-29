@@ -40,8 +40,9 @@ import {
 import {
   firstEmptyLiveRecordingSlot,
   LIVE_RECORDING_SLOTS,
-  liveRecordingSlotTitle,
+  liveRecordingDisplayTitle,
   liveRecordingSlotsFromRow,
+  liveRecordingWatchLabel,
   type LiveRecordingSlot,
 } from "@/lib/live-recording-slots";
 import {
@@ -269,29 +270,40 @@ export function LiveClassStudio({
   };
 
   const presentBlob = (blob: Blob) => {
-    const title = liveRecordingSlotTitle(liveClass?.title || "live-class", recordSlot);
+    const existingSlots = liveClass ? liveRecordingSlotsFromRow(liveClass) : [];
+    const replacing = existingSlots.some((s) => s.slot === recordSlot);
+    const slotCount = replacing ? existingSlots.length : existingSlots.length + 1;
+    const title = liveRecordingDisplayTitle(liveClass?.title || "live-class", recordSlot, slotCount);
     const file = new File([blob], recordingFilename(title), {
       type: blob.type || "video/webm",
     });
     showPreview(file, null);
-    void (async () => {
-      try {
-        const meta = await saveLiveTake({
-          liveClassId,
-          title,
-          blob,
-          durationSeconds: Math.floor(accumulatedMsRef.current / 1000),
-        });
-        currentTakeIdRef.current = meta.id;
-        await refreshTakes();
-      } catch (err) {
-        setWarning(
-          err instanceof Error && /quota|Quota/i.test(err.message)
-            ? "This computer is out of space for local drafts. Upload now or delete old History items."
-            : "Could not keep this take in History. Upload it now or it will be lost if you leave."
-        );
-      }
-    })();
+    if (blob.size > 200 * 1024 * 1024) {
+      setWarning(
+        "This take is too large to keep in History on this computer. Upload it now or it will be lost if you leave."
+      );
+      return;
+    }
+    window.setTimeout(() => {
+      void (async () => {
+        try {
+          const meta = await saveLiveTake({
+            liveClassId,
+            title,
+            blob,
+            durationSeconds: Math.floor(accumulatedMsRef.current / 1000),
+          });
+          currentTakeIdRef.current = meta.id;
+          await refreshTakes();
+        } catch (err) {
+          setWarning(
+            err instanceof Error && /quota|Quota/i.test(err.message)
+              ? "This computer is out of space for local drafts. Upload now or delete old History items."
+              : "Could not keep this take in History. Upload it now or it will be lost if you leave."
+          );
+        }
+      })();
+    }, 0);
   };
 
   const finishToPreview = async (blobType: string) => {
@@ -307,7 +319,12 @@ export function LiveClassStudio({
       return;
     }
 
-    setWarning("");
+    const joined = segmentsRef.current.length;
+    setWarning(
+      joined > 1
+        ? "Sharing stopped in the middle, so this preview joins those parts without re-encoding. If it does not play through, record the class again in one take."
+        : ""
+    );
     const blob = await stitchVideoBlobs(segmentsRef.current);
     segmentsRef.current = [];
     if (blob.size < 1024) {
@@ -432,7 +449,7 @@ export function LiveClassStudio({
       });
     }
 
-    recorder.start(1000);
+    recorder.start(5000);
     startedAtRef.current = Date.now();
     startTick();
     setPhase("recording");
@@ -847,11 +864,13 @@ export function LiveClassStudio({
                     variant="outline"
                     onClick={() => {
                       setWatchUrl(slot.url);
-                      setWatchTitle(`${liveClass.title} (${slot.slot})`);
+                      setWatchTitle(
+                        liveRecordingDisplayTitle(liveClass.title, slot.slot, filledSlots.length)
+                      );
                       setWatchOpen(true);
                     }}
                   >
-                    <Play className="mr-2 h-4 w-4" /> Watch {slot.slot}
+                    <Play className="mr-2 h-4 w-4" /> {liveRecordingWatchLabel(slot.slot, filledSlots.length)}
                   </Button>
                 ))}
               </>

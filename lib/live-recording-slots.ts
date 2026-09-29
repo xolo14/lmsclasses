@@ -37,3 +37,16 @@ export function firstEmptyLiveRecordingSlot(row: LiveRecordingRow): LiveRecordin
 export function liveRecordingSlotTitle(title: string, slot: LiveRecordingSlot) {
   return `${title} (${slot})`;
 }
+
+/** One studio video uses the class title only; two or three add (A) / (B) / (C). */
+export function liveRecordingDisplayTitle(
+  title: string,
+  slot: LiveRecordingSlot,
+  slotCount: number
+) {
+  return slotCount > 1 ? liveRecordingSlotTitle(title, slot) : title;
+}
+
+export function liveRecordingWatchLabel(slot: LiveRecordingSlot, slotCount: number) {
+  return slotCount > 1 ? `Watch ${slot}` : "Watch";
+}

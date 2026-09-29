@@ -15,7 +15,11 @@ import { Circle, Copy, ExternalLink, Play, Plus } from "lucide-react";
 import { AddMentorLiveClassModal } from "@/components/modals/AddMentorLiveClassModal";
 import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 import { openMeetPopup } from "@/lib/live-class-recorder";
-import { liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
+import {
+  liveRecordingDisplayTitle,
+  liveRecordingSlotsFromRow,
+  liveRecordingWatchLabel,
+} from "@/lib/live-recording-slots";
 
 type LiveClass = {
   id: string;
@@ -101,14 +105,19 @@ export default function MentorLiveClassesPage() {
         </Link>
       </Button>
       {opts?.showWatch &&
-        liveRecordingSlotsFromRow(row).map((slot) => (
+        liveRecordingSlotsFromRow(row).map((slot, _, slots) => (
         <Button
           key={slot.slot}
           variant="outline"
           size="sm"
-          onClick={() => setWatchRecording({ url: slot.url, title: `${row.title} (${slot.slot})` })}
+          onClick={() =>
+            setWatchRecording({
+              url: slot.url,
+              title: liveRecordingDisplayTitle(row.title, slot.slot, slots.length),
+            })
+          }
         >
-          <Play className="h-3 w-3 mr-1" /> Watch {slot.slot}
+          <Play className="h-3 w-3 mr-1" /> {liveRecordingWatchLabel(slot.slot, slots.length)}
         </Button>
       ))}
     </div>

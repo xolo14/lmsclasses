@@ -7,8 +7,14 @@ import { requireAuth } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
 import { readApiJson } from "@/lib/api-url-transport";
 import { videoReferenceSchema } from "@/lib/validations/video-reference";
-import { liveRecordingColumn, liveRecordingSlotTitle, type LiveRecordingSlot } from "@/lib/live-recording-slots";
-import { liveRecordingSlotColumnsMissing } from "@/lib/live-recording-query";
+import {
+  liveRecordingColumn,
+  liveRecordingDisplayTitle,
+  liveRecordingSlotTitle,
+  liveRecordingSlotsFromRow,
+  type LiveRecordingSlot,
+} from "@/lib/live-recording-slots";
+import { liveRecordingSlotColumnsMissing, withLiveRecordingSlotColumns } from "@/lib/live-recording-query";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,8 +62,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "You can only save recordings for your own classes." }, { status: 403 });
   }
 
-  const topicName = liveRecordingSlotTitle(existing.title, recordingSlot);
-
   try {
     const [updated] = await db
       .update(liveClasses)
@@ -69,6 +73,34 @@ export async function POST(request: Request) {
       .where(eq(liveClasses.id, liveClassId))
       .returning({ id: liveClasses.id, recordingUrl: liveClasses.recordingUrl, status: liveClasses.status });
 
+    const slotRows = await withLiveRecordingSlotColumns(
+      () =>
+        db
+          .select({
+            recordingUrl: liveClasses.recordingUrl,
+            recordingUrlB: liveClasses.recordingUrlB,
+            recordingUrlC: liveClasses.recordingUrlC,
+          })
+          .from(liveClasses)
+          .where(eq(liveClasses.id, liveClassId))
+          .limit(1),
+      async () => {
+        const rows = await db
+          .select({ recordingUrl: liveClasses.recordingUrl })
+          .from(liveClasses)
+          .where(eq(liveClasses.id, liveClassId))
+          .limit(1);
+        return rows.map((row) => ({ ...row, recordingUrlB: null, recordingUrlC: null }));
+      }
+    );
+    const nextRow = {
+      recordingUrl: recordingSlot === "A" ? recordingUrl : slotRows[0]?.recordingUrl ?? null,
+      recordingUrlB: recordingSlot === "B" ? recordingUrl : slotRows[0]?.recordingUrlB ?? null,
+      recordingUrlC: recordingSlot === "C" ? recordingUrl : slotRows[0]?.recordingUrlC ?? null,
+    };
+    const slotCount = liveRecordingSlotsFromRow(nextRow).length;
+    const topicName = liveRecordingDisplayTitle(existing.title, recordingSlot, slotCount);
+
     if (existing.batchId) {
       try {
         const copyWhere = and(
@@ -77,17 +109,46 @@ export async function POST(request: Request) {
           eq(classRecordings.weekName, "Live recording"),
           isNull(classRecordings.deletedAt)
         );
+        if (slotCount > 1) {
+          const [plainA] = await db
+            .select({ id: classRecordings.id })
+            .from(classRecordings)
+            .where(and(copyWhere, eq(classRecordings.topicName, existing.title)))
+            .limit(1);
+          if (plainA) {
+            await db
+              .update(classRecordings)
+              .set({ topicName: liveRecordingSlotTitle(existing.title, "A") })
+              .where(eq(classRecordings.id, plainA.id));
+          }
+        }
         const [copy] = await db
           .select({ id: classRecordings.id })
           .from(classRecordings)
-          .where(and(copyWhere, eq(classRecordings.topicName, topicName)))
+          .where(
+            and(
+              copyWhere,
+              eq(
+                classRecordings.topicName,
+                slotCount > 1 ? liveRecordingSlotTitle(existing.title, recordingSlot) : existing.title
+              )
+            )
+          )
           .limit(1);
         const [legacy] =
           !copy && recordingSlot === "A"
             ? await db
                 .select({ id: classRecordings.id })
                 .from(classRecordings)
-                .where(and(copyWhere, eq(classRecordings.topicName, existing.title)))
+                .where(
+                  and(
+                    copyWhere,
+                    eq(
+                      classRecordings.topicName,
+                      slotCount > 1 ? existing.title : liveRecordingSlotTitle(existing.title, "A")
+                    )
+                  )
+                )
                 .limit(1)
             : [undefined];
         const targetId = copy?.id ?? legacy?.id;

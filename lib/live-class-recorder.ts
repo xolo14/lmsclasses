@@ -108,72 +108,6 @@ export const LIVE_RECORD_VIDEO_BPS = 1_200_000;
 export const LIVE_RECORD_AUDIO_BPS = 96_000;
 export const LIVE_RECORD_TOTAL_BPS = 1_300_000;
 
-/**
- * Downscale any captured tab to 1280×720 so MediaRecorder never encodes 1080p.
- */
-async function scaleVideoTo720p(source: MediaStream): Promise<{ stream: MediaStream; stop: () => void }> {
-  const video = document.createElement("video");
-  video.muted = true;
-  video.playsInline = true;
-  video.autoplay = true;
-  video.setAttribute("playsinline", "");
-  video.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0";
-  video.srcObject = new MediaStream(source.getVideoTracks());
-  document.body.appendChild(video);
-  try {
-    await video.play();
-  } catch {
-    /* draw loop still starts once frames arrive */
-  }
-
-  const canvas = document.createElement("canvas");
-  canvas.width = LIVE_RECORD_WIDTH;
-  canvas.height = LIVE_RECORD_HEIGHT;
-  const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
-  if (!ctx) {
-    video.srcObject = null;
-    video.remove();
-    return { stream: source, stop: () => undefined };
-  }
-
-  let raf = 0;
-  let running = true;
-  const draw = () => {
-    if (!running) return;
-    const sw = video.videoWidth;
-    const sh = video.videoHeight;
-    if (sw > 0 && sh > 0) {
-      const scale = Math.min(LIVE_RECORD_WIDTH / sw, LIVE_RECORD_HEIGHT / sh);
-      const w = Math.round(sw * scale);
-      const h = Math.round(sh * scale);
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, LIVE_RECORD_WIDTH, LIVE_RECORD_HEIGHT);
-      ctx.drawImage(
-        video,
-        Math.floor((LIVE_RECORD_WIDTH - w) / 2),
-        Math.floor((LIVE_RECORD_HEIGHT - h) / 2),
-        w,
-        h
-      );
-    }
-    raf = requestAnimationFrame(draw);
-  };
-  draw();
-
-  const canvasStream = canvas.captureStream(LIVE_RECORD_FPS);
-  return {
-    stream: canvasStream,
-    stop: () => {
-      running = false;
-      cancelAnimationFrame(raf);
-      video.pause();
-      video.srcObject = null;
-      video.remove();
-      stopMediaStream(canvasStream);
-    },
-  };
-}
-
 export function createLiveMediaRecorder(stream: MediaStream, mimeType: string): MediaRecorder {
   const attempts: MediaRecorderOptions[] = [
     {
@@ -200,105 +134,15 @@ export function createLiveMediaRecorder(stream: MediaStream, mimeType: string): 
   throw lastError instanceof Error ? lastError : new Error("Could not start the recorder.");
 }
 
-/** Join paused/interrupted segments into one file for preview and upload. */
+/**
+ * Join segments without re-encoding. Replaying a class through a canvas
+ * freezes the tab for as long as the recording.
+ */
 export async function stitchVideoBlobs(parts: Blob[]): Promise<Blob> {
   const usable = parts.filter((p) => p.size >= 1024);
   if (usable.length === 0) return new Blob([], { type: "video/webm" });
   if (usable.length === 1) return usable[0]!;
-
-  const fallback = () => new Blob(usable, { type: usable[0]!.type || "video/webm" });
-  const mimeType = pickRecorderMimeType({ audio: true }) || "video/webm";
-  const video = document.createElement("video");
-  video.playsInline = true;
-  video.setAttribute("playsinline", "");
-  video.preload = "auto";
-  video.volume = 1;
-  video.style.cssText =
-    "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
-  document.body.appendChild(video);
-
-  const urls = usable.map((p) => URL.createObjectURL(p));
-  const revoke = () => {
-    for (const url of urls) URL.revokeObjectURL(url);
-    video.removeAttribute("src");
-    video.load();
-    video.remove();
-  };
-
-  try {
-    video.src = urls[0]!;
-    await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("Could not read a recording segment."));
-    });
-
-    const w = video.videoWidth || LIVE_RECORD_WIDTH;
-    const h = video.videoHeight || LIVE_RECORD_HEIGHT;
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d", { alpha: false });
-    if (!ctx) {
-      revoke();
-      return fallback();
-    }
-
-    let drawing = true;
-    const draw = () => {
-      if (!drawing) return;
-      if (video.readyState >= 2) ctx.drawImage(video, 0, 0, w, h);
-      requestAnimationFrame(draw);
-    };
-    draw();
-
-    const canvasStream = canvas.captureStream(LIVE_RECORD_FPS);
-    const mixed = new MediaStream(canvasStream.getVideoTracks());
-    const audioCtx = new AudioContext();
-    if (audioCtx.state === "suspended") await audioCtx.resume().catch(() => undefined);
-    const dest = audioCtx.createMediaStreamDestination();
-    const elSrc = audioCtx.createMediaElementSource(video);
-    elSrc.connect(dest);
-    for (const track of dest.stream.getAudioTracks()) mixed.addTrack(track);
-
-    const recChunks: Blob[] = [];
-    const recorder = createLiveMediaRecorder(mixed, mimeType);
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) recChunks.push(event.data);
-    };
-    const stopped = new Promise<Blob>((resolve) => {
-      recorder.onstop = () =>
-        resolve(new Blob(recChunks, { type: recorder.mimeType || mimeType }));
-    });
-    recorder.start(500);
-
-    for (let i = 0; i < urls.length; i++) {
-      if (i > 0) {
-        video.src = urls[i]!;
-        await new Promise<void>((resolve, reject) => {
-          video.onloadeddata = () => resolve();
-          video.onerror = () => reject(new Error("Could not read a recording segment."));
-        });
-      }
-      await video.play();
-      await new Promise<void>((resolve, reject) => {
-        video.onended = () => resolve();
-        video.onerror = () => reject(new Error("Could not play a recording segment."));
-      });
-    }
-
-    if (recorder.state !== "inactive") recorder.stop();
-    const out = await stopped;
-    drawing = false;
-    stopMediaStream(canvasStream);
-    stopMediaStream(mixed);
-    elSrc.disconnect();
-    void audioCtx.close().catch(() => undefined);
-    revoke();
-    return out.size >= 1024 ? out : fallback();
-  } catch {
-    revoke();
-    return fallback();
-  }
+  return new Blob(usable, { type: usable[0]!.type || "video/webm" });
 }
 
 /**
@@ -340,7 +184,7 @@ export async function captureMeetTab(): Promise<MeetCapture> {
       frameRate: { ideal: LIVE_RECORD_FPS, max: LIVE_RECORD_FPS },
     });
   } catch {
-    /* Chrome often ignores display-media max; canvas scale below still forces 720p */
+    /* Chrome often ignores display-media size caps. Bitrate still limits file size. */
   }
 
   enableTracks(display.getAudioTracks());
@@ -363,15 +207,13 @@ export async function captureMeetTab(): Promise<MeetCapture> {
 
   const micAudio = mic?.getAudioTracks().filter((t) => t.readyState === "live") ?? [];
   const mixed = await mixAudioTracks([...tabAudio, ...micAudio]);
-  const scaled = await scaleVideoTo720p(display);
 
   const stream = new MediaStream();
-  for (const track of scaled.stream.getVideoTracks()) stream.addTrack(track);
+  stream.addTrack(sourceVideoTrack);
   const audioTracks = mixed.stream?.getAudioTracks() ?? [];
   for (const track of audioTracks) stream.addTrack(track);
 
   const stop = () => {
-    scaled.stop();
     mixed.stop();
     stopMediaStream(display);
     stopMediaStream(mic);

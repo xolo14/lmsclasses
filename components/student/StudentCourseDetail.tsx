@@ -10,7 +10,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayerModal } from "@/components/student/VideoPlayerModal";
 import { prefetchVideoUrl } from "@/lib/video-prefetch";
 import { formatDate, formatDateTime } from "@/lib/utils";
-import { liveClassHasAnyRecording, liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
+import {
+  liveClassHasAnyRecording,
+  liveRecordingDisplayTitle,
+  liveRecordingSlotsFromRow,
+  liveRecordingWatchLabel,
+} from "@/lib/live-recording-slots";
 
 type CourseContent = {
   enrollment: {
@@ -327,7 +332,7 @@ export function StudentCourseDetail({
                               </Button>
                             )}
                             {cls.status === "completed" &&
-                              liveRecordingSlotsFromRow(cls).map((slot) => (
+                              liveRecordingSlotsFromRow(cls).map((slot, _, slots) => (
                               <Button
                                 key={slot.slot}
                                 size="sm"
@@ -335,10 +340,13 @@ export function StudentCourseDetail({
                                 onMouseEnter={() => prefetchVideoUrl(slot.url)}
                                 onFocus={() => prefetchVideoUrl(slot.url)}
                                 onClick={() =>
-                                  setVideo({ url: slot.url, title: `${cls.title} (${slot.slot})` })
+                                  setVideo({
+                                    url: slot.url,
+                                    title: liveRecordingDisplayTitle(cls.title, slot.slot, slots.length),
+                                  })
                                 }
                               >
-                                Watch {slot.slot}
+                                {liveRecordingWatchLabel(slot.slot, slots.length)}
                               </Button>
                             ))}
                           </td>

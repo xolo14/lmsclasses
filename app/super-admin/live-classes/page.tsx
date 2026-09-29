@@ -16,7 +16,11 @@ import { EditLiveClassModal } from "@/components/modals/EditLiveClassModal";
 import { formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { openMeetPopup } from "@/lib/live-class-recorder";
-import { liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
+import {
+  liveRecordingDisplayTitle,
+  liveRecordingSlotsFromRow,
+  liveRecordingWatchLabel,
+} from "@/lib/live-recording-slots";
 
 type LiveClass = {
   id: string;
@@ -170,11 +174,15 @@ export default function LiveClassesPage() {
                 onClick={() =>
                   setWatchRecording({
                     url: slot.url,
-                    title: `${row.original.title} (${slot.slot})`,
+                    title: liveRecordingDisplayTitle(
+                      row.original.title,
+                      slot.slot,
+                      slots.length
+                    ),
                   })
                 }
               >
-                <Play className="h-3 w-3 mr-1" /> Watch {slot.slot}
+                <Play className="h-3 w-3 mr-1" /> {liveRecordingWatchLabel(slot.slot, slots.length)}
               </Button>
             ))}
           </div>

@@ -33,7 +33,7 @@ import { generatePassword, generateLmsId } from "@/lib/razorpay";
 import { softDeleteOrganisationCascade } from "@/lib/organisation-cascade";
 import { freeOneSlot, consumeOneSlot, getSlotSummary, resolveCourse } from "@/lib/enrollment-service";
 import { getBatchClassRecordings, hasClassRecordingAccess, hasLiveAccess } from "@/lib/content-access";
-import { liveRecordingSlotTitle, liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
+import { liveRecordingDisplayTitle, liveRecordingSlotsFromRow } from "@/lib/live-recording-slots";
 import {
   liveRecordingSlotColumnsMissing,
   setLiveRecordingSlotColumnsAvailable,
@@ -2834,14 +2834,15 @@ export async function GETStudentLiveClasses(
 
   const studioRows =
     tab === "recordings"
-      ? classes.flatMap((row) =>
-          liveRecordingSlotsFromRow(row).map((slot) => ({
+      ? classes.flatMap((row) => {
+          const slots = liveRecordingSlotsFromRow(row);
+          return slots.map((slot) => ({
             ...row,
             id: `${row.id}-${slot.slot}`,
-            title: liveRecordingSlotTitle(row.title, slot.slot),
+            title: liveRecordingDisplayTitle(row.title, slot.slot, slots.length),
             recordingUrl: slot.url,
-          }))
-        )
+          }));
+        })
       : classes;
 
   if (tab === "recordings" && enrollment.batchId) {
