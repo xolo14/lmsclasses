@@ -10,6 +10,8 @@ import {
   getPlatformConnection,
   isGmailAddress,
   isGoogleConfigured,
+  getGoogleOAuthStatus,
+  type GoogleOAuthStatus,
   revokeAndDeleteConnection,
   revokeAndDeletePlatformConnection,
   scopesGranted,
@@ -24,6 +26,8 @@ import { getDefaultMeetMode, getPlatformGoogleEmail, type DefaultMeetMode } from
 export type GoogleStatusPayload = {
   /** Env vars present — when false the UI shows "not configured" instead of a connect button. */
   configured: boolean;
+  /** Google Calendar/Meet OAuth only. Video uploads use a separate GCS service account. */
+  oauth: GoogleOAuthStatus;
   /** Whether this role can own a Google calendar event. Students always get false. */
   canHost: boolean;
   connected: boolean;
@@ -51,11 +55,57 @@ export type GoogleStatusPayload = {
   } | null;
 };
 
+export function emptyGoogleStatus(role: Role, configured = isGoogleConfigured()): GoogleStatusPayload {
+  const platformEmail = getPlatformGoogleEmail();
+  const canHost = canHostLiveClass(role);
+  const oauth = getGoogleOAuthStatus();
+  return {
+    configured: configured && oauth.configured,
+    oauth,
+    canHost,
+    connected: false,
+    status: null,
+    googleEmail: null,
+    connectedAt: null,
+    lastUsedAt: null,
+    lastError: null,
+    scopes: { calendarEvents: false, freebusy: false },
+    freebusyEnabled: freeBusyEnabled(),
+    isGmail: false,
+    integrationsPath: integrationsPathForRole(role),
+    platformEmail,
+    defaultMeetMode: "google_platform",
+    platformConnected: false,
+    platformIsGmail: isGmailAddress(platformEmail),
+    platform:
+      role === "super_admin"
+        ? {
+            connected: false,
+            status: null,
+            googleEmail: platformEmail,
+            connectedAt: null,
+            lastUsedAt: null,
+            lastError: null,
+            isGmail: isGmailAddress(platformEmail),
+          }
+        : null,
+  };
+}
+
 export async function getGoogleStatusForUser(userId: string, role: Role): Promise<GoogleStatusPayload> {
   const configured = isGoogleConfigured();
   const canHost = canHostLiveClass(role);
-  const [defaultMeetMode, platformRow] = await Promise.all([getDefaultMeetMode(), getPlatformConnection()]);
   const platformEmail = getPlatformGoogleEmail();
+
+  let defaultMeetMode: DefaultMeetMode = "google_platform";
+  let platformRow = null;
+  try {
+    [defaultMeetMode, platformRow] = await Promise.all([getDefaultMeetMode(), getPlatformConnection()]);
+  } catch (err) {
+    console.warn("[google-status] schema lookup failed; returning unconfigured status", err);
+    return emptyGoogleStatus(role, configured);
+  }
+
   const platform =
     role === "super_admin"
       ? {
@@ -70,19 +120,7 @@ export async function getGoogleStatusForUser(userId: string, role: Role): Promis
       : null;
 
   const base: GoogleStatusPayload = {
-    configured,
-    canHost,
-    connected: false,
-    status: null,
-    googleEmail: null,
-    connectedAt: null,
-    lastUsedAt: null,
-    lastError: null,
-    scopes: { calendarEvents: false, freebusy: false },
-    freebusyEnabled: freeBusyEnabled(),
-    isGmail: false,
-    integrationsPath: integrationsPathForRole(role),
-    platformEmail,
+    ...emptyGoogleStatus(role, configured),
     defaultMeetMode,
     platformConnected: platformRow?.status === "active",
     platformIsGmail: isGmailAddress(platformRow?.googleEmail ?? platformEmail),
@@ -90,23 +128,28 @@ export async function getGoogleStatusForUser(userId: string, role: Role): Promis
   };
   if (!canHost) return base;
 
-  const connection = await getConnection(userId);
-  if (!connection) return base;
+  try {
+    const connection = await getConnection(userId);
+    if (!connection) return base;
 
-  return {
-    ...base,
-    connected: connection.status === "active",
-    status: connection.status as GoogleConnectionStatus,
-    googleEmail: connection.googleEmail,
-    connectedAt: connection.connectedAt?.toISOString() ?? null,
-    lastUsedAt: connection.lastUsedAt?.toISOString() ?? null,
-    lastError: connection.status === "active" ? null : connection.lastError,
-    scopes: {
-      calendarEvents: scopesGranted(connection.scopes, [GOOGLE_SCOPE_CALENDAR_EVENTS]),
-      freebusy: scopesGranted(connection.scopes, [GOOGLE_SCOPE_FREEBUSY]),
-    },
-    isGmail: isGmailAddress(connection.googleEmail),
-  };
+    return {
+      ...base,
+      connected: connection.status === "active",
+      status: connection.status as GoogleConnectionStatus,
+      googleEmail: connection.googleEmail,
+      connectedAt: connection.connectedAt?.toISOString() ?? null,
+      lastUsedAt: connection.lastUsedAt?.toISOString() ?? null,
+      lastError: connection.status === "active" ? null : connection.lastError,
+      scopes: {
+        calendarEvents: scopesGranted(connection.scopes, [GOOGLE_SCOPE_CALENDAR_EVENTS]),
+        freebusy: scopesGranted(connection.scopes, [GOOGLE_SCOPE_FREEBUSY]),
+      },
+      isGmail: isGmailAddress(connection.googleEmail),
+    };
+  } catch (err) {
+    console.warn("[google-status] connection lookup failed; returning base status", err);
+    return base;
+  }
 }
 
 /**

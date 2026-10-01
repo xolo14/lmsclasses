@@ -18,8 +18,27 @@ export async function GET() {
   const { error } = await requireAuth(["super_admin"]);
   if (error) return error;
 
+  const empty = {
+    stats: {
+      configured: isGoogleConfigured(),
+      hosts: 0,
+      connected: 0,
+      needsReconnect: 0,
+      notConnected: 0,
+      upcomingMeetCreated: 0,
+      upcomingMeetPending: 0,
+      upcomingMeetFailed: 0,
+      upcomingManual: 0,
+      missingMeetLink: 0,
+      createdThisMonth: 0,
+    },
+    rows: [] as unknown[],
+  };
+
   const now = new Date();
-  const [hosts, upcoming, meetStats, createdThisMonth, failedByHost] = await Promise.all([
+  let hosts, upcoming, meetStats, createdThisMonth, failedByHost;
+  try {
+    [hosts, upcoming, meetStats, createdThisMonth, failedByHost] = await Promise.all([
     db
       .select({
         userId: users.id,
@@ -80,7 +99,11 @@ export async function GET() {
         )
       )
       .groupBy(liveClasses.hostUserId),
-  ]);
+    ]);
+  } catch (err) {
+    console.warn("[google-connections] schema lookup failed", err);
+    return NextResponse.json(empty, { headers: { "Cache-Control": "no-store" } });
+  }
 
   const upcomingByHost = new Map(upcoming.map((u) => [u.hostUserId, Number(u.count)]));
   const failedMap = new Map(failedByHost.map((u) => [u.hostUserId, Number(u.count)]));

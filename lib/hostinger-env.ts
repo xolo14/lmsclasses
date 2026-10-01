@@ -41,12 +41,11 @@ export function loadHostingerEnv(): void {
 
   if (hasCore) {
     console.log("[env] using process.env (hPanel Environment variables)");
-    return;
+  } else {
+    console.warn(
+      "[env] DATABASE_URL/AUTH_SECRET missing from process.env — trying domain-root .env fallback"
+    );
   }
-
-  console.warn(
-    "[env] DATABASE_URL/AUTH_SECRET missing from process.env — trying domain-root .env fallback"
-  );
 
   const cwd = process.cwd();
   const candidates = [
@@ -57,12 +56,13 @@ export function loadHostingerEnv(): void {
     "/home/u586955688/domains/lmsclasses.com/lms.env",
   ];
 
+  // Fill only keys that are still empty. Never override hPanel values.
   const seen = new Set<string>();
   for (const file of candidates) {
     const resolved = path.resolve(file);
     if (seen.has(resolved)) continue;
     seen.add(resolved);
-    if (parseEnvFile(resolved)) break;
+    parseEnvFile(resolved);
   }
 
   const okDb = !!process.env.DATABASE_URL?.trim();

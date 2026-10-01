@@ -91,9 +91,15 @@ export function PlatformGoogleCard({ returnTo }: { returnTo: string }) {
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : !data?.configured ? (
-          <p className="text-sm text-muted-foreground">
-            The server is missing Google OAuth settings. See <code className="text-xs">docs/GOOGLE_INTEGRATION.md</code>.
-          </p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Google Calendar/Meet OAuth is not ready. This is separate from the GCS video bucket.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {data.oauth?.reason ??
+                "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_STATE_SECRET and GOOGLE_TOKEN_ENCRYPTION_KEY, then Restart Node."}
+            </p>
+          </div>
         ) : status === "active" ? (
           <div className="space-y-3">
             <dl className="grid gap-1 text-sm">

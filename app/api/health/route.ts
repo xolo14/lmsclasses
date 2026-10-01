@@ -24,6 +24,7 @@ import {
 } from "@/lib/mail";
 import { auth } from "@/lib/auth";
 import { getGcsEnvStatus } from "@/lib/gcs";
+import { getGoogleOAuthStatus } from "@/lib/services/googleAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -165,6 +166,7 @@ async function diagnosticsHealth() {
       cron: {
         secretSet: !!process.env.CRON_SECRET?.trim(),
       },
+      oauth: getGoogleOAuthStatus(),
       gcs: getGcsEnvStatus(),
     },
     { headers: { "Cache-Control": "no-store" } }

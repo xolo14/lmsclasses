@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import { cleanEnvValue } from "@/lib/env-value";
 
 /**
  * AES-256-GCM for Google OAuth tokens at rest.
@@ -29,8 +30,8 @@ function decodeKey(raw: string): Buffer {
 /** Validates once and caches. Fails fast with a clear message if the key is missing/short. */
 export function getTokenEncryptionKey(): Buffer {
   if (cachedKey) return cachedKey;
-  const raw = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
-  if (!raw || !raw.trim()) {
+  const raw = cleanEnvValue(process.env.GOOGLE_TOKEN_ENCRYPTION_KEY);
+  if (!raw) {
     throw new Error(
       "GOOGLE_TOKEN_ENCRYPTION_KEY is not set. Google Calendar features are disabled until it is configured."
     );

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { systemSettings } from "@/lib/db/schema";
+import { cleanEnvValue } from "@/lib/env-value";
 
 export const DEFAULT_PLATFORM_GOOGLE_EMAIL = "info@lmsclasses.com";
 export const SYSTEM_KEY_DEFAULT_MEET_MODE = "live_class_default_meet_mode";
@@ -8,7 +9,7 @@ export const SYSTEM_KEY_DEFAULT_MEET_MODE = "live_class_default_meet_mode";
 export type DefaultMeetMode = "google_platform" | "google_host";
 
 export function getPlatformGoogleEmail(): string {
-  return (process.env.PLATFORM_GOOGLE_EMAIL?.trim() || DEFAULT_PLATFORM_GOOGLE_EMAIL).toLowerCase();
+  return (cleanEnvValue(process.env.PLATFORM_GOOGLE_EMAIL) || DEFAULT_PLATFORM_GOOGLE_EMAIL).toLowerCase();
 }
 
 export function isPlatformGoogleEmail(email: string | null | undefined): boolean {

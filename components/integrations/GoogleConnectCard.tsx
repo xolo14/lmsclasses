@@ -112,10 +112,15 @@ export function GoogleConnectCard({ returnTo }: { returnTo?: string }) {
         ) : !data.canHost ? (
           <p className="text-sm text-muted-foreground">Only mentors and admins can connect Google.</p>
         ) : !data.configured ? (
-          <p className="text-sm text-muted-foreground">
-            The server is missing Google OAuth settings. Ask the Super Admin to follow{" "}
-            <code className="text-xs">docs/GOOGLE_INTEGRATION.md</code>.
-          </p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Google Calendar/Meet OAuth is not ready. Video uploads use GCS and are configured separately.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {data.oauth?.reason ??
+                "The Super Admin must set the GOOGLE_* OAuth variables (not GCP_* / GCS_*) and Restart Node."}
+            </p>
+          </div>
         ) : status === "active" ? (
           <div className="space-y-3">
             <dl className="grid gap-1 text-sm">

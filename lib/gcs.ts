@@ -1,13 +1,14 @@
 import { createPrivateKey } from "crypto";
 import { Storage } from "@google-cloud/storage";
 import { contentTypeForVideoKey } from "@/lib/video-duration";
+import { cleanEnvValue } from "@/lib/env-value";
 
 const DEFAULT_BUCKET = "lmsclasses-videos";
 
 let storageClient: Storage | null = null;
 
 export function getBucketName(): string {
-  return process.env.GCS_BUCKET_NAME?.trim() || DEFAULT_BUCKET;
+  return cleanEnvValue(process.env.GCS_BUCKET_NAME) || DEFAULT_BUCKET;
 }
 
 function stripWrappingQuotes(value: string): string {
@@ -238,8 +239,8 @@ export function resolveGcpCredentials(): GcpCredentials | null {
       privateKeyRaw = extractPrivateKeyFromJsonText(cleaned) || undefined;
     }
 
-    projectId = projectId || process.env.GCP_PROJECT_ID?.trim() || "";
-    clientEmail = clientEmail || process.env.GCP_CLIENT_EMAIL?.trim() || "";
+    projectId = projectId || cleanEnvValue(process.env.GCP_PROJECT_ID) || "";
+    clientEmail = clientEmail || cleanEnvValue(process.env.GCP_CLIENT_EMAIL) || "";
     const privateKey = normalizeGcpPrivateKey(privateKeyRaw);
     if (!projectId || !clientEmail.includes("@") || !privateKey) return null;
     try {
@@ -250,22 +251,22 @@ export function resolveGcpCredentials(): GcpCredentials | null {
     }
   };
 
-  const jsonB64 = decodeBase64Env(process.env.GCP_SERVICE_ACCOUNT_JSON_BASE64);
+  const jsonB64 = decodeBase64Env(cleanEnvValue(process.env.GCP_SERVICE_ACCOUNT_JSON_BASE64));
   if (jsonB64) {
     const creds = tryFromJson(jsonB64, "json_b64");
     if (creds) return creds;
   }
 
-  const jsonRaw = process.env.GCP_SERVICE_ACCOUNT_JSON?.trim();
+  const jsonRaw = cleanEnvValue(process.env.GCP_SERVICE_ACCOUNT_JSON);
   if (jsonRaw) {
     const creds = tryFromJson(jsonRaw, "json");
     if (creds) return creds;
   }
 
-  const projectId = process.env.GCP_PROJECT_ID?.trim() || "";
-  const clientEmail = process.env.GCP_CLIENT_EMAIL?.trim() || "";
+  const projectId = cleanEnvValue(process.env.GCP_PROJECT_ID);
+  const clientEmail = cleanEnvValue(process.env.GCP_CLIENT_EMAIL);
 
-  const keyB64 = decodeBase64Env(process.env.GCP_PRIVATE_KEY_BASE64);
+  const keyB64 = decodeBase64Env(cleanEnvValue(process.env.GCP_PRIVATE_KEY_BASE64));
   if (keyB64 && projectId && clientEmail.includes("@")) {
     const privateKey = normalizeGcpPrivateKey(keyB64);
     if (privateKey) {
@@ -296,10 +297,10 @@ export function resolveGcpCredentials(): GcpCredentials | null {
 }
 
 export function getGcsEnvStatus() {
-  const projectId = process.env.GCP_PROJECT_ID?.trim() || "";
-  const clientEmail = process.env.GCP_CLIENT_EMAIL?.trim() || "";
+  const projectId = cleanEnvValue(process.env.GCP_PROJECT_ID);
+  const clientEmail = cleanEnvValue(process.env.GCP_CLIENT_EMAIL);
   const privateKeyRaw = process.env.GCP_PRIVATE_KEY?.trim() || "";
-  const jsonRaw = process.env.GCP_SERVICE_ACCOUNT_JSON?.trim() || "";
+  const jsonRaw = cleanEnvValue(process.env.GCP_SERVICE_ACCOUNT_JSON);
   const keyProbe = probePrivateKeyEnv(process.env.GCP_PRIVATE_KEY);
   const creds = resolveGcpCredentials();
 
@@ -333,9 +334,10 @@ export function getGcsEnvStatus() {
     privateKeyCryptoOk,
     privateKeyCryptoError,
     serviceAccountJsonSet: jsonRaw.length > 0,
-    serviceAccountJsonBase64Set: !!process.env.GCP_SERVICE_ACCOUNT_JSON_BASE64?.trim(),
-    privateKeyBase64Set: !!process.env.GCP_PRIVATE_KEY_BASE64?.trim(),
+    serviceAccountJsonBase64Set: !!cleanEnvValue(process.env.GCP_SERVICE_ACCOUNT_JSON_BASE64),
+    privateKeyBase64Set: !!cleanEnvValue(process.env.GCP_PRIVATE_KEY_BASE64),
     credentialSource: creds?.source ?? null,
+    serviceAccount: creds?.clientEmail ?? null,
     bucketName: getBucketName(),
     configured: !!creds,
   };

@@ -7,6 +7,7 @@ import { logAction } from "@/lib/audit";
 import { getPlatformGoogleEmail } from "@/lib/google-platform";
 import { integrationsPathForRole } from "@/lib/utils";
 import { decrypt, encrypt, isTokenEncryptionConfigured } from "@/lib/services/crypto";
+import { cleanEnvValue } from "@/lib/env-value";
 import {
   GoogleConfigError,
   GoogleNotConnectedError,
@@ -74,17 +75,64 @@ type GoogleEnv = {
 };
 
 function readEnv(): GoogleEnv | null {
-  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
-  const stateSecret = process.env.GOOGLE_STATE_SECRET?.trim();
+  const clientId = cleanEnvValue(process.env.GOOGLE_CLIENT_ID);
+  const clientSecret = cleanEnvValue(process.env.GOOGLE_CLIENT_SECRET);
+  const redirectUri = cleanEnvValue(process.env.GOOGLE_REDIRECT_URI);
+  const stateSecret = cleanEnvValue(process.env.GOOGLE_STATE_SECRET);
   if (!clientId || !clientSecret || !redirectUri || !stateSecret) return null;
   return { clientId, clientSecret, redirectUri, stateSecret };
 }
 
+export type GoogleOAuthStatus = {
+  configured: boolean;
+  clientIdSet: boolean;
+  clientSecretSet: boolean;
+  redirectUriSet: boolean;
+  redirectUri: string | null;
+  stateSecretSet: boolean;
+  encryptionKeySet: boolean;
+  encryptionKeyValid: boolean;
+  missing: string[];
+  reason: string | null;
+};
+
+/** Google Calendar/Meet OAuth only — never includes GCS bucket credentials. */
+export function getGoogleOAuthStatus(): GoogleOAuthStatus {
+  const env = readEnv();
+  const encryptionKeySet = !!cleanEnvValue(process.env.GOOGLE_TOKEN_ENCRYPTION_KEY);
+  const encryptionKeyValid = isTokenEncryptionConfigured();
+  const missing: string[] = [];
+  if (!env?.clientId) missing.push("GOOGLE_CLIENT_ID");
+  if (!env?.clientSecret) missing.push("GOOGLE_CLIENT_SECRET");
+  if (!env?.redirectUri) missing.push("GOOGLE_REDIRECT_URI");
+  if (!env?.stateSecret) missing.push("GOOGLE_STATE_SECRET");
+  if (!encryptionKeyValid) missing.push("GOOGLE_TOKEN_ENCRYPTION_KEY");
+
+  let reason: string | null = null;
+  if (missing.length) {
+    reason =
+      encryptionKeySet && !encryptionKeyValid
+        ? "GOOGLE_TOKEN_ENCRYPTION_KEY is set but is not 32 bytes (base64 or 64-char hex). This is OAuth token encryption only — not GCS."
+        : `Google OAuth is incomplete: ${missing.join(", ")}. GCS_BUCKET_NAME / GCP_* are a separate video-storage setup.`;
+  }
+
+  return {
+    configured: missing.length === 0,
+    clientIdSet: !!env?.clientId,
+    clientSecretSet: !!env?.clientSecret,
+    redirectUriSet: !!env?.redirectUri,
+    redirectUri: env?.redirectUri || null,
+    stateSecretSet: !!env?.stateSecret,
+    encryptionKeySet,
+    encryptionKeyValid,
+    missing,
+    reason,
+  };
+}
+
 /** True when every env var needed for Google OAuth is present and the encryption key is valid. */
 export function isGoogleConfigured(): boolean {
-  return readEnv() !== null && isTokenEncryptionConfigured();
+  return getGoogleOAuthStatus().configured;
 }
 
 export function getGoogleEnv(): GoogleEnv {
