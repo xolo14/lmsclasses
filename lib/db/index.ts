@@ -13,8 +13,8 @@ class CustomLogger {
 async function runIgnored(task: () => Promise<unknown>) {
   try {
     await task();
-  } catch {
-    /* schema may already exist or a later statement will add it */
+  } catch (err) {
+    console.warn("[db-migrate]", err instanceof Error ? err.message : err);
   }
 }
 

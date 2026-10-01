@@ -79,6 +79,27 @@ async function consumeSlot(slotId: string): Promise<boolean> {
   return !!updated;
 }
 
+function liveClassGoogleColumnsMissing(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /meet_status|host_user_id|google_organizer_email|meet_error|calendar_html_link|google_event_id|google_calendar_id|google_synced_at|retry_count|last_attempt_at|google_request_version|invalid input value for enum/i.test(
+    msg
+  );
+}
+
+const LIVE_CLASS_CORE_RETURNING = {
+  id: liveClasses.id,
+  title: liveClasses.title,
+  courseId: liveClasses.courseId,
+  batchId: liveClasses.batchId,
+  mentorId: liveClasses.mentorId,
+  meetingLink: liveClasses.meetingLink,
+  scheduledAt: liveClasses.scheduledAt,
+  duration: liveClasses.duration,
+  status: liveClasses.status,
+  createdBy: liveClasses.createdBy,
+  createdAt: liveClasses.createdAt,
+};
+
 export async function autoCompletePastLiveClasses(filters?: { courseId?: string; mentorId?: string }) {
   const conditions = [
     isNull(liveClasses.deletedAt),
@@ -2134,18 +2155,22 @@ export async function GETLiveClasses(request: Request) {
     setLiveRecordingSlotColumnsAvailable(true);
     return NextResponse.json(result);
   } catch (err) {
-    if (!liveRecordingSlotColumnsMissing(err)) throw err;
     setLiveRecordingSlotColumnsAvailable(false);
-    console.error("[GETLiveClasses] falling back without extra recording columns", err);
-    const result = await db
-      .select(coreSelect)
-      .from(liveClasses)
-      .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
-      .leftJoin(batches, eq(liveClasses.batchId, batches.id))
-      .leftJoin(users, eq(liveClasses.mentorId, users.id))
-      .where(where)
-      .orderBy(desc(liveClasses.scheduledAt));
-    return NextResponse.json(result.map((row) => ({ ...row, recordingUrlB: null, recordingUrlC: null })));
+    console.error("[GETLiveClasses] falling back without extra live-class columns", err);
+    try {
+      const result = await db
+        .select(coreSelect)
+        .from(liveClasses)
+        .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
+        .leftJoin(batches, eq(liveClasses.batchId, batches.id))
+        .leftJoin(users, eq(liveClasses.mentorId, users.id))
+        .where(where)
+        .orderBy(desc(liveClasses.scheduledAt));
+      return NextResponse.json(result.map((row) => ({ ...row, recordingUrlB: null, recordingUrlC: null })));
+    } catch (coreErr) {
+      console.error("[GETLiveClasses] core query failed", coreErr);
+      return NextResponse.json({ error: "Could not load live classes." }, { status: 500 });
+    }
   }
 }
 
@@ -2252,6 +2277,7 @@ export async function POSTLiveClass(request: Request) {
   const hostCheck = await validateExplicitHost(parsed.data.hostUserId, session!.user);
   if (hostCheck) return hostCheck;
 
+  try {
   const scheduledAt = parseDatetimeLocalAsIst(parsed.data.scheduledAt);
   const hasManual = !!(parsed.data.manualMeetLink?.trim() || parsed.data.meetingLink?.trim());
   const requestedMeetMode = parsed.data.meetMode ?? (hasManual ? "manual" : await getDefaultMeetMode());
@@ -2289,7 +2315,7 @@ export async function POSTLiveClass(request: Request) {
     duration: parsed.data.duration,
     createdBy: session!.user.id,
   };
-  let liveClass: typeof liveClasses.$inferSelect;
+  let liveClass: { id: string } | undefined;
   try {
     const [row] = await db
       .insert(liveClasses)
@@ -2304,16 +2330,23 @@ export async function POSTLiveClass(request: Request) {
     liveClass = row;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const missingGoogleCols = /meet_status|host_user_id|google_organizer_email|meet_error/i.test(message);
-    if (!missingGoogleCols) {
+    if (!liveClassGoogleColumnsMissing(err)) {
       console.error("[live-class] insert failed", err);
       return NextResponse.json(
         { error: "Could not save the live class. Check the title, course, mentor, and time, then try again." },
         { status: 500 }
       );
     }
-    const [row] = await db.insert(liveClasses).values(baseValues).returning();
-    liveClass = row;
+    try {
+      const [row] = await db.insert(liveClasses).values(baseValues).returning(LIVE_CLASS_CORE_RETURNING);
+      liveClass = row;
+    } catch (fallbackErr) {
+      console.error("[live-class] core insert failed", fallbackErr, message);
+      return NextResponse.json(
+        { error: "Could not save the live class. Check the title, course, mentor, and time, then try again." },
+        { status: 500 }
+      );
+    }
   }
   if (!liveClass) {
     return NextResponse.json({ error: "Could not save the live class." }, { status: 500 });
@@ -2345,6 +2378,13 @@ export async function POSTLiveClass(request: Request) {
   })();
 
   return NextResponse.json(liveClass, { status: 201 });
+  } catch (err) {
+    console.error("[POSTLiveClass]", err);
+    return NextResponse.json(
+      { error: "Could not save the live class. Check the title, course, mentor, and time, then try again." },
+      { status: 500 }
+    );
+  }
 }
 
 /**

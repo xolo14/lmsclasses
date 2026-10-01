@@ -119,7 +119,9 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
                 ? "The server timed out. Refresh Upcoming — the class may already be saved."
                 : res.status === 403
                   ? "The host blocked the request. Try a simpler title, or create again."
-                  : "Failed to create live class"
+                  : res.status === 500
+                    ? "The server could not save the class. Refresh the page — it may already be there."
+                    : "Failed to create live class"
         );
       }
       return json;
