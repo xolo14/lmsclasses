@@ -30,7 +30,7 @@ Use the **left menu** in this order: **Branding → Audience → Data Access →
 3. User support email: `info@lmsclasses.com`.
 4. App logo: optional.
 5. App home page: `https://lmsclasses.com`.
-6. Privacy policy: a public URL on `lmsclasses.com` (Google requires a real page).
+6. Privacy policy: `https://lmsclasses.com/privacy`.
 7. Authorized domains: add `lmsclasses.com`.
 8. Developer contact: `info@lmsclasses.com`.
 9. **Save**.
