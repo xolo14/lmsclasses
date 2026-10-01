@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AddLiveClassModal } from "@/components/modals/AddLiveClassModal";
 import { EditLiveClassModal } from "@/components/modals/EditLiveClassModal";
+import { MeetLinkCell } from "@/components/live-classes/MeetLinkCell";
 import { formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { openMeetPopup } from "@/lib/live-class-recorder";
@@ -38,6 +39,12 @@ type LiveClass = {
   recordingUrlB?: string | null;
   recordingUrlC?: string | null;
   duration?: number;
+  hostUserId?: string | null;
+  googleOrganizerEmail?: string | null;
+  hostName?: string | null;
+  meetStatus?: string | null;
+  meetError?: string | null;
+  calendarHtmlLink?: string | null;
 };
 
 function statusBadge(status: string) {
@@ -153,6 +160,11 @@ export default function LiveClassesPage() {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => statusBadge(row.original.status),
+    },
+    {
+      accessorKey: "meetStatus",
+      header: "Meet",
+      cell: ({ row }) => <MeetLinkCell row={row.original} />,
     },
   ];
 

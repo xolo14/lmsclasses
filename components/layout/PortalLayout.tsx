@@ -3,6 +3,7 @@
 import { useState, useEffect, isValidElement, cloneElement } from "react";
 import { usePathname } from "next/navigation";
 import { TopBar } from "@/components/layout/TopBar";
+import { ReconnectBanner } from "@/components/integrations/ReconnectBanner";
 import { cn } from "@/lib/utils";
 
 interface PortalLayoutProps {
@@ -80,7 +81,10 @@ export function PortalLayout({
               aria-hidden
             />
           ) : null}
-          <div className="relative z-10 p-4 sm:p-6 safe-bottom">{children}</div>
+          <div className="relative z-10 p-4 sm:p-6 safe-bottom">
+            <ReconnectBanner userRole={userRole} />
+            {children}
+          </div>
         </main>
       </div>
     </div>

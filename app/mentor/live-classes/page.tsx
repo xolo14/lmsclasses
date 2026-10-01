@@ -11,8 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDateTime } from "@/lib/utils";
-import { Circle, Copy, ExternalLink, Play, Plus } from "lucide-react";
+import { CalendarDays, Circle, ExternalLink, List, Play, Plus } from "lucide-react";
+import { LmsCalendar } from "@/components/calendar/LmsCalendar";
 import { AddMentorLiveClassModal } from "@/components/modals/AddMentorLiveClassModal";
+import { MeetLinkCell } from "@/components/live-classes/MeetLinkCell";
 import { WatchRecordingModal } from "@/components/modals/WatchRecordingModal";
 import { openMeetPopup } from "@/lib/live-class-recorder";
 import {
@@ -33,6 +35,10 @@ type LiveClass = {
   recordingUrlB?: string | null;
   recordingUrlC?: string | null;
   status: string;
+  meetStatus?: string | null;
+  meetError?: string | null;
+  calendarHtmlLink?: string | null;
+  googleOrganizerEmail?: string | null;
 };
 
 type MentorCourseResponse = {
@@ -55,6 +61,7 @@ export default function MentorLiveClassesPage() {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [watchRecording, setWatchRecording] = useState<{ url: string; title: string } | null>(null);
+  const [view, setView] = useState<"table" | "calendar">("table");
 
   const { data: courseData } = useQuery<MentorCourseResponse>({
     queryKey: ["mentor-course"],
@@ -171,18 +178,7 @@ export default function MentorLiveClassesPage() {
     {
       accessorKey: "meetingLink",
       header: "Meeting",
-      cell: ({ row }) =>
-        row.original.meetingLink ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigator.clipboard.writeText(row.original.meetingLink!)}
-          >
-            <Copy className="h-3 w-3 mr-1" /> Copy
-          </Button>
-        ) : (
-          "—"
-        ),
+      cell: ({ row }) => <MeetLinkCell row={row.original} />,
     },
   ];
 
@@ -206,13 +202,36 @@ export default function MentorLiveClassesPage() {
           </p>
         </div>
 
-        {assignedCourse && session?.user && (
-          <Button onClick={() => setModalOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Add Live Class
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-md border p-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "table" ? "default" : "ghost"}
+              onClick={() => setView("table")}
+            >
+              <List className="h-4 w-4 mr-1" /> List
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={view === "calendar" ? "default" : "ghost"}
+              onClick={() => setView("calendar")}
+            >
+              <CalendarDays className="h-4 w-4 mr-1" /> Calendar view
+            </Button>
+          </div>
+          {assignedCourse && session?.user && (
+            <Button onClick={() => setModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" /> Add Live Class
+            </Button>
+          )}
+        </div>
       </div>
 
+      {view === "calendar" && <LmsCalendar role="mentor" editHref="/mentor/live-classes" includePast={false} />}
+
+      {view === "table" && (
       <Tabs defaultValue="active" className="space-y-4">
         <TabsList>
           <TabsTrigger value="active">Upcoming ({activeClasses.length})</TabsTrigger>
@@ -241,6 +260,7 @@ export default function MentorLiveClassesPage() {
           )}
         </TabsContent>
       </Tabs>
+      )}
 
       {assignedCourse && session?.user && (
         <AddMentorLiveClassModal

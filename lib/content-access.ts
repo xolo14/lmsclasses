@@ -154,6 +154,8 @@ export async function getLiveClassesForStudent(batchId: string | null) {
     meetingLink: liveClasses.meetingLink,
     status: liveClasses.status,
     recordingUrl: liveClasses.recordingUrl,
+    meetStatus: liveClasses.meetStatus,
+    calendarHtmlLink: liveClasses.calendarHtmlLink,
   };
 
   return withLiveRecordingSlotColumns(

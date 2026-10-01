@@ -53,6 +53,7 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://www.googletagmanager.com https://www.google-analytics.com",
       // storage.googleapis.com: browser-direct (resumable) recorded-class video uploads to GCS.
       "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://www.google-analytics.com https://www.googletagmanager.com https://*.google-analytics.com https://storage.googleapis.com",
+      // Google OAuth consent + Calendar deep links open as top-level navigations (no frames needed).
       "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com https://drive.google.com",
       "media-src 'self' https: blob:",
       "upgrade-insecure-requests",
@@ -67,7 +68,7 @@ const nextConfig = {
   output: "standalone",
   // Prevent Hostinger parent lockfiles from shifting the workspace root.
   outputFileTracingRoot: projectRoot,
-  serverExternalPackages: ["pdfkit"],
+  serverExternalPackages: ["pdfkit", "googleapis", "google-auth-library"],
   poweredByHeader: false,
   compress: true,
   eslint: {

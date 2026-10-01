@@ -174,16 +174,68 @@ export const batchSchema = z.object({
   ),
 });
 
-export const liveClassSchema = z.object({
+/**
+ * How the class gets its video link.
+ * - google_platform:  create a Google Meet on the LMS platform account (info@lmsclasses.com)
+ * - google_host:      create a Google Meet on the host's (default: mentor's) connected calendar
+ * - google_scheduler: the person scheduling becomes the host and their Google account is used
+ * - manual:           paste any link (Zoom, existing Meet, …) — stored in meetingLink
+ * - none:             no video link
+ */
+export const meetModeSchema = z.enum(["google_platform", "google_host", "google_scheduler", "manual", "none"]);
+export type MeetMode = z.infer<typeof meetModeSchema>;
+
+const ALLOWED_MEETING_HOSTS = [
+  "meet.google.com",
+  "zoom.us",
+  "teams.microsoft.com",
+];
+
+export function isAllowedMeetingLink(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return ALLOWED_MEETING_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+  } catch {
+    return false;
+  }
+}
+
+export const liveClassFields = z.object({
   title: z.string().min(1, "Title is required"),
   courseId: z.string().uuid("Select a course"),
-  batchId: z.string().uuid().optional(),
+  batchId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   mentorId: z.string().uuid("Select a mentor"),
+  /** Legacy field — still accepted; treated as a manual link when meetMode is absent. */
   meetingLink: optionalHttpUrl,
   scheduledAt: z.string().min(1, "Schedule date is required"),
   duration: z.coerce.number().min(15).optional(),
   status: z.enum(["scheduled", "live", "completed", "cancelled"]).optional(),
   recordingUrl: optionalVideoReferenceSchema,
+  // ---- Google Calendar / Meet ----
+  /** Whose Google calendar owns the event. Defaults to mentorId server-side. */
+  hostUserId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  meetMode: z.preprocess(emptyToUndefined, meetModeSchema.optional()),
+  manualMeetLink: optionalHttpUrl,
+});
+
+export const liveClassSchema = liveClassFields.superRefine((data, ctx) => {
+  if (data.meetMode !== "manual") return;
+  const link = (data.manualMeetLink || data.meetingLink || "").trim();
+  if (!link) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Paste a meeting link",
+      path: ["manualMeetLink"],
+    });
+    return;
+  }
+  if (!isAllowedMeetingLink(link)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Use a Google Meet, Zoom, or Microsoft Teams link",
+      path: ["manualMeetLink"],
+    });
+  }
 });
 
 export const classRecordingSchema = z.object({
@@ -306,7 +358,7 @@ export type ManagerInput = z.infer<typeof managerSchema>;
 export type MentorInput = z.infer<typeof mentorSchema>;
 export type EditMentorInput = z.infer<typeof editMentorSchema>;
 export type BatchInput = z.infer<typeof batchSchema>;
-export type LiveClassInput = z.infer<typeof liveClassSchema>;
+export type LiveClassInput = z.infer<typeof liveClassFields>;
 export type StudentInput = z.infer<typeof studentSchema>;
 export type ClassRecordingInput = z.infer<typeof classRecordingSchema>;
 export type HrRegistrationInput = z.infer<typeof hrRegistrationSchema>;

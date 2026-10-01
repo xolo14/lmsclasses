@@ -37,6 +37,29 @@ function createDb(): Db {
         WHERE role = 'mentor' AND course_id IS NOT NULL
         ON CONFLICT DO NOTHING`
     )
+    // Google Calendar/Meet: classes that already carry a hand-pasted link are "manual".
+    // Runs only after `npm run db:push` created meet_status; errors are ignored until then.
+    .then(
+      () => sql`UPDATE live_classes
+        SET meet_status = 'manual'
+        WHERE meet_status = 'not_requested'
+          AND meeting_link IS NOT NULL
+          AND btrim(meeting_link) <> ''`
+    )
+    .then(() => sql`ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS google_organizer_email TEXT`)
+    .then(() => sql`ALTER TABLE google_connections ADD COLUMN IF NOT EXISTS is_platform_account BOOLEAN NOT NULL DEFAULT false`)
+    .then(() => sql`ALTER TABLE google_connections DROP CONSTRAINT IF EXISTS google_connections_user_id_unique`)
+    .then(() => sql`ALTER TABLE google_connections DROP CONSTRAINT IF EXISTS google_connections_user_id_key`)
+    .then(() => sql`DROP INDEX IF EXISTS google_connections_user_id_unique`)
+    .then(() => sql`DROP INDEX IF EXISTS google_connections_user_id_key`)
+    .then(
+      () => sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_gconn_user_personal
+        ON google_connections (user_id) WHERE is_platform_account = false`
+    )
+    .then(
+      () => sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_gconn_one_platform
+        ON google_connections (is_platform_account) WHERE is_platform_account = true`
+    )
     .catch(() => {});
 
   return drizzle(sql, {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Lock, Play, Calendar, ExternalLink, Award, Download } from "lucide-react";
+import { Lock, Play, Calendar, ExternalLink, Award, Download, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,6 +42,8 @@ type CourseContent = {
     recordingUrl: string | null;
     recordingUrlB?: string | null;
     recordingUrlC?: string | null;
+    meetStatus?: string | null;
+    calendarHtmlLink?: string | null;
   }[];
   liveClassRecordings: {
     id: string;
@@ -77,6 +79,93 @@ function sourceLabel(source: string) {
   if (source === "public") return "Self Enrolled";
   if (source === "super_admin") return "Direct Enrollment";
   return "Organisation";
+}
+
+/** Students may join 10 min before start until 30 min after the scheduled end (mirrors the join route). */
+const JOIN_OPENS_BEFORE_MS = 10 * 60_000;
+const JOIN_CLOSES_AFTER_MS = 30 * 60_000;
+
+type LiveClassRow = CourseContent["liveClasses"][number];
+
+function classEnd(cls: LiveClassRow): number {
+  return new Date(cls.scheduledAt).getTime() + (cls.duration ?? 60) * 60_000;
+}
+
+function joinWindowOpen(cls: LiveClassRow, now: number): boolean {
+  if (cls.status === "cancelled" || cls.status === "completed") return false;
+  if (cls.status === "live") return true;
+  const start = new Date(cls.scheduledAt).getTime();
+  return now >= start - JOIN_OPENS_BEFORE_MS && now <= classEnd(cls) + JOIN_CLOSES_AFTER_MS;
+}
+
+function countdownLabel(cls: LiveClassRow, now: number): string {
+  if (cls.status === "live") return "Live now";
+  const diff = new Date(cls.scheduledAt).getTime() - now;
+  if (diff <= 0) return "Starting now";
+  const mins = Math.floor(diff / 60_000);
+  const days = Math.floor(mins / 1440);
+  const hours = Math.floor((mins % 1440) / 60);
+  const rem = mins % 60;
+  if (days > 0) return `Starts in ${days}d ${hours}h`;
+  if (hours > 0) return `Starts in ${hours}h ${rem}m`;
+  return `Starts in ${Math.max(1, rem)} min`;
+}
+
+function joinHref(cls: LiveClassRow): string {
+  return `/api/live-classes/${cls.id}/join`;
+}
+
+function icsHref(cls: LiveClassRow): string {
+  return `/api/live-classes/${cls.id}/ics`;
+}
+
+function NextClassCard({ cls, now }: { cls: LiveClassRow; now: number }) {
+  const open = joinWindowOpen(cls, now);
+  const linkPending = !cls.meetingLink && (cls.meetStatus === "pending" || cls.meetStatus === "failed");
+  return (
+    <Card className="border-swiss-red/30 bg-swiss-red/5">
+      <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-swiss-red">
+            {cls.status === "live" ? "Live now" : "Next class"}
+          </p>
+          <p className="font-semibold truncate">{cls.title}</p>
+          <p className="text-sm text-muted-foreground flex items-center gap-1">
+            <Clock className="h-3.5 w-3.5" /> {formatDateTime(cls.scheduledAt)} · {cls.duration ?? 60} min ·{" "}
+            {countdownLabel(cls, now)}
+          </p>
+          {linkPending && (
+            <p className="text-xs text-amber-700 mt-1">The meeting link is still being prepared — Join will work once it is ready.</p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" asChild>
+            <a href={icsHref(cls)}>
+              <Calendar className="mr-1 h-3 w-3" /> Add to Calendar
+            </a>
+          </Button>
+          {cls.calendarHtmlLink && (
+            <Button size="sm" variant="ghost" asChild>
+              <a href={cls.calendarHtmlLink} target="_blank" rel="noreferrer">
+                Add to Google Calendar
+              </a>
+            </Button>
+          )}
+          {open ? (
+            <Button size="sm" asChild>
+              <a href={joinHref(cls)} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-1 h-3 w-3" /> Join class
+              </a>
+            </Button>
+          ) : (
+            <Button size="sm" disabled title="Opens 10 minutes before the class">
+              <ExternalLink className="mr-1 h-3 w-3" /> Join opens 10 min before
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function StudentCourseDetail({
@@ -134,18 +223,16 @@ export function StudentCourseDetail({
   const batchClassRecordings = content.batchClassRecordings ?? [];
   const liveRecordingCount = content.liveClassRecordings.length + batchClassRecordings.length;
 
-  const downloadIcs = (cls: CourseContent["liveClasses"][number]) => {
-    const start = new Date(cls.scheduledAt);
-    const end = new Date(start.getTime() + (cls.duration ?? 60) * 60_000);
-    const ics = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:${start.toISOString().replace(/[-:]/g, "").split(".")[0]}Z\nDTEND:${end.toISOString().replace(/[-:]/g, "").split(".")[0]}Z\nSUMMARY:${cls.title}\nEND:VEVENT\nEND:VCALENDAR`;
-    const blob = new Blob([ics], { type: "text/calendar" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${cls.title}.ics`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // Ticks every 30s so "Join" enables itself without a reload.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const nextClass = displayedLiveClasses
+    .filter((cls) => (cls.status === "scheduled" || cls.status === "live") && classEnd(cls) + JOIN_CLOSES_AFTER_MS > now)
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
 
   const defaultTab =
     courseType === "record"
@@ -277,6 +364,8 @@ export function StudentCourseDetail({
                   No live classes have been scheduled for your batch yet.
                 </p>
               ) : (
+                <div className="space-y-4">
+                {nextClass && <NextClassCard cls={nextClass} now={now} />}
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-left">
@@ -312,14 +401,25 @@ export function StudentCourseDetail({
                             )}
                           </td>
                           <td className="p-3">
-                            {cls.status === "scheduled" && (
-                              <Button size="sm" variant="outline" onClick={() => downloadIcs(cls)}>
-                                <Calendar className="mr-1 h-3 w-3" /> Add to Calendar
-                              </Button>
+                            {cls.status === "scheduled" && !joinWindowOpen(cls, now) && (
+                              <>
+                                <Button size="sm" variant="outline" asChild>
+                                  <a href={icsHref(cls)}>
+                                    <Calendar className="mr-1 h-3 w-3" /> Add to Calendar
+                                  </a>
+                                </Button>
+                                {cls.calendarHtmlLink && (
+                                  <Button size="sm" variant="ghost" asChild>
+                                    <a href={cls.calendarHtmlLink} target="_blank" rel="noreferrer">
+                                      Google Calendar
+                                    </a>
+                                  </Button>
+                                )}
+                              </>
                             )}
-                            {cls.status === "live" && cls.meetingLink && (
+                            {joinWindowOpen(cls, now) && (
                               <Button size="sm" asChild>
-                                <a href={cls.meetingLink} target="_blank" rel="noopener noreferrer">
+                                <a href={joinHref(cls)} target="_blank" rel="noopener noreferrer">
                                   <ExternalLink className="mr-1 h-3 w-3" /> Join Now
                                 </a>
                               </Button>
@@ -347,6 +447,7 @@ export function StudentCourseDetail({
                       ))}
                     </tbody>
                   </table>
+                </div>
                 </div>
               )}
             </TabsContent>

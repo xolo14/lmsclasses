@@ -159,6 +159,10 @@ export const organisations = pgTable("organisations", {
   logoUrl: text("logo_url"),
   isActive: boolean("is_active").default(true),
   jobPortalAccess: boolean("job_portal_access").default(true),
+  /** Send the branded LMS "class scheduled" email to the mentor in addition to Google's invite. */
+  lmsLiveClassEmailMentor: boolean("lms_live_class_email_mentor").notNull().default(true),
+  /** Send the branded LMS "class scheduled" email to students in addition to Google's invite (off: avoids duplicates). */
+  lmsLiveClassEmailStudents: boolean("lms_live_class_email_students").notNull().default(false),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -491,6 +495,27 @@ export const liveClasses = pgTable("live_classes", {
   recordingUrlC: text("recording_url_c"),
   status: liveClassStatusEnum("status").default("scheduled"),
   createdBy: uuid("created_by").references(() => users.id),
+  // ---- Google Calendar / Meet (per-user OAuth; see docs/GOOGLE_INTEGRATION.md) ----
+  /** Whose Google calendar owns the event. Defaults to mentorId; may be the scheduler. */
+  hostUserId: uuid("host_user_id").references(() => users.id),
+  /** Calendar organizer email (info@lmsclasses.com when hosted by the platform account). */
+  googleOrganizerEmail: text("google_organizer_email"),
+  googleEventId: text("google_event_id"),
+  googleCalendarId: text("google_calendar_id").default("primary"),
+  /** Google Calendar web link for "Open in Google Calendar". The Meet URL itself lives in meetingLink. */
+  calendarHtmlLink: text("calendar_html_link"),
+  meetStatus: text("meet_status", {
+    enum: ["not_requested", "pending", "created", "failed", "manual", "cancelled"],
+  })
+    .notNull()
+    .default("not_requested"),
+  meetError: text("meet_error"),
+  googleSyncedAt: timestamp("google_synced_at", { withTimezone: true }),
+  /** Google retry bookkeeping (cron /api/cron/google-retry). */
+  retryCount: integer("retry_count").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  /** Bumped when a brand-new conference must be created (host change) so requestId stays idempotent per version. */
+  googleRequestVersion: integer("google_request_version").notNull().default(1),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
@@ -501,7 +526,53 @@ export const liveClasses = pgTable("live_classes", {
   index("lc_batch_id_idx").on(table.batchId),
   // PERF: Composite — status filter + batch — used by student live class tab
   index("lc_batch_status_idx").on(table.batchId, table.status),
+  // Google: host conflict checks + calendar views
+  index("lc_host_scheduled_idx").on(table.hostUserId, table.scheduledAt),
+  // Google: retry cron picks pending/failed rows
+  index("lc_meet_status_idx").on(table.meetStatus),
 ]);
+
+export type LiveClassMeetStatus =
+  | "not_requested"
+  | "pending"
+  | "created"
+  | "failed"
+  | "manual"
+  | "cancelled";
+
+/**
+ * Per-user Google OAuth connections, plus at most one platform host row
+ * (`isPlatformAccount = true`, typically info@lmsclasses.com). Tokens are AES-256-GCM
+ * encrypted via lib/services/crypto.ts and are never returned to the client.
+ */
+export const googleConnections = pgTable("google_connections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  googleEmail: text("google_email").notNull(),
+  googleSub: text("google_sub").notNull(),
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  accessTokenEnc: text("access_token_enc"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+  scopes: text("scopes").array().notNull(),
+  status: text("status", { enum: ["active", "needs_reconnect", "revoked"] })
+    .notNull()
+    .default("active"),
+  lastError: text("last_error"),
+  /** True for the single LMS-wide host (info@lmsclasses.com). */
+  isPlatformAccount: boolean("is_platform_account").notNull().default(false),
+  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("idx_gconn_status").on(t.status),
+  index("idx_gconn_google_sub").on(t.googleSub),
+  uniqueIndex("idx_gconn_user_personal").on(t.userId).where(sql`${t.isPlatformAccount} = false`),
+  uniqueIndex("idx_gconn_one_platform").on(t.isPlatformAccount).where(sql`${t.isPlatformAccount} = true`),
+]);
+
+export type GoogleConnectionStatus = "active" | "needs_reconnect" | "revoked";
 
 export const classRecordings = pgTable("class_recordings", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -940,6 +1011,7 @@ export type StudentCourseEnrollment = StudentCourse;
 export type RecordedModuleProgress = typeof recordedModuleProgress.$inferSelect;
 export type LiveClassAttendance = typeof liveClassAttendance.$inferSelect;
 export type LiveClass = typeof liveClasses.$inferSelect;
+export type GoogleConnection = typeof googleConnections.$inferSelect;
 export type ClassRecording = typeof classRecordings.$inferSelect;
 export type CourseRecording = typeof courseRecordings.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;

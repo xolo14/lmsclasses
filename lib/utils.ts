@@ -52,6 +52,25 @@ export function toDatetimeLocalValue(date: Date | string | null | undefined): st
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
 }
 
+/** IST wall-clock as `YYYY-MM-DDTHH:mm:ss` (no offset) — for calendar UIs rendered in a fixed zone. */
+export function toIstWallClock(date: Date | string | null | undefined): string {
+  const d = asDate(date);
+  if (!d) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "00";
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  return `${get("year")}-${get("month")}-${get("day")}T${hour}:${get("minute")}:${get("second")}`;
+}
+
 /** Treat a datetime-local string as IST (UTC+05:30). ISO strings with a zone are kept as-is. */
 export function parseDatetimeLocalAsIst(value: string): Date {
   const trimmed = value.trim();
@@ -94,6 +113,25 @@ export function portalHomeForRole(role: string | undefined | null): string {
   if (role === "hr") return "/hr/dashboard";
   if (role && ROLE_ROUTES[role]) return `${ROLE_ROUTES[role]}/dashboard`;
   return "/";
+}
+
+/** Roles that may host (own the Google Calendar event of) a live class. */
+export const GOOGLE_HOST_ROLES = ["mentor", "manager", "org_admin", "super_admin"] as const;
+
+export function canHostLiveClass(role: string | undefined | null): boolean {
+  return !!role && (GOOGLE_HOST_ROLES as readonly string[]).includes(role);
+}
+
+/** Settings → Integrations page for a role (where the Google connect card lives). */
+export function integrationsPathForRole(role: string | undefined | null): string {
+  if (role && ROLE_ROUTES[role]) return `${ROLE_ROUTES[role]}/settings/integrations`;
+  return "/login";
+}
+
+/** Calendar page for a role. */
+export function calendarPathForRole(role: string | undefined | null): string {
+  if (role && ROLE_ROUTES[role]) return `${ROLE_ROUTES[role]}/calendar`;
+  return "/login";
 }
 
 export const ROLE_LABELS: Record<string, string> = {

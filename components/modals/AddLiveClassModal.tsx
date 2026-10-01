@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveClassSchema, type LiveClassInput } from "@/lib/validations";
 import { wrapApiForm } from "@/lib/api-url-transport";
+import { MeetModeSelector, type MeetModeValue } from "@/components/live-classes/MeetModeSelector";
+import { isValidManualLink, meetFieldsForSubmit } from "@/lib/live-class-meet-form";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +50,9 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
     },
   });
 
+  const [meet, setMeet] = useState<MeetModeValue>({ meetMode: "google_platform", manualMeetLink: "" });
+  const [meetError, setMeetError] = useState<string | null>(null);
+
   useEffect(() => {
     if (open) {
       reset({
@@ -60,10 +65,16 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
         duration: undefined,
         recordingUrl: "",
       });
+      setMeet({ meetMode: "google_platform", manualMeetLink: "" });
+      setMeetError(null);
     }
   }, [open, reset]);
 
   const courseId = watch("courseId");
+  const batchId = watch("batchId");
+  const mentorId = watch("mentorId");
+  const scheduledAt = watch("scheduledAt");
+  const duration = watch("duration");
 
   const { data: batches = [] } = useQuery({
     queryKey: ["batches", courseId],
@@ -77,11 +88,13 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
     enabled: open,
   });
 
+  const selectedMentor = (mentors as { id: string; name: string }[]).find((m) => m.id === mentorId) ?? null;
+
   const mutation = useMutation({
     mutationFn: async (data: LiveClassInput) => {
       const res = await fetch("/api/live-classes", {
         method: "POST",
-        body: wrapApiForm(data),
+        body: wrapApiForm({ ...data, ...meetFieldsForSubmit(meet) }),
       });
       const raw = await res.text();
       let json: { error?: unknown } = {};
@@ -112,11 +125,21 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[min(90dvh,90vh)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Live Class</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
+        <form
+          onSubmit={handleSubmit((d) => {
+            if (meet.meetMode === "manual" && !isValidManualLink(meet.manualMeetLink)) {
+              setMeetError("Paste a valid link starting with https:// or choose another option.");
+              return;
+            }
+            setMeetError(null);
+            mutation.mutate(d);
+          })}
+          className="space-y-4"
+        >
           <div className="space-y-2">
             <Label>Title</Label>
             <Input {...register("title")} />
@@ -156,10 +179,6 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Meeting Link</Label>
-            <Input {...register("meetingLink")} placeholder="https://meet.google.com/..." />
-          </div>
-          <div className="space-y-2">
             <Label>Scheduled At (IST)</Label>
             <Input type="datetime-local" {...register("scheduledAt")} />
             {errors.scheduledAt && <p className="text-sm text-destructive">{errors.scheduledAt.message}</p>}
@@ -168,6 +187,22 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
             <Label>Duration (minutes)</Label>
             <Input type="number" {...register("duration")} />
           </div>
+          <MeetModeSelector
+            value={meet}
+            onChange={(next) => {
+              setMeet(next);
+              setMeetError(null);
+            }}
+            mentor={selectedMentor}
+            scheduledAt={scheduledAt}
+            durationMinutes={duration ? Number(duration) : undefined}
+            courseId={courseId}
+            batchId={batchId}
+            manualLinkError={meetError ?? undefined}
+          />
+          {mutation.isError && (
+            <p className="text-sm text-destructive">{(mutation.error as Error)?.message || "Failed to create live class"}</p>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={mutation.isPending}>

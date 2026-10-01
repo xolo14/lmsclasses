@@ -26,6 +26,8 @@ import {
   Contact,
   Key,
   Award,
+  CalendarDays,
+  Link2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -135,6 +137,8 @@ export function SuperAdminSidebar(props: Omit<SidebarProps, "items" | "title">) 
     { label: "Coupons", href: "/super-admin/coupons", icon: Tag },
     { label: "Mentors", href: "/super-admin/mentors", icon: UserCheck },
     { label: "Live Classes", href: "/super-admin/live-classes", icon: Video },
+    { label: "Calendar", href: "/super-admin/calendar", icon: CalendarDays },
+    { label: "Google Connections", href: "/super-admin/integrations/google", icon: Link2 },
     { label: "Certificates", href: "/super-admin/certificates", icon: Award },
     { label: "Live Recordings", href: "/super-admin/recording-classes", icon: Film },
     { label: "Trash", href: "/super-admin/trash", icon: Trash2 },
@@ -156,6 +160,7 @@ export function ManagerSidebar(props: Omit<SidebarProps, "items" | "title">) {
     { label: "Batches", href: "/manager/batches", icon: Layers },
     { label: "Mentors", href: "/manager/mentors", icon: UserCheck },
     { label: "Live Classes", href: "/manager/live-classes", icon: Video },
+    { label: "Calendar", href: "/manager/calendar", icon: CalendarDays },
     { label: "Live Recordings", href: "/manager/recording-classes", icon: Film },
     { label: "Trash", href: "/manager/trash", icon: Trash2 },
     { label: "Settings", href: "/manager/settings", icon: Settings },
@@ -168,6 +173,7 @@ export function OrgAdminSidebar(props: Omit<SidebarProps, "items" | "title">) {
     { label: "Dashboard", href: "/org-admin/dashboard", icon: LayoutDashboard },
     { label: "Job Portal", href: "/org-admin/job-portal", icon: Briefcase },
     { label: "Live Courses", href: "/org-admin/courses", icon: BookOpen },
+    { label: "Calendar", href: "/org-admin/calendar", icon: CalendarDays },
     { label: "Record Courses", href: "/org-admin/record-courses", icon: Film },
     { label: "Course Demos", href: "/org-admin/demos", icon: Play },
     { label: "Live Students", href: "/org-admin/students", icon: GraduationCap },
@@ -186,6 +192,7 @@ export function MentorSidebar(props: Omit<SidebarProps, "items" | "title">) {
     { label: "Dashboard", href: "/mentor/dashboard", icon: LayoutDashboard },
     { label: "Job Portal", href: "/mentor/job-portal", icon: Briefcase },
     { label: "Live Classes", href: "/mentor/live-classes", icon: Video },
+    { label: "Calendar", href: "/mentor/calendar", icon: CalendarDays },
     { label: "Settings", href: "/mentor/settings", icon: Settings },
   ];
   return <Sidebar items={items} title="Mentor" {...props} />;
@@ -201,6 +208,7 @@ export function StudentSidebar({
 }) {
   const items: NavItem[] = [
     { label: "My Classes", href: "/student/courses", icon: Video },
+    { label: "Calendar", href: "/student/calendar", icon: CalendarDays },
     ...(hasRecordCourseEnrollment
       ? [{ label: "Live Recordings", href: "/student/recording-classes", icon: Film }]
       : []),

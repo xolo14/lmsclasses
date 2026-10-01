@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq, desc, sql, and, or, gte, lte, isNull, inArray, isNotNull, gt, ne } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import {
@@ -19,16 +20,14 @@ import {
 } from "@/lib/db/schema";
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
-import { organisationSchema, editOrganisationSchema, secondaryOrgAdminSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, studentSchema, patchStaffUserSchema, patchStudentSchema } from "@/lib/validations";
+import { organisationSchema, editOrganisationSchema, secondaryOrgAdminSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, liveClassFields, studentSchema, patchStaffUserSchema, patchStudentSchema } from "@/lib/validations";
 import { orgAdminVisibleBatches } from "@/lib/batch-scope";
 import { sendOrgAdminWelcomeEmail,
   sendStudentWelcomeEmail,
-  sendMentorLiveClassEmail,
   sendManagerWelcomeEmail,
   sendMentorWelcomeEmail,
   trySendWelcomeEmail,
 } from "@/lib/email";
-import { notifyStudentsLiveClassMeetingLink } from "@/lib/live-class-whatsapp";
 import { generatePassword, generateLmsId } from "@/lib/razorpay";
 import { softDeleteOrganisationCascade } from "@/lib/organisation-cascade";
 import { freeOneSlot, consumeOneSlot, getSlotSummary, resolveCourse } from "@/lib/enrollment-service";
@@ -39,7 +38,9 @@ import {
   setLiveRecordingSlotColumnsAvailable,
   withLiveRecordingSlotColumns,
 } from "@/lib/live-recording-query";
-import { formatDateTime, parseDatetimeLocalAsIst } from "@/lib/utils";
+import { getDefaultMeetMode } from "@/lib/google-platform";
+import { getPlatformConnection } from "@/lib/services/googleAuth";
+import { canHostLiveClass, parseDatetimeLocalAsIst } from "@/lib/utils";
 import {
   assertLiveCoursesExist,
   getMentorCourseIds,
@@ -48,6 +49,13 @@ import {
   replaceMentorCourses,
 } from "@/lib/mentor-courses";
 import { readApiJson } from "@/lib/api-url-transport";
+import {
+  cancelForClass,
+  createForClass,
+  notifyAfterMeetReady,
+  resolveMeetPlan,
+  updateForClass,
+} from "@/lib/services/liveClassGoogleSync";
 
 /** Remove a partially created student if enrollment or slot steps fail (HTTP driver has no transactions). */
 async function rollbackNewStudent(studentId: string) {
@@ -2102,16 +2110,25 @@ export async function GETLiveClasses(request: Request) {
   };
 
   try {
+    const hostUsers = alias(users, "host_users");
     const result = await db
       .select({
         ...coreSelect,
         recordingUrlB: liveClasses.recordingUrlB,
         recordingUrlC: liveClasses.recordingUrlC,
+        hostUserId: liveClasses.hostUserId,
+        hostName: hostUsers.name,
+        meetStatus: liveClasses.meetStatus,
+        meetError: liveClasses.meetError,
+        calendarHtmlLink: liveClasses.calendarHtmlLink,
+        googleEventId: liveClasses.googleEventId,
+        googleOrganizerEmail: liveClasses.googleOrganizerEmail,
       })
       .from(liveClasses)
       .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
       .leftJoin(batches, eq(liveClasses.batchId, batches.id))
       .leftJoin(users, eq(liveClasses.mentorId, users.id))
+      .leftJoin(hostUsers, eq(liveClasses.hostUserId, hostUsers.id))
       .where(where)
       .orderBy(desc(liveClasses.scheduledAt));
     setLiveRecordingSlotColumnsAvailable(true);
@@ -2149,6 +2166,11 @@ export async function GETLiveClass(_request: Request, id: string) {
     duration: liveClasses.duration,
     recordingUrl: liveClasses.recordingUrl,
     status: liveClasses.status,
+    hostUserId: liveClasses.hostUserId,
+    meetStatus: liveClasses.meetStatus,
+    meetError: liveClasses.meetError,
+    calendarHtmlLink: liveClasses.calendarHtmlLink,
+    googleOrganizerEmail: liveClasses.googleOrganizerEmail,
   };
 
   const rows = await withLiveRecordingSlotColumns(
@@ -2214,9 +2236,47 @@ export async function POSTLiveClass(request: Request) {
     }
   }
 
-  const scheduledAt = parseDatetimeLocalAsIst(parsed.data.scheduledAt);
-  const meetingLink = parsed.data.meetingLink?.trim() || null;
+  // Batch must belong to the course (prevents cross-course attendee leaks).
+  if (parsed.data.batchId) {
+    const [batchRow] = await db
+      .select({ courseId: batches.courseId })
+      .from(batches)
+      .where(and(eq(batches.id, parsed.data.batchId), isNull(batches.deletedAt)))
+      .limit(1);
+    if (!batchRow || batchRow.courseId !== parsed.data.courseId) {
+      return NextResponse.json({ error: "Selected batch does not belong to this course." }, { status: 400 });
+    }
+  }
 
+  const hostCheck = await validateExplicitHost(parsed.data.hostUserId, session!.user);
+  if (hostCheck) return hostCheck;
+
+  const scheduledAt = parseDatetimeLocalAsIst(parsed.data.scheduledAt);
+  const hasManual = !!(parsed.data.manualMeetLink?.trim() || parsed.data.meetingLink?.trim());
+  const meetMode = parsed.data.meetMode ?? (hasManual ? "manual" : await getDefaultMeetMode());
+  const plan = resolveMeetPlan({
+    meetMode,
+    explicitHostId: parsed.data.hostUserId ?? null,
+    mentorId: parsed.data.mentorId,
+    schedulerId: session!.user.id,
+    manualLink: parsed.data.manualMeetLink,
+    legacyLink: parsed.data.meetingLink,
+  });
+
+  let meetStatus = plan.meetStatus;
+  let meetError: string | null = null;
+  if (plan.usesPlatform) {
+    const platform = await getPlatformConnection();
+    if (!platform || platform.status !== "active") {
+      meetStatus = "failed";
+      meetError =
+        platform?.status === "needs_reconnect"
+          ? "Platform Google account needs to be reconnected."
+          : "Platform Google account is not connected.";
+    }
+  }
+
+  // Insert first — Google is a side effect that must never block saving the class.
   const [liveClass] = await db
     .insert(liveClasses)
     .values({
@@ -2224,10 +2284,14 @@ export async function POSTLiveClass(request: Request) {
       courseId: parsed.data.courseId,
       batchId: parsed.data.batchId || null,
       mentorId: parsed.data.mentorId,
-      meetingLink,
+      meetingLink: plan.meetingLink,
       scheduledAt,
       duration: parsed.data.duration,
       createdBy: session!.user.id,
+      hostUserId: plan.hostUserId,
+      meetStatus,
+      meetError,
+      googleOrganizerEmail: plan.googleOrganizerEmail,
     })
     .returning();
 
@@ -2237,74 +2301,61 @@ export async function POSTLiveClass(request: Request) {
     action: "CREATED_LIVE_CLASS",
     entity: "LiveClass",
     entityId: liveClass.id,
+    metadata: { meetMode, hostUserId: plan.hostUserId, organizer: plan.googleOrganizerEmail },
     ipAddress: getClientIp(request),
   });
 
-  // Email + WhatsApp must not block the HTTP response (Hostinger gateway ~30–60s).
+  const actor = { id: session!.user.id, role: session!.user.role };
+  // Google sync + email + WhatsApp must not block the HTTP response (Hostinger gateway ~30–60s).
   void (async () => {
     try {
-      const [[mentor], [course], [batch]] = await Promise.all([
-        db
-          .select({ email: users.email, name: users.name })
-          .from(users)
-          .where(eq(users.id, parsed.data.mentorId))
-          .limit(1),
-        db
-          .select({ title: liveCourses.title })
-          .from(liveCourses)
-          .where(eq(liveCourses.id, parsed.data.courseId))
-          .limit(1),
-        parsed.data.batchId
-          ? db
-              .select({ name: batches.name })
-              .from(batches)
-              .where(eq(batches.id, parsed.data.batchId))
-              .limit(1)
-          : Promise.resolve([] as Array<{ name: string }>),
-      ]);
-
-      if (mentor && course) {
-        try {
-          await sendMentorLiveClassEmail({
-            email: mentor.email,
-            mentorName: mentor.name,
-            title: parsed.data.title,
-            courseName: course.title,
-            batchName: batch?.name,
-            scheduledAt: formatDateTime(scheduledAt),
-            meetingLink: meetingLink || undefined,
-          });
-        } catch (mailErr) {
-          console.error("[live-class] mentor email failed:", mailErr);
-        }
-      }
-
-      if (meetingLink) {
-        try {
-          const wa = await notifyStudentsLiveClassMeetingLink({
-            liveClassId: liveClass.id,
-            courseId: parsed.data.courseId,
-            batchId: parsed.data.batchId || null,
-            title: parsed.data.title,
-            scheduledAt,
-            meetingLink,
-          });
-          console.log("[live-class] WhatsApp notify:", wa);
-        } catch (waErr) {
-          console.error("[live-class] WhatsApp notify failed:", waErr);
-        }
+      if (plan.usesGoogle) {
+        // createForClass notifies students/host itself once the Meet link exists.
+        await createForClass(liveClass.id, { actor });
+      } else {
+        await notifyAfterMeetReady(liveClass.id);
       }
     } catch (err) {
-      console.error("[live-class] background notify failed:", err);
+      console.error("[live-class] background sync failed:", err instanceof Error ? err.message : err);
     }
   })();
 
   return NextResponse.json(liveClass, { status: 201 });
 }
 
+/**
+ * An explicit hostUserId must be a host-capable active user; mentors may only name themselves.
+ * Returns a NextResponse on rejection, null when fine.
+ */
+async function validateExplicitHost(
+  hostUserId: string | undefined,
+  actor: { id: string; role: string }
+): Promise<NextResponse | null> {
+  if (!hostUserId) return null;
+  if (actor.role === "mentor" && hostUserId !== actor.id) {
+    return NextResponse.json({ error: "Mentors can only host their own classes." }, { status: 403 });
+  }
+  const [host] = await db
+    .select({ role: users.role, isActive: users.isActive, deletedAt: users.deletedAt })
+    .from(users)
+    .where(eq(users.id, hostUserId))
+    .limit(1);
+  if (!host || host.deletedAt || host.isActive === false || !canHostLiveClass(host.role)) {
+    return NextResponse.json({ error: "Selected host cannot own a Google Calendar event." }, { status: 400 });
+  }
+  return null;
+}
+
+const GOOGLE_MANAGED_MEET_STATUSES = ["created", "pending", "failed"] as const;
+
+function isGoogleManaged(meetStatus: string | null | undefined): boolean {
+  return (GOOGLE_MANAGED_MEET_STATUSES as readonly string[]).includes(meetStatus ?? "");
+}
+
 export async function PATCHLiveClass(request: Request, id: string) {
-  const { error, session } = await requireAuth(["super_admin", "manager"]);
+  const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
+  const actor = { id: session!.user.id, role: session!.user.role };
 
   const [existing] = await db
     .select()
@@ -2315,17 +2366,112 @@ export async function PATCHLiveClass(request: Request, id: string) {
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  // Mentors may edit only their own classes and cannot reassign them.
+  if (actor.role === "mentor" && existing.mentorId !== actor.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await readApiJson(request);
-  const parsed = liveClassSchema.partial().safeParse(body);
+  const parsed = liveClassFields.partial().safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
+  const data = parsed.data;
 
-  const updateData: Record<string, unknown> = { ...parsed.data };
-  if (parsed.data.scheduledAt) {
-    updateData.scheduledAt = parseDatetimeLocalAsIst(parsed.data.scheduledAt);
+  if (actor.role === "mentor") {
+    if (data.mentorId && data.mentorId !== existing.mentorId) {
+      return NextResponse.json({ error: "Mentors cannot reassign a class." }, { status: 403 });
+    }
+    if (data.courseId && data.courseId !== existing.courseId) {
+      return NextResponse.json({ error: "Mentors cannot move a class to another course." }, { status: 403 });
+    }
   }
+
+  const nextCourseId = data.courseId ?? existing.courseId;
+  const nextBatchId = data.batchId !== undefined ? data.batchId || null : existing.batchId;
+  if (nextBatchId && (data.batchId !== undefined || data.courseId !== undefined)) {
+    const [batchRow] = await db
+      .select({ courseId: batches.courseId })
+      .from(batches)
+      .where(and(eq(batches.id, nextBatchId), isNull(batches.deletedAt)))
+      .limit(1);
+    if (!batchRow || batchRow.courseId !== nextCourseId) {
+      return NextResponse.json({ error: "Selected batch does not belong to this course." }, { status: 400 });
+    }
+  }
+
+  const hostCheck = await validateExplicitHost(data.hostUserId, actor);
+  if (hostCheck) return hostCheck;
+
+  // ---- plain columns ----
+  const updateData: Partial<typeof liveClasses.$inferInsert> = {};
+  if (data.title !== undefined) updateData.title = data.title;
+  if (data.courseId !== undefined) updateData.courseId = data.courseId;
+  if (data.batchId !== undefined) updateData.batchId = data.batchId || null;
+  if (data.mentorId !== undefined) updateData.mentorId = data.mentorId;
+  if (data.scheduledAt) updateData.scheduledAt = parseDatetimeLocalAsIst(data.scheduledAt);
+  if (data.duration !== undefined) updateData.duration = data.duration;
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.recordingUrl !== undefined) updateData.recordingUrl = data.recordingUrl || null;
+
+  // ---- video link / Google plan ----
+  const nextMentorId = data.mentorId ?? existing.mentorId;
+  let cancelGoogleFirst = false;
+  let manualLinkChanged = false;
+  let wantsGoogle = isGoogleManaged(existing.meetStatus);
+
+  if (data.meetMode !== undefined) {
+    const plan = resolveMeetPlan({
+      meetMode: data.meetMode,
+      explicitHostId: data.hostUserId ?? null,
+      mentorId: nextMentorId,
+      schedulerId: actor.id,
+      manualLink: data.manualMeetLink,
+      legacyLink: data.meetingLink,
+    });
+
+    if (plan.usesGoogle) {
+      wantsGoogle = true;
+      updateData.hostUserId = plan.hostUserId;
+      updateData.googleOrganizerEmail = plan.googleOrganizerEmail;
+      if (!isGoogleManaged(existing.meetStatus)) {
+        // Switching from manual/none/cancelled to Google: fresh conference.
+        updateData.meetStatus = "pending";
+        updateData.meetingLink = null;
+        updateData.googleEventId = null;
+        updateData.calendarHtmlLink = null;
+        updateData.meetError = null;
+        updateData.retryCount = 0;
+        if (existing.googleEventId) {
+          updateData.googleRequestVersion = (existing.googleRequestVersion ?? 1) + 1;
+        }
+      }
+      // Same host + already created → updateForClass patches the event; host change handled there too.
+    } else {
+      wantsGoogle = false;
+      cancelGoogleFirst = isGoogleManaged(existing.meetStatus);
+      updateData.hostUserId = null;
+      updateData.googleOrganizerEmail = null;
+      updateData.meetStatus = plan.meetStatus;
+      updateData.meetingLink = plan.meetingLink;
+      updateData.meetError = null;
+      manualLinkChanged = plan.meetStatus === "manual" && (plan.meetingLink ?? "") !== (existing.meetingLink?.trim() ?? "");
+    }
+  } else if (data.meetingLink !== undefined && !isGoogleManaged(existing.meetStatus)) {
+    // Legacy payload without meetMode: treat as a manual link. Never overwrite a Google-managed link.
+    const link = data.meetingLink?.trim() || null;
+    updateData.meetingLink = link;
+    updateData.meetStatus = link ? "manual" : "not_requested";
+    manualLinkChanged = !!link && link !== (existing.meetingLink?.trim() ?? "");
+  }
+
+  if (cancelGoogleFirst) {
+    // Remove the Google event before the row forgets about it (best effort, bounded by withGoogle retries).
+    await cancelForClass(id, { actor, reason: "meet mode changed" });
+  }
+
+  // Cancelling the class removes the Google event as well.
+  const becomingCancelled = data.status === "cancelled" && existing.status !== "cancelled";
 
   const [liveClass] = await db
     .update(liveClasses)
@@ -2333,30 +2479,44 @@ export async function PATCHLiveClass(request: Request, id: string) {
     .where(eq(liveClasses.id, id))
     .returning();
 
-  const newMeetingLink = parsed.data.meetingLink?.trim();
-  const meetingLinkChanged =
-    !!newMeetingLink && newMeetingLink !== (existing.meetingLink?.trim() ?? "");
-
   await logAction({
-    userId: session!.user.id,
-    role: session!.user.role,
+    userId: actor.id,
+    role: actor.role,
     action: "UPDATED_LIVE_CLASS",
     entity: "LiveClass",
     entityId: id,
+    metadata: { fields: Object.keys(updateData), meetMode: data.meetMode ?? null },
     ipAddress: getClientIp(request),
   });
 
-  if (meetingLinkChanged && liveClass) {
-    void notifyStudentsLiveClassMeetingLink({
-      liveClassId: liveClass.id,
-      courseId: liveClass.courseId,
-      batchId: liveClass.batchId,
-      title: liveClass.title,
-      scheduledAt: liveClass.scheduledAt ?? new Date(),
-      meetingLink: newMeetingLink,
-    })
-      .then((wa) => console.log("[live-class] WhatsApp notify (update):", wa))
-      .catch((waErr) => console.error("[live-class] WhatsApp notify (update) failed:", waErr));
+  if (liveClass) {
+    const previous = {
+      hostUserId: existing.hostUserId,
+      scheduledAt: existing.scheduledAt,
+      duration: existing.duration,
+      title: existing.title,
+      batchId: existing.batchId,
+      courseId: existing.courseId,
+      meetStatus: existing.meetStatus,
+      googleEventId: existing.googleEventId,
+      googleOrganizerEmail: existing.googleOrganizerEmail,
+      googleCalendarId: existing.googleCalendarId,
+    };
+    void (async () => {
+      try {
+        if (becomingCancelled) {
+          await cancelForClass(id, { actor, reason: "class cancelled" });
+          return;
+        }
+        if (wantsGoogle && !cancelGoogleFirst) {
+          await updateForClass(id, previous, { actor });
+        } else if (manualLinkChanged) {
+          await notifyAfterMeetReady(id);
+        }
+      } catch (err) {
+        console.error("[live-class] background update sync failed:", err instanceof Error ? err.message : err);
+      }
+    })();
   }
 
   return NextResponse.json(liveClass);
@@ -2365,17 +2525,23 @@ export async function PATCHLiveClass(request: Request, id: string) {
 export async function DELETELiveClass(request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
+  const actor = { id: session!.user.id, role: session!.user.role };
 
   await db.update(liveClasses).set({ deletedAt: new Date() }).where(eq(liveClasses.id, id));
 
   await logAction({
-    userId: session!.user.id,
-    role: session!.user.role,
+    userId: actor.id,
+    role: actor.role,
     action: "DELETED_LIVE_CLASS",
     entity: "LiveClass",
     entityId: id,
     ipAddress: getClientIp(request),
   });
+
+  // Remove the Google event (attendees get Google's cancellation). Soft-deleted row is still readable.
+  void cancelForClass(id, { actor, reason: "class deleted" }).catch((err) =>
+    console.error("[live-class] cancel Google event on delete failed:", err instanceof Error ? err.message : err)
+  );
 
   return NextResponse.json({ success: true });
 }

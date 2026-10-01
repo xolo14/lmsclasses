@@ -12,6 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MetaWhatsAppCard } from "@/components/super-admin/MetaWhatsAppCard";
+import Link from "next/link";
+import { CalendarCheck, ChevronRight } from "lucide-react";
+import { canHostLiveClass, integrationsPathForRole } from "@/lib/utils";
 
 type ProfileInput = z.infer<typeof profileSchema>;
 type PasswordInput = z.infer<typeof changePasswordSchema>;
@@ -161,6 +164,24 @@ export function SettingsPage() {
           </div>
         </CardHeader>
       </Card>
+
+      {canHostLiveClass(role) && (
+        <Link
+          href={integrationsPathForRole(role)}
+          className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4 hover:bg-swiss-cream transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <CalendarCheck className="h-5 w-5 text-sky-600" />
+            <div>
+              <p className="font-semibold">Integrations</p>
+              <p className="text-sm text-muted-foreground">
+                Google Calendar &amp; Meet — automatic Meet links and invites for your live classes.
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+      )}
 
       {role === "super_admin" && <MetaWhatsAppCard />}
 

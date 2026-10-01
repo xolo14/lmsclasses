@@ -736,3 +736,170 @@ export async function sendCertificateEmail(params: {
     attachments: [{ filename: pdfFilename, content: pdfBuffer }],
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* Google Calendar / Meet integration                                  */
+/* ------------------------------------------------------------------ */
+
+function googleEmailShell(title: string, bodyHtml: string): string {
+  return `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #0f172a; color: #fff; padding: 20px 24px; border-radius: 8px 8px 0 0;">
+          <h2 style="margin: 0; font-size: 20px;">${escapeHtml(appName)}</h2>
+        </div>
+        <div style="background: #ffffff; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px; color: #334155; line-height: 1.6;">
+          <p style="font-size: 17px; font-weight: 600; color: #0f172a; margin-top: 0;">${escapeHtml(title)}</p>
+          ${bodyHtml}
+          <p style="color:#64748b;font-size:12px;margin-top:24px">— ${escapeHtml(appName)} (info@lmsclasses.com)</p>
+        </div>
+      </div>`;
+}
+
+function emailButton(href: string, label: string): string {
+  return `<p style="margin: 24px 0;"><a href="${escapeHtml(href)}" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600;">${escapeHtml(label)}</a></p>`;
+}
+
+/** Sent once when a user's Google connection flips to needs_reconnect (revoked / expired). */
+export async function sendGoogleReconnectEmail({
+  email,
+  name,
+  reason,
+  integrationsPath,
+}: {
+  email: string;
+  name: string;
+  reason?: string;
+  integrationsPath: string;
+}) {
+  const url = `${appUrl}${integrationsPath}`;
+  await sendEmail({
+    to: email,
+    subject: `Action needed: reconnect Google Calendar on ${appName}`,
+    html: googleEmailShell(
+      `Hi ${name},`,
+      `
+          <p>Your Google Calendar connection on ${escapeHtml(appName)} has stopped working, so new live classes
+          cannot get a Google Meet link until you reconnect.</p>
+          ${reason ? `<p style="color:#64748b;font-size:14px;">Reason: ${escapeHtml(reason)}</p>` : ""}
+          ${emailButton(url, "Reconnect Google Calendar")}
+          <p style="font-size:14px;color:#64748b;">Classes that are already scheduled keep their existing Meet links.</p>`
+    ),
+  });
+}
+
+/** Sent to a host who has a class waiting on a Google connection (and by the Super Admin reminder action). */
+export async function sendGoogleHostConnectEmail({
+  email,
+  name,
+  classTitle,
+  scheduledAt,
+  integrationsPath,
+}: {
+  email: string;
+  name: string;
+  classTitle?: string;
+  scheduledAt?: string;
+  integrationsPath: string;
+}) {
+  const url = `${appUrl}${integrationsPath}`;
+  await sendEmail({
+    to: email,
+    subject: classTitle
+      ? `Connect Google to create the Meet link for "${classTitle}"`
+      : `Connect Google Calendar on ${appName}`,
+    html: googleEmailShell(
+      `Hi ${name},`,
+      `
+          ${
+            classTitle
+              ? `<p>The live class <strong>${escapeHtml(classTitle)}</strong>${scheduledAt ? ` scheduled for <strong>${escapeHtml(scheduledAt)}</strong>` : ""} is waiting for a Google Meet link.</p>`
+              : `<p>Connect your Google account so ${escapeHtml(appName)} can create Google Meet links and calendar invites for your live classes automatically.</p>`
+          }
+          <p>Connect your Google account once and we will create the calendar event and Meet link on your calendar automatically.</p>
+          ${emailButton(url, "Connect Google Calendar")}`
+    ),
+  });
+}
+
+/**
+ * Branded "class scheduled" email. Uses the LMS join URL (never the raw Meet link) so access is
+ * enforced server-side and attendance is recorded.
+ */
+export async function sendLiveClassScheduledEmail({
+  email,
+  name,
+  classTitle,
+  courseName,
+  batchName,
+  scheduledAt,
+  durationMinutes,
+  joinUrl,
+  calendarHtmlLink,
+  isHost,
+}: {
+  email: string;
+  name: string;
+  classTitle: string;
+  courseName: string;
+  batchName?: string | null;
+  scheduledAt: string;
+  durationMinutes?: number | null;
+  joinUrl: string;
+  calendarHtmlLink?: string | null;
+  isHost?: boolean;
+}) {
+  await sendEmail({
+    to: email,
+    subject: `${isHost ? "You're hosting" : "Live class"}: ${classTitle} — ${scheduledAt}`,
+    html: googleEmailShell(
+      `Hi ${name},`,
+      `
+          <p>${isHost ? "You are hosting a live class." : "A live class has been scheduled for you."}</p>
+          <ul style="padding-left: 18px;">
+            <li><strong>Class:</strong> ${escapeHtml(classTitle)}</li>
+            <li><strong>Course:</strong> ${escapeHtml(courseName)}</li>
+            ${batchName ? `<li><strong>Batch:</strong> ${escapeHtml(batchName)}</li>` : ""}
+            <li><strong>When:</strong> ${escapeHtml(scheduledAt)}</li>
+            ${durationMinutes ? `<li><strong>Duration:</strong> ${durationMinutes} minutes</li>` : ""}
+          </ul>
+          ${emailButton(joinUrl, "Join class")}
+          <p style="font-size:14px;color:#64748b;">The join button opens 10 minutes before the class starts.</p>
+          ${
+            calendarHtmlLink && isHost
+              ? `<p style="font-size:14px;"><a href="${escapeHtml(calendarHtmlLink)}">Open in Google Calendar</a></p>`
+              : ""
+          }`
+    ),
+  });
+}
+
+/** Sent to the host and Super Admins when Meet creation has failed 5 times. */
+export async function sendGoogleMeetFailureEmail({
+  email,
+  name,
+  classTitle,
+  scheduledAt,
+  error,
+  classPath,
+}: {
+  email: string;
+  name: string;
+  classTitle: string;
+  scheduledAt: string;
+  error: string;
+  classPath: string;
+}) {
+  await sendEmail({
+    to: email,
+    subject: `Meet link could not be created: ${classTitle}`,
+    html: googleEmailShell(
+      `Hi ${name},`,
+      `
+          <p>${escapeHtml(appName)} tried five times to create a Google Meet link for
+          <strong>${escapeHtml(classTitle)}</strong> (${escapeHtml(scheduledAt)}) and gave up.</p>
+          <p style="color:#64748b;font-size:14px;">Last error: ${escapeHtml(error)}</p>
+          <p>Open the class and either retry, reconnect Google, or paste a meeting link manually.</p>
+          ${emailButton(`${appUrl}${classPath}`, "Open live classes")}`
+    ),
+  });
+}

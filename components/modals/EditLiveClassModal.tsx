@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveClassSchema, type LiveClassInput } from "@/lib/validations";
 import { wrapApiForm } from "@/lib/api-url-transport";
 import { toDatetimeLocalValue } from "@/lib/utils";
+import { MeetModeSelector, type MeetModeValue } from "@/components/live-classes/MeetModeSelector";
+import { isValidManualLink, meetFieldsForSubmit, meetValueFromExisting } from "@/lib/live-class-meet-form";
+import { useGoogleStatus } from "@/lib/hooks/useGoogle";
+import { MeetStatusBadge } from "@/components/live-classes/MeetStatusBadge";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +40,12 @@ type LiveClass = {
   duration?: number | null;
   status?: string;
   recordingUrl?: string | null;
+  hostUserId?: string | null;
+  hostName?: string | null;
+  meetStatus?: string | null;
+  meetError?: string | null;
+  calendarHtmlLink?: string | null;
+  googleOrganizerEmail?: string | null;
 };
 
 export function EditLiveClassModal({
@@ -53,6 +63,14 @@ export function EditLiveClassModal({
   });
 
   const courseId = watch("courseId");
+  const batchId = watch("batchId");
+  const mentorId = watch("mentorId");
+  const scheduledAt = watch("scheduledAt");
+  const duration = watch("duration");
+
+  const [meet, setMeet] = useState<MeetModeValue>({ meetMode: "none", manualMeetLink: "" });
+  const [meetError, setMeetError] = useState<string | null>(null);
+  const googleStatus = useGoogleStatus();
 
   const { data: batches = [] } = useQuery({
     queryKey: ["batches", courseId],
@@ -79,14 +97,18 @@ export function EditLiveClassModal({
         status: (liveClass.status as LiveClassInput["status"]) || "scheduled",
         recordingUrl: liveClass.recordingUrl || "",
       });
+      setMeet(meetValueFromExisting(liveClass, googleStatus.data?.platformEmail));
+      setMeetError(null);
     }
-  }, [liveClass, reset]);
+  }, [liveClass, reset, googleStatus.data?.platformEmail]);
+
+  const selectedMentor = (mentors as { id: string; name: string }[]).find((m) => m.id === mentorId) ?? null;
 
   const mutation = useMutation({
     mutationFn: async (data: LiveClassInput) => {
       const res = await fetch(`/api/live-classes/${liveClass!.id}`, {
         method: "PATCH",
-        body: wrapApiForm(data),
+        body: wrapApiForm({ ...data, ...meetFieldsForSubmit(meet) }),
       });
       const raw = await res.text();
       let json: { error?: unknown } = {};
@@ -122,7 +144,28 @@ export function EditLiveClassModal({
         <DialogHeader>
           <DialogTitle>Edit Live Class</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
+        <form
+          onSubmit={handleSubmit((d) => {
+            if (meet.meetMode === "manual" && !isValidManualLink(meet.manualMeetLink)) {
+              setMeetError("Paste a valid link starting with https:// or choose another option.");
+              return;
+            }
+            setMeetError(null);
+            mutation.mutate(d);
+          })}
+          className="space-y-4"
+        >
+          {liveClass.meetStatus && liveClass.meetStatus !== "not_requested" && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>Google Meet:</span>
+              <MeetStatusBadge status={liveClass.meetStatus} error={liveClass.meetError} />
+              {liveClass.calendarHtmlLink && (
+                <a href={liveClass.calendarHtmlLink} target="_blank" rel="noreferrer" className="underline">
+                  Open in Google Calendar
+                </a>
+              )}
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Title</Label>
             <Input {...register("title")} />
@@ -161,10 +204,26 @@ export function EditLiveClassModal({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Meeting Link</Label>
-            <Input {...register("meetingLink")} />
-          </div>
+          <MeetModeSelector
+            value={meet}
+            onChange={(next) => {
+              setMeet(next);
+              setMeetError(null);
+            }}
+            mentor={selectedMentor}
+            existing={{
+              hostUserId: liveClass.hostUserId ?? null,
+              hostName: liveClass.hostName ?? null,
+              meetStatus: liveClass.meetStatus ?? null,
+              meetingLink: liveClass.meetingLink ?? null,
+            }}
+            scheduledAt={scheduledAt}
+            durationMinutes={duration ? Number(duration) : undefined}
+            courseId={courseId}
+            batchId={batchId}
+            excludeClassId={liveClass.id}
+            manualLinkError={meetError ?? undefined}
+          />
           <div className="space-y-2">
             <Label>Recording URL</Label>
             <Input {...register("recordingUrl")} placeholder="aiml/video1.mp4 or https://youtube.com/..." />
@@ -180,9 +239,12 @@ export function EditLiveClassModal({
             <Label>Duration (minutes)</Label>
             <Input type="number" {...register("duration")} />
           </div>
+          {mutation.isError && (
+            <p className="text-sm text-destructive">{(mutation.error as Error)?.message || "Failed to update live class"}</p>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={mutation.isPending}>Save</Button>
+            <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : "Save"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

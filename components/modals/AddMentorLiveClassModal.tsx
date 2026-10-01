@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveClassSchema, type LiveClassInput } from "@/lib/validations";
 import { wrapApiForm } from "@/lib/api-url-transport";
+import { MeetModeSelector, type MeetModeValue } from "@/components/live-classes/MeetModeSelector";
+import { isValidManualLink, meetFieldsForSubmit } from "@/lib/live-class-meet-form";
 import {
   Dialog,
   DialogContent,
@@ -78,6 +80,11 @@ export function AddMentorLiveClassModal({
 
   const selectedBatchId = watch("batchId");
   const selectedCourseId = watch("courseId") || defaultCourseId;
+  const scheduledAtValue = watch("scheduledAt");
+  const durationValue = watch("duration");
+
+  const [meet, setMeet] = useState<MeetModeValue>({ meetMode: "google_platform", manualMeetLink: "" });
+  const [meetError, setMeetError] = useState<string | null>(null);
 
   const { data: batches = [] } = useQuery<BatchOption[]>({
     queryKey: ["batches", selectedCourseId],
@@ -96,6 +103,8 @@ export function AddMentorLiveClassModal({
         scheduledAt: "",
         duration: 60,
       });
+      setMeet({ meetMode: "google_platform", manualMeetLink: "" });
+      setMeetError(null);
     }
   }, [open, defaultCourseId, mentorId, reset]);
 
@@ -105,6 +114,7 @@ export function AddMentorLiveClassModal({
         method: "POST",
         body: wrapApiForm({
           ...data,
+          ...meetFieldsForSubmit(meet),
           courseId: data.courseId || selectedCourseId,
           mentorId,
         }),
@@ -139,12 +149,22 @@ export function AddMentorLiveClassModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[min(90dvh,90vh)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Schedule Live Class</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
+        <form
+          onSubmit={handleSubmit((d) => {
+            if (meet.meetMode === "manual" && !isValidManualLink(meet.manualMeetLink)) {
+              setMeetError("Paste a valid link starting with https:// or choose another option.");
+              return;
+            }
+            setMeetError(null);
+            mutation.mutate(d);
+          })}
+          className="space-y-4"
+        >
           <div className="space-y-2">
             <Label className={courseOptions.length > 1 ? undefined : "text-muted-foreground"}>
               {courseOptions.length > 1 ? "Course *" : "Course (Auto-Selected)"}
@@ -246,18 +266,20 @@ export function AddMentorLiveClassModal({
             )}
           </div>
 
-          {/* Meeting Link */}
-          <div className="space-y-2">
-            <Label>Meeting Link</Label>
-            <Input
-              type="url"
-              placeholder="https://meet.google.com/... or Zoom link"
-              {...register("meetingLink")}
-            />
-            {errors.meetingLink && (
-              <p className="text-sm text-destructive">{errors.meetingLink.message}</p>
-            )}
-          </div>
+          {/* Video link: Google Meet via Google Calendar, manual link, or none */}
+          <MeetModeSelector
+            value={meet}
+            onChange={(next) => {
+              setMeet(next);
+              setMeetError(null);
+            }}
+            mentor={{ id: mentorId, name: mentorName }}
+            scheduledAt={scheduledAtValue}
+            durationMinutes={typeof durationValue === "number" && !Number.isNaN(durationValue) ? durationValue : undefined}
+            courseId={selectedCourseId}
+            batchId={selectedBatchId}
+            manualLinkError={meetError ?? undefined}
+          />
 
           {mutation.isError && (
             <p className="text-sm text-destructive">

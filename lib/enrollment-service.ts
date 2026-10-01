@@ -454,6 +454,11 @@ export async function assignCoursesToStudent(
       const { checkAndAutoIssueForEnrollment } = await import("@/lib/services/certificate-service");
       void checkAndAutoIssueForEnrollment(row.id);
 
+      // New live-access student → add them to upcoming Google Calendar invites (fire-and-forget).
+      if (course.type === "live" && liveAccess) {
+        void scheduleAttendeeSync(course.id, row.batchId ?? null);
+      }
+
       enrolled.push(course.title);
     } catch (err) {
       if (slotNewlyConsumed && orgId) await freeOneSlot(orgId, course);
@@ -581,7 +586,26 @@ export async function updateEnrollment(
     ipAddress: actor.ipAddress,
   });
 
+  // Live access / status / batch changes alter who should be on the Google invite.
+  if (course.type === "live") {
+    const batchChanged = input.batchId !== undefined && input.batchId !== existing.batchId;
+    void scheduleAttendeeSync(course.id, batchChanged ? null : existing.batchId ?? null);
+  }
+
   return { success: true };
+}
+
+/**
+ * Fire-and-forget attendee re-sync for upcoming Google-backed classes of a course.
+ * Imported lazily so enrollment code paths never load googleapis unless needed.
+ */
+function scheduleAttendeeSync(courseId: string, batchId: string | null): Promise<void> {
+  return import("@/lib/services/liveClassGoogleSync")
+    .then(({ syncCourseAttendees }) => syncCourseAttendees(courseId, { batchId }))
+    .then((r) => {
+      if (r.synced || r.failed) console.log("[google-sync] attendees", { courseId, ...r });
+    })
+    .catch((err) => console.error("[google-sync] attendee sync failed", err instanceof Error ? err.message : err));
 }
 
 export async function getStudentEnrollmentsRich(
