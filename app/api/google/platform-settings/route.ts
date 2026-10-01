@@ -7,7 +7,7 @@ import { readApiJson } from "@/lib/api-url-transport";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MODES: DefaultMeetMode[] = ["google_platform", "google_host"];
+const MODES: DefaultMeetMode[] = ["google_platform"];
 
 /** GET /api/google/platform-settings — Super Admin default Meet host mode. */
 export async function GET() {
@@ -23,7 +23,7 @@ export async function PATCH(request: Request) {
   const body = ((await readApiJson(request)) ?? {}) as { defaultMeetMode?: unknown };
   const mode = typeof body.defaultMeetMode === "string" ? body.defaultMeetMode : "";
   if (!MODES.includes(mode as DefaultMeetMode)) {
-    return NextResponse.json({ error: "defaultMeetMode must be google_platform or google_host" }, { status: 400 });
+    return NextResponse.json({ error: "defaultMeetMode must be google_platform" }, { status: 400 });
   }
   await setDefaultMeetMode(mode as DefaultMeetMode);
   void logAction({

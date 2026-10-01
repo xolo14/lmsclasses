@@ -1,16 +1,14 @@
 import type { MeetModeValue } from "@/components/live-classes/MeetModeSelector";
+import { isAllowedMeetingLink } from "@/lib/validations";
 
 /** Client helpers shared by the three schedule/edit modals. */
 
+export const DEFAULT_MEET_VALUE: MeetModeValue = { meetMode: "manual", manualMeetLink: "" };
+
+export const MANUAL_LINK_ERROR = "Use a Google Meet, Zoom, or Microsoft Teams link";
+
 export function isValidManualLink(link: string): boolean {
-  const v = link.trim();
-  if (!/^https?:\/\//i.test(v)) return false;
-  try {
-    new URL(v);
-    return true;
-  } catch {
-    return false;
-  }
+  return isAllowedMeetingLink(link.trim());
 }
 
 /**
@@ -25,8 +23,8 @@ export function meetFieldsForSubmit(meet: MeetModeValue): {
 } {
   const manual = meet.meetMode === "manual" ? meet.manualMeetLink.trim() : "";
   return {
-    meetMode: meet.meetMode,
-    hostUserId: meet.hostUserId,
+    meetMode: meet.meetMode === "manual" ? "manual" : "google_platform",
+    hostUserId: meet.meetMode === "manual" ? undefined : meet.hostUserId,
     manualMeetLink: manual,
     meetingLink: manual,
   };
@@ -40,19 +38,14 @@ export function meetValueFromExisting(
     meetingLink?: string | null;
     googleOrganizerEmail?: string | null;
   },
-  platformEmail?: string | null
+  _platformEmail?: string | null
 ): MeetModeValue {
   const status = existing.meetStatus ?? null;
   if (status && ["created", "pending", "failed"].includes(status)) {
-    const organizer = (existing.googleOrganizerEmail ?? "").trim().toLowerCase();
-    const platform = (platformEmail ?? "").trim().toLowerCase();
-    if (organizer && platform && organizer === platform) {
-      return { meetMode: "google_platform", hostUserId: existing.hostUserId ?? undefined, manualMeetLink: "" };
-    }
-    return { meetMode: "google_host", hostUserId: existing.hostUserId ?? undefined, manualMeetLink: "" };
+    return { meetMode: "google_platform", hostUserId: existing.hostUserId ?? undefined, manualMeetLink: "" };
   }
   if (existing.meetingLink?.trim()) {
     return { meetMode: "manual", manualMeetLink: existing.meetingLink.trim() };
   }
-  return { meetMode: "none", manualMeetLink: "" };
+  return { ...DEFAULT_MEET_VALUE };
 }

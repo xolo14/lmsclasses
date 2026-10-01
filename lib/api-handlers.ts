@@ -2217,7 +2217,8 @@ export async function POSTLiveClass(request: Request) {
   const body = await readApiJson(request);
   const parsed = liveClassSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    const first = parsed.error.issues[0]?.message ?? "Invalid live class details.";
+    return NextResponse.json({ error: first, details: parsed.error.flatten() }, { status: 400 });
   }
 
   if (session!.user.role === "mentor") {
@@ -2253,7 +2254,8 @@ export async function POSTLiveClass(request: Request) {
 
   const scheduledAt = parseDatetimeLocalAsIst(parsed.data.scheduledAt);
   const hasManual = !!(parsed.data.manualMeetLink?.trim() || parsed.data.meetingLink?.trim());
-  const meetMode = parsed.data.meetMode ?? (hasManual ? "manual" : await getDefaultMeetMode());
+  const requestedMeetMode = parsed.data.meetMode ?? (hasManual ? "manual" : await getDefaultMeetMode());
+  const meetMode = requestedMeetMode === "manual" ? "manual" : "google_platform";
   const plan = resolveMeetPlan({
     meetMode,
     explicitHostId: parsed.data.hostUserId ?? null,
@@ -2277,23 +2279,45 @@ export async function POSTLiveClass(request: Request) {
   }
 
   // Insert first — Google is a side effect that must never block saving the class.
-  const [liveClass] = await db
-    .insert(liveClasses)
-    .values({
-      title: parsed.data.title,
-      courseId: parsed.data.courseId,
-      batchId: parsed.data.batchId || null,
-      mentorId: parsed.data.mentorId,
-      meetingLink: plan.meetingLink,
-      scheduledAt,
-      duration: parsed.data.duration,
-      createdBy: session!.user.id,
-      hostUserId: plan.hostUserId,
-      meetStatus,
-      meetError,
-      googleOrganizerEmail: plan.googleOrganizerEmail,
-    })
-    .returning();
+  const baseValues = {
+    title: parsed.data.title,
+    courseId: parsed.data.courseId,
+    batchId: parsed.data.batchId || null,
+    mentorId: parsed.data.mentorId,
+    meetingLink: plan.meetingLink,
+    scheduledAt,
+    duration: parsed.data.duration,
+    createdBy: session!.user.id,
+  };
+  let liveClass: typeof liveClasses.$inferSelect;
+  try {
+    const [row] = await db
+      .insert(liveClasses)
+      .values({
+        ...baseValues,
+        hostUserId: plan.hostUserId,
+        meetStatus,
+        meetError,
+        googleOrganizerEmail: plan.googleOrganizerEmail,
+      })
+      .returning();
+    liveClass = row;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const missingGoogleCols = /meet_status|host_user_id|google_organizer_email|meet_error/i.test(message);
+    if (!missingGoogleCols) {
+      console.error("[live-class] insert failed", err);
+      return NextResponse.json(
+        { error: "Could not save the live class. Check the title, course, mentor, and time, then try again." },
+        { status: 500 }
+      );
+    }
+    const [row] = await db.insert(liveClasses).values(baseValues).returning();
+    liveClass = row;
+  }
+  if (!liveClass) {
+    return NextResponse.json({ error: "Could not save the live class." }, { status: 500 });
+  }
 
   await logAction({
     userId: session!.user.id,
@@ -2309,7 +2333,7 @@ export async function POSTLiveClass(request: Request) {
   // Google sync + email + WhatsApp must not block the HTTP response (Hostinger gateway ~30–60s).
   void (async () => {
     try {
-      if (plan.usesGoogle) {
+      if (meetMode !== "manual" && plan.usesGoogle) {
         // createForClass notifies students/host itself once the Meet link exists.
         await createForClass(liveClass.id, { actor });
       } else {

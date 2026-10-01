@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveClassSchema, type LiveClassInput } from "@/lib/validations";
 import { wrapApiForm } from "@/lib/api-url-transport";
 import { MeetModeSelector, type MeetModeValue } from "@/components/live-classes/MeetModeSelector";
-import { isValidManualLink, meetFieldsForSubmit } from "@/lib/live-class-meet-form";
+import { DEFAULT_MEET_VALUE, isValidManualLink, MANUAL_LINK_ERROR, meetFieldsForSubmit } from "@/lib/live-class-meet-form";
 import {
   Dialog,
   DialogContent,
@@ -83,7 +83,7 @@ export function AddMentorLiveClassModal({
   const scheduledAtValue = watch("scheduledAt");
   const durationValue = watch("duration");
 
-  const [meet, setMeet] = useState<MeetModeValue>({ meetMode: "google_platform", manualMeetLink: "" });
+  const [meet, setMeet] = useState<MeetModeValue>(DEFAULT_MEET_VALUE);
   const [meetError, setMeetError] = useState<string | null>(null);
 
   const { data: batches = [] } = useQuery<BatchOption[]>({
@@ -103,7 +103,7 @@ export function AddMentorLiveClassModal({
         scheduledAt: "",
         duration: 60,
       });
-      setMeet({ meetMode: "google_platform", manualMeetLink: "" });
+      setMeet({ ...DEFAULT_MEET_VALUE });
       setMeetError(null);
     }
   }, [open, defaultCourseId, mentorId, reset]);
@@ -157,7 +157,7 @@ export function AddMentorLiveClassModal({
         <form
           onSubmit={handleSubmit((d) => {
             if (meet.meetMode === "manual" && !isValidManualLink(meet.manualMeetLink)) {
-              setMeetError("Paste a valid link starting with https:// or choose another option.");
+              setMeetError(MANUAL_LINK_ERROR);
               return;
             }
             setMeetError(null);

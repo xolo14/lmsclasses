@@ -176,14 +176,11 @@ export const batchSchema = z.object({
 
 /**
  * How the class gets its video link.
- * - google_platform:  create a Google Meet on the LMS platform account (info@lmsclasses.com)
- * - google_host:      create a Google Meet on the host's (default: mentor's) connected calendar
- * - google_scheduler: the person scheduling becomes the host and their Google account is used
- * - manual:           paste any link (Zoom, existing Meet, …) — stored in meetingLink
- * - none:             no video link
+ * Create/update only accepts google_platform or manual. Other values remain for existing classes.
  */
 export const meetModeSchema = z.enum(["google_platform", "google_host", "google_scheduler", "manual", "none"]);
 export type MeetMode = z.infer<typeof meetModeSchema>;
+export const liveClassMeetModeSchema = z.enum(["google_platform", "manual"]);
 
 const ALLOWED_MEETING_HOSTS = [
   "meet.google.com",
@@ -208,13 +205,13 @@ export const liveClassFields = z.object({
   /** Legacy field — still accepted; treated as a manual link when meetMode is absent. */
   meetingLink: optionalHttpUrl,
   scheduledAt: z.string().min(1, "Schedule date is required"),
-  duration: z.coerce.number().min(15).optional(),
+  duration: z.preprocess(emptyToUndefined, z.coerce.number().min(15, "Duration must be at least 15 minutes").optional()),
   status: z.enum(["scheduled", "live", "completed", "cancelled"]).optional(),
   recordingUrl: optionalVideoReferenceSchema,
   // ---- Google Calendar / Meet ----
   /** Whose Google calendar owns the event. Defaults to mentorId server-side. */
   hostUserId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
-  meetMode: z.preprocess(emptyToUndefined, meetModeSchema.optional()),
+  meetMode: z.preprocess(emptyToUndefined, liveClassMeetModeSchema.optional()),
   manualMeetLink: optionalHttpUrl,
 });
 

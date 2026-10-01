@@ -8,7 +8,7 @@ import { liveClassSchema, type LiveClassInput } from "@/lib/validations";
 import { wrapApiForm } from "@/lib/api-url-transport";
 import { toDatetimeLocalValue } from "@/lib/utils";
 import { MeetModeSelector, type MeetModeValue } from "@/components/live-classes/MeetModeSelector";
-import { isValidManualLink, meetFieldsForSubmit, meetValueFromExisting } from "@/lib/live-class-meet-form";
+import { DEFAULT_MEET_VALUE, isValidManualLink, MANUAL_LINK_ERROR, meetFieldsForSubmit, meetValueFromExisting } from "@/lib/live-class-meet-form";
 import { useGoogleStatus } from "@/lib/hooks/useGoogle";
 import { MeetStatusBadge } from "@/components/live-classes/MeetStatusBadge";
 import {
@@ -68,7 +68,7 @@ export function EditLiveClassModal({
   const scheduledAt = watch("scheduledAt");
   const duration = watch("duration");
 
-  const [meet, setMeet] = useState<MeetModeValue>({ meetMode: "none", manualMeetLink: "" });
+  const [meet, setMeet] = useState<MeetModeValue>(DEFAULT_MEET_VALUE);
   const [meetError, setMeetError] = useState<string | null>(null);
   const googleStatus = useGoogleStatus();
 
@@ -147,7 +147,7 @@ export function EditLiveClassModal({
         <form
           onSubmit={handleSubmit((d) => {
             if (meet.meetMode === "manual" && !isValidManualLink(meet.manualMeetLink)) {
-              setMeetError("Paste a valid link starting with https:// or choose another option.");
+              setMeetError(MANUAL_LINK_ERROR);
               return;
             }
             setMeetError(null);

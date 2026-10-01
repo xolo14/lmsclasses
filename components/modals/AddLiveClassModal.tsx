@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { liveClassSchema, type LiveClassInput } from "@/lib/validations";
 import { wrapApiForm } from "@/lib/api-url-transport";
 import { MeetModeSelector, type MeetModeValue } from "@/components/live-classes/MeetModeSelector";
-import { isValidManualLink, meetFieldsForSubmit } from "@/lib/live-class-meet-form";
+import { DEFAULT_MEET_VALUE, isValidManualLink, MANUAL_LINK_ERROR, meetFieldsForSubmit } from "@/lib/live-class-meet-form";
 import {
   Dialog,
   DialogContent,
@@ -50,7 +50,7 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
     },
   });
 
-  const [meet, setMeet] = useState<MeetModeValue>({ meetMode: "google_platform", manualMeetLink: "" });
+  const [meet, setMeet] = useState<MeetModeValue>(DEFAULT_MEET_VALUE);
   const [meetError, setMeetError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,7 +65,7 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
         duration: undefined,
         recordingUrl: "",
       });
-      setMeet({ meetMode: "google_platform", manualMeetLink: "" });
+      setMeet({ ...DEFAULT_MEET_VALUE });
       setMeetError(null);
     }
   }, [open, reset]);
@@ -106,12 +106,20 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
         }
       }
       if (!res.ok) {
+        const details = json as { error?: unknown; details?: { fieldErrors?: Record<string, string[] | undefined> } };
+        const fieldFirst = Object.values(details.details?.fieldErrors ?? {})
+          .flat()
+          .find((m): m is string => typeof m === "string" && m.length > 0);
         throw new Error(
-          typeof json.error === "string"
-            ? json.error
-            : res.status === 504 || res.status === 502
-              ? "The server timed out. Refresh Upcoming — the class may already be saved."
-              : "Failed to create live class"
+          typeof details.error === "string"
+            ? details.error
+            : fieldFirst
+              ? fieldFirst
+              : res.status === 504 || res.status === 502
+                ? "The server timed out. Refresh Upcoming — the class may already be saved."
+                : res.status === 403
+                  ? "The host blocked the request. Try a simpler title, or create again."
+                  : "Failed to create live class"
         );
       }
       return json;
@@ -132,7 +140,7 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
         <form
           onSubmit={handleSubmit((d) => {
             if (meet.meetMode === "manual" && !isValidManualLink(meet.manualMeetLink)) {
-              setMeetError("Paste a valid link starting with https:// or choose another option.");
+              setMeetError(MANUAL_LINK_ERROR);
               return;
             }
             setMeetError(null);
