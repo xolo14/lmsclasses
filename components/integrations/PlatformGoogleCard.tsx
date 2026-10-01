@@ -96,7 +96,7 @@ export function PlatformGoogleCard({ returnTo }: { returnTo: string }) {
               Google Calendar/Meet OAuth is not ready. This is separate from the GCS video bucket.
             </p>
             <p className="text-sm text-muted-foreground">
-              {data.oauth?.reason ??
+              {data?.oauth?.reason ??
                 "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_STATE_SECRET and GOOGLE_TOKEN_ENCRYPTION_KEY, then Restart Node."}
             </p>
           </div>
