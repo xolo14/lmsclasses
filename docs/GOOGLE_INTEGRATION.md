@@ -5,9 +5,9 @@ By default, live classes are hosted by the **platform Google account**
 account once at **Settings → Integrations → Connect platform account**. The assigned mentor
 stays the LMS owner (`hostUserId`) and is always added as a calendar attendee.
 
-Mentors (and Managers / Org Admins / Super Admins) can still connect their own Google account
-and schedule with **google_host** / **google_scheduler** when needed. Students never connect
-Google — Google emails them the invite and the class lands in their calendar.
+Only **Super Admin, Manager, and Mentor** can create live classes. Every LMS user
+(student, mentor, manager, org admin, super admin) can connect Google Calendar. The
+dashboard shows a **Connect** banner until they do; the button starts OAuth immediately.
 
 The LMS database is the source of truth. Google is a side effect: if Google is down or the
 host is disconnected, the class is still saved and the Meet link is created later by the retry
@@ -44,6 +44,32 @@ https://lmsclasses.com/api/google/callback
 ```
 
 Copy the Client ID and Client secret into the env vars below.
+
+## 3b. Leave Testing — publish for real users
+
+Google **Testing** only allows listed testers (`info@lmsclasses.com` plus anyone you add) and
+refresh tokens expire after **7 days**. For real students and mentors:
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/) → the project that owns `GOOGLE_CLIENT_ID`.
+2. **APIs & Services → OAuth consent screen**.
+3. Confirm **User type = External** if students use `@gmail.com` (or **Internal** if everyone is on your Google Workspace domain).
+4. Fill the required app details:
+   - App name: `LMS Classes`
+   - User support email and developer contact: `info@lmsclasses.com`
+   - App home page: `https://lmsclasses.com`
+   - Privacy policy URL: a public page on `lmsclasses.com` (Google requires a real URL)
+   - Authorized domains: `lmsclasses.com`
+5. Scopes (already added): `openid`, `email`, `https://www.googleapis.com/auth/calendar.events`.
+6. Click **Publish app** (Testing → **In production**).
+7. Confirm the warning. Users will see Google’s “unverified app” screen until verification finishes — they click **Advanced → Go to LMS Classes**.
+8. **Submit for verification** (required for the sensitive `calendar.events` scope in production):
+   - Explain: *“LMS Classes creates Google Calendar events and Meet links for live classes. Students connect so class times appear on their calendar. Mentors/admins connect so they can host.”*
+   - Upload a short demo video of Super Admin connecting the platform account and a student clicking **Connect** on the dashboard.
+   - Add a screenshot of the Integrations page.
+9. While verification is pending, keep a few **test users** listed so staff can still connect.
+10. After Google approves, any Google account can connect and refresh tokens no longer expire after 7 days.
+
+Do **not** mix this with GCS video credentials (`GCP_*` / `GCS_*`).
 
 ## 4. Environment variables
 

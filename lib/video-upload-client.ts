@@ -4,6 +4,7 @@
  * only size cap is MAX_VIDEO_UPLOAD_BYTES (5 GB) — not the Next.js body limit.
  */
 import { VIDEO_UPLOAD_CHUNK_BYTES, getVideoSizeError } from "@/lib/video-upload";
+import { wrapApiForm } from "@/lib/api-url-transport";
 
 export type ResumableSession = {
   uploadUrl: string;
@@ -59,8 +60,7 @@ export async function startResumableVideoUpload(args: {
 
   const res = await fetch("/api/recordings/storage-session", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    body: wrapApiForm({
       ...(liveClassId ? { liveClassId } : { batchId }),
       filename: file.name,
       contentType: file.type || "video/webm",
@@ -75,7 +75,7 @@ export async function startResumableVideoUpload(args: {
   } catch {
     throw new VideoUploadError(
       res.status === 403
-        ? "The host blocked the storage session (HTTP 403). Open /api/recordings/storage-session while logged in to see the GCS check."
+        ? "The host blocked the storage session (HTTP 403). Retry after the latest deploy; the request is now sent as an encoded form body."
         : `Failed to start the storage upload session (HTTP ${res.status}).`,
       res.status
     );

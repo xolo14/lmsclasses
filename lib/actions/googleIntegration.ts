@@ -1,7 +1,7 @@
 import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { liveClasses, users, type GoogleConnectionStatus, type Role } from "@/lib/db/schema";
-import { canHostLiveClass, integrationsPathForRole, ROLE_ROUTES } from "@/lib/utils";
+import { canConnectGoogleCalendar, canHostLiveClass, integrationsPathForRole, ROLE_ROUTES } from "@/lib/utils";
 import {
   GOOGLE_SCOPE_CALENDAR_EVENTS,
   GOOGLE_SCOPE_FREEBUSY,
@@ -28,8 +28,10 @@ export type GoogleStatusPayload = {
   configured: boolean;
   /** Google Calendar/Meet OAuth only. Video uploads use a separate GCS service account. */
   oauth: GoogleOAuthStatus;
-  /** Whether this role can own a Google calendar event. Students always get false. */
+  /** Whether this role can own a Google calendar event used as Meet host. */
   canHost: boolean;
+  /** Whether this role may connect their own Google Calendar. */
+  canConnect: boolean;
   connected: boolean;
   status: GoogleConnectionStatus | null;
   googleEmail: string | null;
@@ -58,11 +60,13 @@ export type GoogleStatusPayload = {
 export function emptyGoogleStatus(role: Role, configured = isGoogleConfigured()): GoogleStatusPayload {
   const platformEmail = getPlatformGoogleEmail();
   const canHost = canHostLiveClass(role);
+  const canConnect = canConnectGoogleCalendar(role);
   const oauth = getGoogleOAuthStatus();
   return {
     configured: configured && oauth.configured,
     oauth,
     canHost,
+    canConnect,
     connected: false,
     status: null,
     googleEmail: null,
@@ -94,7 +98,7 @@ export function emptyGoogleStatus(role: Role, configured = isGoogleConfigured())
 
 export async function getGoogleStatusForUser(userId: string, role: Role): Promise<GoogleStatusPayload> {
   const configured = isGoogleConfigured();
-  const canHost = canHostLiveClass(role);
+  const canConnect = canConnectGoogleCalendar(role);
   const platformEmail = getPlatformGoogleEmail();
 
   let defaultMeetMode: DefaultMeetMode = "google_platform";
@@ -126,7 +130,7 @@ export async function getGoogleStatusForUser(userId: string, role: Role): Promis
     platformIsGmail: isGmailAddress(platformRow?.googleEmail ?? platformEmail),
     platform,
   };
-  if (!canHost) return base;
+  if (!canConnect) return base;
 
   try {
     const connection = await getConnection(userId);

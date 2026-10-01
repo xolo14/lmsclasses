@@ -10,10 +10,10 @@ import { PlatformGoogleCard } from "@/components/integrations/PlatformGoogleCard
 import { Button } from "@/components/ui/button";
 import { ROLE_ROUTES } from "@/lib/utils";
 
-type HostRole = "mentor" | "manager" | "org_admin" | "super_admin";
+type CalendarRole = "student" | "mentor" | "manager" | "org_admin" | "super_admin";
 
-/** Settings → Integrations for every host-capable role. */
-export function IntegrationsPage({ role }: { role: HostRole }) {
+/** Settings → Integrations for every role that can connect Google Calendar. */
+export function IntegrationsPage({ role }: { role: CalendarRole }) {
   const base = ROLE_ROUTES[role];
   const returnTo = `${base}/settings/integrations`;
 

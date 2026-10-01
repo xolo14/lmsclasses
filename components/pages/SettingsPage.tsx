@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MetaWhatsAppCard } from "@/components/super-admin/MetaWhatsAppCard";
 import Link from "next/link";
 import { CalendarCheck, ChevronRight } from "lucide-react";
-import { canHostLiveClass, integrationsPathForRole } from "@/lib/utils";
+import { canConnectGoogleCalendar, integrationsPathForRole } from "@/lib/utils";
 
 type ProfileInput = z.infer<typeof profileSchema>;
 type PasswordInput = z.infer<typeof changePasswordSchema>;
@@ -165,7 +165,7 @@ export function SettingsPage() {
         </CardHeader>
       </Card>
 
-      {canHostLiveClass(role) && (
+      {canConnectGoogleCalendar(role) && (
         <Link
           href={integrationsPathForRole(role)}
           className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4 hover:bg-swiss-cream transition-colors"
@@ -175,7 +175,7 @@ export function SettingsPage() {
             <div>
               <p className="font-semibold">Integrations</p>
               <p className="text-sm text-muted-foreground">
-                Google Calendar &amp; Meet — automatic Meet links and invites for your live classes.
+                Connect Google Calendar so live class times appear on your calendar.
               </p>
             </div>
           </div>

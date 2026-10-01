@@ -84,8 +84,9 @@ export function GoogleConnectCard({ returnTo }: { returnTo?: string }) {
             Google Calendar &amp; Meet
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Connect your own Google account. Live classes you host get a Google Meet link and a calendar
-            invite for enrolled students automatically.
+            {data?.canHost
+              ? "Connect your own Google account. Live classes you host get a Google Meet link and a calendar invite for enrolled students automatically."
+              : "Connect your Google Calendar so live class times you are enrolled in appear there."}
           </p>
         </div>
         {badge && <Badge variant={badge.variant}>{badge.label}</Badge>}
@@ -109,8 +110,8 @@ export function GoogleConnectCard({ returnTo }: { returnTo?: string }) {
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : !data ? (
           <p className="text-sm text-destructive">Could not load Google status.</p>
-        ) : !data.canHost ? (
-          <p className="text-sm text-muted-foreground">Only mentors and admins can connect Google.</p>
+        ) : !data.canConnect ? (
+          <p className="text-sm text-muted-foreground">Google Calendar is not available for this account type.</p>
         ) : !data.configured ? (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
@@ -208,8 +209,17 @@ export function GoogleConnectCard({ returnTo }: { returnTo?: string }) {
         ) : (
           <div className="space-y-3">
             <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-1">
-              <li>Creates a Google Meet link for every class you host.</li>
-              <li>Invites enrolled students on your Google Calendar so they get reminders.</li>
+              {data.canHost ? (
+                <>
+                  <li>Creates a Google Meet link for every class you host.</li>
+                  <li>Invites enrolled students on your Google Calendar so they get reminders.</li>
+                </>
+              ) : (
+                <>
+                  <li>Adds live classes you are enrolled in to your Google Calendar.</li>
+                  <li>Only Super Admin, Manager, or Mentor can create a live class.</li>
+                </>
+              )}
               <li>We only ask for permission to manage calendar events — not your email or files.</li>
             </ul>
             <Button asChild size="sm">

@@ -18,6 +18,7 @@ import {
   VideoUploadAuthError,
 } from "@/lib/video-upload-server";
 import { getMentorCourseIds } from "@/lib/mentor-courses";
+import { readApiJson } from "@/lib/api-url-transport";
 
 const UPLOAD_ROLES = ["super_admin", "manager", "mentor"] as const;
 const ALLOWED_VIDEO_TYPES = new Set([
@@ -78,7 +79,7 @@ export async function handleVideoResumablePost(request: Request) {
       return NextResponse.json({ error: configError }, { status: 503 });
     }
 
-    const body = (await request.json().catch(() => null)) as
+    const body = (await readApiJson(request)) as
       | {
           batchId?: unknown;
           liveClassId?: unknown;

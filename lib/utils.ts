@@ -115,11 +115,32 @@ export function portalHomeForRole(role: string | undefined | null): string {
   return "/";
 }
 
+/** Roles that may create/schedule a live class. */
+export const LIVE_CLASS_CREATE_ROLES = ["super_admin", "manager", "mentor"] as const;
+
 /** Roles that may host (own the Google Calendar event of) a live class. */
 export const GOOGLE_HOST_ROLES = ["mentor", "manager", "org_admin", "super_admin"] as const;
 
+/** Roles that may connect their own Google Calendar (every LMS portal user except HR). */
+export const GOOGLE_CALENDAR_ROLES = ["student", "mentor", "manager", "org_admin", "super_admin"] as const;
+
+export function canCreateLiveClass(role: string | undefined | null): boolean {
+  return !!role && (LIVE_CLASS_CREATE_ROLES as readonly string[]).includes(role);
+}
+
 export function canHostLiveClass(role: string | undefined | null): boolean {
   return !!role && (GOOGLE_HOST_ROLES as readonly string[]).includes(role);
+}
+
+export function canConnectGoogleCalendar(role: string | undefined | null): boolean {
+  return !!role && (GOOGLE_CALENDAR_ROLES as readonly string[]).includes(role);
+}
+
+export function isPortalHomePath(pathname: string | null | undefined, role: string | undefined | null): boolean {
+  if (!pathname || !role) return false;
+  if (role === "student") return pathname === "/student/courses" || pathname === "/student/calendar";
+  const base = ROLE_ROUTES[role];
+  return !!base && pathname === `${base}/dashboard`;
 }
 
 /** Settings → Integrations page for a role (where the Google connect card lives). */

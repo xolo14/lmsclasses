@@ -6,7 +6,7 @@ import { createOAuthClient, isGoogleConfigured, requestedScopes } from "@/lib/se
 import { GOOGLE_NONCE_COOKIE, newNonce, signState, STATE_TTL_MS } from "@/lib/services/googleState";
 import { sanitizeReturnTo } from "@/lib/actions/googleIntegration";
 import { getPlatformGoogleEmail } from "@/lib/google-platform";
-import { GOOGLE_HOST_ROLES } from "@/lib/utils";
+import { GOOGLE_CALENDAR_ROLES } from "@/lib/utils";
 import type { Role } from "@/lib/db/schema";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  * Starts the per-user Google OAuth flow. Plain GET so the UI can use a link (WAF-safe).
  */
 export async function GET(request: Request) {
-  const { error, session } = await requireAuth([...GOOGLE_HOST_ROLES] as Role[]);
+  const { error, session } = await requireAuth([...GOOGLE_CALENDAR_ROLES] as Role[]);
   if (error) return error;
   const user = session!.user;
 
