@@ -18,56 +18,75 @@ cron or by a "Retry Meet link" button.
 1. Open <https://console.cloud.google.com/> and create (or pick) a project.
 2. **APIs & Services → Library** → enable **Google Calendar API**.
 
-## 2. OAuth consent screen
+## 2. Google Auth Platform (new OAuth console)
 
-| Situation | Choose | Notes |
-| --- | --- | --- |
-| Every host uses a Google Workspace account on your own domain | **Internal** | No Google app verification. Refresh tokens do not expire after 7 days. |
-| Hosts use personal `@gmail.com` or mixed accounts | **External** | `calendar.events` is a *sensitive* scope. While the app is in **Testing** status only listed test users can connect and refresh tokens expire after **7 days**. Submit the app for verification before production use. |
+The **Overview** page (metrics / token grant rate) is only a dashboard. Do nothing there.
+Use the **left menu** in this order: **Branding → Audience → Data Access → Clients → Verification Center**.
 
-Scopes to add on the consent screen:
+### Step A — Branding
 
-- `openid`
-- `email`
-- `https://www.googleapis.com/auth/calendar.events`
-- `https://www.googleapis.com/auth/calendar.freebusy` — only if `ENABLE_FREEBUSY=true`
+1. Click **Branding**.
+2. App name: `LMS Classes`.
+3. User support email: `info@lmsclasses.com`.
+4. App logo: optional.
+5. App home page: `https://lmsclasses.com`.
+6. Privacy policy: a public URL on `lmsclasses.com` (Google requires a real page).
+7. Authorized domains: add `lmsclasses.com`.
+8. Developer contact: `info@lmsclasses.com`.
+9. **Save**.
 
-## 3. OAuth client
+### Step B — Audience (this is where Testing / Production lives)
 
-**APIs & Services → Credentials → Create credentials → OAuth client ID → Web application.**
+1. Click **Audience**.
+2. User type:
+   - **External** if students use `@gmail.com`.
+   - **Internal** only if every user is on your Google Workspace domain.
+3. Publishing status:
+   - **Testing** = only emails listed under Test users can connect. Tokens expire in 7 days.
+   - **In production** = any Google account can start the sign-in (they may see “unverified app”).
+4. To leave Testing: click **Publish app** (or **Change to In production**) → confirm.
+5. Under **Test users**, keep `info@lmsclasses.com` until verification is approved. Add staff Gmail addresses if you still need Testing.
 
-Authorized redirect URIs:
+### Step C — Data Access (scopes)
+
+1. Click **Data Access**.
+2. **Add or remove scopes**. Include:
+   - `openid`
+   - `.../auth/userinfo.email` (email)
+   - `https://www.googleapis.com/auth/calendar.events`
+   - `https://www.googleapis.com/auth/calendar.freebusy` only if `ENABLE_FREEBUSY=true`
+3. **Save**. `calendar.events` is a *sensitive* scope — Google will ask you to verify.
+
+### Step D — Clients (if the Web client is not created yet)
+
+1. Click **Clients** → **Create client**.
+2. Application type: **Web application**.
+3. Authorized redirect URIs (exact, no trailing slash):
 
 ```
 http://localhost:3000/api/google/callback
 https://lmsclasses.com/api/google/callback
 ```
 
-Copy the Client ID and Client secret into the env vars below.
+4. Copy Client ID and Client secret into Hostinger `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+5. Hostinger `GOOGLE_REDIRECT_URI` must be `https://lmsclasses.com/api/google/callback`.
 
-## 3b. Leave Testing — publish for real users
+### Step E — Verification Center (real / not Testing)
 
-Google **Testing** only allows listed testers (`info@lmsclasses.com` plus anyone you add) and
-refresh tokens expire after **7 days**. For real students and mentors:
+1. Click **Verification Center**.
+2. Complete any red/missing items (branding, scopes, privacy policy).
+3. **Submit for verification**.
+4. Justification to paste:
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/) → the project that owns `GOOGLE_CLIENT_ID`.
-2. **APIs & Services → OAuth consent screen**.
-3. Confirm **User type = External** if students use `@gmail.com` (or **Internal** if everyone is on your Google Workspace domain).
-4. Fill the required app details:
-   - App name: `LMS Classes`
-   - User support email and developer contact: `info@lmsclasses.com`
-   - App home page: `https://lmsclasses.com`
-   - Privacy policy URL: a public page on `lmsclasses.com` (Google requires a real URL)
-   - Authorized domains: `lmsclasses.com`
-5. Scopes (already added): `openid`, `email`, `https://www.googleapis.com/auth/calendar.events`.
-6. Click **Publish app** (Testing → **In production**).
-7. Confirm the warning. Users will see Google’s “unverified app” screen until verification finishes — they click **Advanced → Go to LMS Classes**.
-8. **Submit for verification** (required for the sensitive `calendar.events` scope in production):
-   - Explain: *“LMS Classes creates Google Calendar events and Meet links for live classes. Students connect so class times appear on their calendar. Mentors/admins connect so they can host.”*
-   - Upload a short demo video of Super Admin connecting the platform account and a student clicking **Connect** on the dashboard.
-   - Add a screenshot of the Integrations page.
-9. While verification is pending, keep a few **test users** listed so staff can still connect.
-10. After Google approves, any Google account can connect and refresh tokens no longer expire after 7 days.
+> LMS Classes creates Google Calendar events and Meet links for live classes.
+> Super Admin connects info@lmsclasses.com as the default Meet host.
+> Mentors/admins may connect their own calendar to host.
+> Students connect so class times appear on their Google Calendar.
+> We only request calendar.events.
+
+5. Upload a short video: Super Admin clicks **Connect platform account**, then a student clicks **Connect** on the dashboard.
+6. Upload a screenshot of Settings → Integrations.
+7. Wait for Google email. Until approved, users click **Advanced → Go to LMS Classes** on the unverified-app warning.
 
 Do **not** mix this with GCS video credentials (`GCP_*` / `GCS_*`).
 
