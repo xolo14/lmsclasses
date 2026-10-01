@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 
 const appName = process.env.NEXT_PUBLIC_APP_NAME || "LMS Platform";
 
@@ -77,7 +77,7 @@ function createSmtpTransport(port: number, secure: boolean) {
   });
 }
 
-let cachedTransport: nodemailer.Transporter | null = null;
+let cachedTransport: Transporter | null = null;
 
 export type SendMailPayload = {
   to: string;
