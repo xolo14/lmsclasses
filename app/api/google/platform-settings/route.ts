@@ -20,8 +20,8 @@ export async function GET() {
 export async function PATCH(request: Request) {
   const { error, session } = await requireAuth(["super_admin"]);
   if (error) return error;
-  const body = await readApiJson(request);
-  const mode = typeof body?.defaultMeetMode === "string" ? body.defaultMeetMode : "";
+  const body = ((await readApiJson(request)) ?? {}) as { defaultMeetMode?: unknown };
+  const mode = typeof body.defaultMeetMode === "string" ? body.defaultMeetMode : "";
   if (!MODES.includes(mode as DefaultMeetMode)) {
     return NextResponse.json({ error: "defaultMeetMode must be google_platform or google_host" }, { status: 400 });
   }
