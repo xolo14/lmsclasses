@@ -11,6 +11,34 @@ export function getBucketName(): string {
   return cleanEnvValue(process.env.GCS_BUCKET_NAME) || DEFAULT_BUCKET;
 }
 
+/** True when someone pasted the downloaded key *filename* instead of the JSON. */
+export function isServiceAccountJsonFilename(value: string): boolean {
+  const v = cleanEnvValue(value);
+  return !!v && /^[\w.\-]+\.json$/i.test(v) && !v.includes("{");
+}
+
+/**
+ * GCS video-storage only (not Google OAuth). Returns a user-facing reason when
+ * Hostinger credentials cannot be used to talk to the bucket.
+ */
+export function getGcsUploadConfigError(): string | null {
+  if (resolveGcpCredentials()) return null;
+
+  const jsonRaw = cleanEnvValue(process.env.GCP_SERVICE_ACCOUNT_JSON);
+  if (isServiceAccountJsonFilename(jsonRaw)) {
+    return (
+      "GCP_SERVICE_ACCOUNT_JSON is a filename, not the key contents. " +
+      "Keep GCP_SERVICE_ACCOUNT_JSON_BASE64 as the base64 of the full .json key file, " +
+      "delete the filename from GCP_SERVICE_ACCOUNT_JSON, then Restart Node."
+    );
+  }
+  return (
+    "GCS credentials are unusable. Set GCP_SERVICE_ACCOUNT_JSON_BASE64 " +
+    "(base64 of the service account JSON key), then Restart Node. " +
+    "GOOGLE_* OAuth keys do not upload videos."
+  );
+}
+
 function stripWrappingQuotes(value: string): string {
   let key = value.trim();
   for (let i = 0; i < 3; i++) {

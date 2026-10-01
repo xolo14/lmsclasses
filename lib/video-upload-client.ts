@@ -57,7 +57,7 @@ export async function startResumableVideoUpload(args: {
   const sizeError = getVideoSizeError(file.size);
   if (sizeError) throw new VideoUploadError(sizeError, 413);
 
-  const res = await fetch("/api/uploads/video-resumable", {
+  const res = await fetch("/api/recordings/storage-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -68,9 +68,18 @@ export async function startResumableVideoUpload(args: {
     }),
   });
 
-  const data = (await res.json().catch(() => ({}))) as Partial<ResumableSession> & {
-    error?: string;
-  };
+  const text = await res.text();
+  let data: Partial<ResumableSession> & { error?: string } = {};
+  try {
+    data = JSON.parse(text) as Partial<ResumableSession> & { error?: string };
+  } catch {
+    throw new VideoUploadError(
+      res.status === 403
+        ? "The host blocked the storage session (HTTP 403). Open /api/recordings/storage-session while logged in to see the GCS check."
+        : `Failed to start the storage upload session (HTTP ${res.status}).`,
+      res.status
+    );
+  }
 
   if (!res.ok || !data.uploadUrl || !data.objectKey) {
     throw new VideoUploadError(
