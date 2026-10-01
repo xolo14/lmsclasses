@@ -101,10 +101,10 @@ export function MeetModeSelector({
       };
     }
     if (mentor && effectiveHostId === mentor.id && mentorInfo.data) {
-      return { name: mentor.name, ...mentorInfo.data };
+      return { ...mentorInfo.data, name: mentor.name || mentorInfo.data.name };
     }
     if (keepHostId && effectiveHostId === keepHostId && keepHostInfo.data) {
-      return { name: keepHostInfo.data.name, ...keepHostInfo.data };
+      return { ...keepHostInfo.data };
     }
     return null;
   }, [effectiveHostId, me, myStatus.data, mentor, mentorInfo.data, keepHostId, keepHostInfo.data]);
