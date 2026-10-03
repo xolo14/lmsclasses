@@ -47,7 +47,7 @@ export function DemoVideoModal({ isOpen, onClose, videoUrl, courseTitle }: DemoV
         const url = await resolvePlayableVideoUrl(videoUrl);
         if (cancelled) return;
         setPlayableUrl(url);
-        setEmbed(resolveVideoEmbed(url, true));
+        setEmbed(resolveVideoEmbed(url, false));
       } catch (err) {
         if (cancelled) return;
         setError(
@@ -79,7 +79,7 @@ export function DemoVideoModal({ isOpen, onClose, videoUrl, courseTitle }: DemoV
           <DialogTitle>Demo: {courseTitle}</DialogTitle>
         </DialogHeader>
         <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
-          {loading ? (
+          {isOpen && videoUrl && !error && !playableUrl ? (
             <div className="flex h-full items-center justify-center text-sm text-white/80">
               Loading demo…
             </div>
@@ -87,14 +87,14 @@ export function DemoVideoModal({ isOpen, onClose, videoUrl, courseTitle }: DemoV
             <div className="flex h-full items-center justify-center p-6 text-center text-sm text-white/80">
               {error}
             </div>
-          ) : (
+          ) : playableUrl ? (
             <EmbeddedVideoPlayer
               embed={embed}
-              videoUrl={playableUrl ?? undefined}
+              videoUrl={playableUrl}
+              sourceRef={videoUrl}
               title={`Demo: ${courseTitle}`}
-              autoPlay
             />
-          )}
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

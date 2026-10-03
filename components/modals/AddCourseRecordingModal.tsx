@@ -236,6 +236,7 @@ export function AddCourseRecordingModal({
                   <EmbeddedVideoPlayer
                     embed={previewEmbed}
                     videoUrl={previewUrl}
+                    sourceRef={videoUrl}
                     title="Recording preview"
                   />
                 )}

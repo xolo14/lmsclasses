@@ -1,4 +1,4 @@
-const DIRECT_VIDEO_REGEX = /\.(mp4|webm|ogg|mov|m4v)(?:\?.*)?$/i;
+const DIRECT_VIDEO_REGEX = /\.(mp4|webm|ogg|mov|m4v|mkv)(?:\?.*)?$/i;
 
 function extractUrlIfIframe(raw: string): string {
   const trimmed = raw.trim();

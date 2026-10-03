@@ -120,12 +120,18 @@ export function EditLiveClassModal({
         }
       }
       if (!res.ok) {
+        const details = json as { error?: unknown; details?: { fieldErrors?: Record<string, string[] | undefined> } };
+        const fieldFirst = Object.values(details.details?.fieldErrors ?? {})
+          .flat()
+          .find((m): m is string => typeof m === "string" && m.length > 0);
         throw new Error(
-          typeof json.error === "string"
-            ? json.error
-            : res.status === 504 || res.status === 502
-              ? "The server timed out. Refresh the list — the update may already be saved."
-              : "Failed to update live class"
+          typeof details.error === "string"
+            ? details.error
+            : fieldFirst
+              ? fieldFirst
+              : res.status === 504 || res.status === 502
+                ? "The server timed out. Refresh the list — the update may already be saved."
+                : "Failed to update live class"
         );
       }
       return json;

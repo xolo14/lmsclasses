@@ -16,11 +16,14 @@ export function isValidManualLink(link: string): boolean {
  * older readers of the payload keep working.
  */
 export function meetFieldsForSubmit(meet: MeetModeValue): {
-  meetMode: MeetModeValue["meetMode"];
+  meetMode?: MeetModeValue["meetMode"];
   hostUserId?: string;
-  manualMeetLink: string;
-  meetingLink: string;
+  manualMeetLink?: string;
+  meetingLink?: string;
 } {
+  if (meet.preserveExistingGoogle && meet.meetMode !== "manual") {
+    return {};
+  }
   const manual = meet.meetMode === "manual" ? meet.manualMeetLink.trim() : "";
   return {
     meetMode: meet.meetMode === "manual" ? "manual" : "google_platform",
@@ -38,11 +41,19 @@ export function meetValueFromExisting(
     meetingLink?: string | null;
     googleOrganizerEmail?: string | null;
   },
-  _platformEmail?: string | null
+  platformEmail?: string | null
 ): MeetModeValue {
   const status = existing.meetStatus ?? null;
   if (status && ["created", "pending", "failed"].includes(status)) {
-    return { meetMode: "google_platform", hostUserId: existing.hostUserId ?? undefined, manualMeetLink: "" };
+    const organizer = (existing.googleOrganizerEmail ?? "").trim().toLowerCase();
+    const platform = (platformEmail ?? "info@lmsclasses.com").trim().toLowerCase();
+    const isPlatform = !!organizer && organizer === platform;
+    return {
+      meetMode: "google_platform",
+      hostUserId: existing.hostUserId ?? undefined,
+      manualMeetLink: "",
+      preserveExistingGoogle: !isPlatform,
+    };
   }
   if (existing.meetingLink?.trim()) {
     return { meetMode: "manual", manualMeetLink: existing.meetingLink.trim() };

@@ -157,7 +157,7 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
           </div>
           <div className="space-y-2">
             <Label>Course</Label>
-            <Select onValueChange={(v) => setValue("courseId", v)}>
+            <Select value={courseId || undefined} onValueChange={(v) => setValue("courseId", v, { shouldValidate: true })}>
               <SelectTrigger><SelectValue placeholder="Select course" /></SelectTrigger>
               <SelectContent>
                 {courses.map((c: { id: string; title: string }) => (
@@ -165,10 +165,11 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
                 ))}
               </SelectContent>
             </Select>
+            {errors.courseId && <p className="text-sm text-destructive">{errors.courseId.message}</p>}
           </div>
           <div className="space-y-2">
             <Label>Batch</Label>
-            <Select onValueChange={(v) => setValue("batchId", v)}>
+            <Select value={batchId || undefined} onValueChange={(v) => setValue("batchId", v)}>
               <SelectTrigger><SelectValue placeholder="Select batch (optional)" /></SelectTrigger>
               <SelectContent>
                 {batches.map((b: { id: string; name: string }) => (
@@ -179,7 +180,7 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
           </div>
           <div className="space-y-2">
             <Label>Mentor</Label>
-            <Select onValueChange={(v) => setValue("mentorId", v)}>
+            <Select value={mentorId || undefined} onValueChange={(v) => setValue("mentorId", v, { shouldValidate: true })}>
               <SelectTrigger><SelectValue placeholder="Select mentor" /></SelectTrigger>
               <SelectContent>
                 {mentors.map((m: { id: string; name: string }) => (
@@ -187,6 +188,7 @@ export function AddLiveClassModal({ open, onOpenChange }: AddLiveClassModalProps
                 ))}
               </SelectContent>
             </Select>
+            {errors.mentorId && <p className="text-sm text-destructive">{errors.mentorId.message}</p>}
           </div>
           <div className="space-y-2">
             <Label>Scheduled At (IST)</Label>

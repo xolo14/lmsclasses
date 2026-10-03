@@ -18,6 +18,13 @@ async function runIgnored(task: () => Promise<unknown>) {
   }
 }
 
+let schemaReady: Promise<void> | null = null;
+
+export function ensureSchemaReady(): Promise<void> {
+  getDb();
+  return schemaReady ?? Promise.resolve();
+}
+
 function createDb(): Db {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) {
@@ -27,7 +34,7 @@ function createDb(): Db {
   }
   const sql = neon(url);
   // Auto-migrate: each step is independent so one missing column cannot abort the rest.
-  void (async () => {
+  schemaReady = (async () => {
     await runIgnored(() => sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS course_id UUID REFERENCES live_courses(id);`);
     await runIgnored(() => sql`CREATE INDEX IF NOT EXISTS users_course_id_idx ON users(course_id);`);
     await runIgnored(
@@ -58,6 +65,8 @@ function createDb(): Db {
     await runIgnored(() => sql`ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0`);
     await runIgnored(() => sql`ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ`);
     await runIgnored(() => sql`ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS google_request_version INTEGER NOT NULL DEFAULT 1`);
+    await runIgnored(() => sql`ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS recording_url_b TEXT`);
+    await runIgnored(() => sql`ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS recording_url_c TEXT`);
     await runIgnored(
       () => sql`UPDATE live_classes
         SET meet_status = 'manual'

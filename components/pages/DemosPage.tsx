@@ -120,7 +120,6 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
                 <ResolvedVideoPlayer
                   videoUrl={selectedCourse.demoUrl}
                   title={`Demo video for ${selectedCourse.title}`}
-                  autoPlay
                 />
               ) : null}
             </div>

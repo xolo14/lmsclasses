@@ -186,8 +186,19 @@ export async function uploadFileToResumableSession(
       }
 
       if (result.status === 308) {
-        // Trust GCS's persisted range when it exposes it; otherwise assume the chunk landed.
-        offset = result.rangeEnd !== null ? result.rangeEnd + 1 : end;
+        if (result.rangeEnd !== null) {
+          offset = result.rangeEnd + 1;
+        } else {
+          const persisted = await queryPersistedOffset(session.uploadUrl, total);
+          if (persisted === "done") {
+            onProgress?.(total);
+            return;
+          }
+          if (persisted === null) {
+            throw new VideoUploadError("Storage accepted the chunk but did not report progress. Retry the upload.");
+          }
+          offset = persisted;
+        }
         onProgress?.(offset);
         attempt = 0;
         continue;

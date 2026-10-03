@@ -15,6 +15,8 @@ export type MeetModeValue = {
   /** Explicit host. Undefined → server derives from meetMode (mentor or scheduler). */
   hostUserId?: string;
   manualMeetLink: string;
+  /** Edit: keep an existing non-platform Google event unless the user changes mode. */
+  preserveExistingGoogle?: boolean;
 };
 
 export type ConflictInfo = {
@@ -61,7 +63,7 @@ export function MeetModeSelector({
 }: Props) {
   const myStatus = useGoogleStatus();
   const platformEmail = myStatus.data?.platformEmail ?? "info@lmsclasses.com";
-  const googleAvailable = myStatus.data ? myStatus.data.configured : true;
+  const googleAvailable = !!myStatus.data?.configured;
 
   useEffect(() => {
     if (!HIDDEN_MEET_MODES.includes(value.meetMode)) return;
@@ -104,7 +106,8 @@ export function MeetModeSelector({
     retry: false,
   });
 
-  const select = (meetMode: MeetMode, hostUserId?: string) => onChange({ ...value, meetMode, hostUserId });
+  const select = (meetMode: MeetMode, hostUserId?: string) =>
+    onChange({ ...value, meetMode, hostUserId, preserveExistingGoogle: false });
 
   const platformGmailWarning =
     value.meetMode === "google_platform" &&

@@ -99,6 +99,7 @@ export function ResolvedVideoPlayer({
     <EmbeddedVideoPlayer
       embed={embed}
       videoUrl={playableUrl ?? undefined}
+      sourceRef={videoUrl}
       title={title}
       autoPlay={autoPlay}
       className={className}

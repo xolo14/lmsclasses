@@ -28,7 +28,7 @@ export function prefetchVideoUrl(url: string | null | undefined) {
   if (!src || warmed.has(src)) return;
   if (typeof window === "undefined") return;
 
-  if (looksLikeGcsVideoReference(src) && !/[?&]X-Goog-/i.test(src)) {
+  if (looksLikeGcsVideoReference(src)) {
     warmed.add(src);
     resolvePlayableVideoUrl(src)
       .then((signed) => warmDirectUrl(signed))

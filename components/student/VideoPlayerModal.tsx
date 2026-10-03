@@ -24,7 +24,7 @@ interface VideoPlayerModalProps {
 export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlayerModalProps) {
   const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
   const [playableUrl, setPlayableUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
         const url = await resolvePlayableVideoUrl(videoUrl);
         if (cancelled) return;
         setPlayableUrl(url);
-        setEmbed(resolveVideoEmbed(url, true));
+        setEmbed(resolveVideoEmbed(url, false));
       } catch (err) {
         if (cancelled) return;
         const msg =
@@ -81,23 +81,21 @@ export function VideoPlayerModal({ isOpen, onClose, videoUrl, title }: VideoPlay
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
-          {isOpen && videoUrl ? (
-            loading ? (
-              <div className="flex h-full items-center justify-center text-sm text-white/80">
-                Loading course video…
-              </div>
-            ) : error ? (
-              <div className="flex h-full items-center justify-center p-6 text-center text-sm text-white/80">
-                {error}
-              </div>
-            ) : (
-              <EmbeddedVideoPlayer
-                embed={embed}
-                videoUrl={playableUrl ?? undefined}
-                title={title}
-                autoPlay
-              />
-            )
+          {isOpen && videoUrl && !error && !playableUrl ? (
+            <div className="flex h-full items-center justify-center text-sm text-white/80">
+              Loading course video…
+            </div>
+          ) : error ? (
+            <div className="flex h-full items-center justify-center p-6 text-center text-sm text-white/80">
+              {error}
+            </div>
+          ) : playableUrl ? (
+            <EmbeddedVideoPlayer
+              embed={embed}
+              videoUrl={playableUrl}
+              sourceRef={videoUrl}
+              title={title}
+            />
           ) : null}
         </div>
       </DialogContent>

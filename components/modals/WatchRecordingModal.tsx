@@ -25,7 +25,7 @@ interface WatchRecordingModalProps {
 export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: WatchRecordingModalProps) {
   const [embed, setEmbed] = useState<ResolvedVideoEmbed | null>(null);
   const [playableUrl, setPlayableUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,7 +48,7 @@ export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: Wat
         const url = await resolvePlayableVideoUrl(videoUrl);
         if (cancelled) return;
         setPlayableUrl(url);
-        setEmbed(resolveVideoEmbed(url, true));
+        setEmbed(resolveVideoEmbed(url, false));
       } catch (err) {
         if (cancelled) return;
         const msg =
@@ -79,17 +79,19 @@ export function WatchRecordingModal({ open, onOpenChange, videoUrl, title }: Wat
         </DialogHeader>
 
         <div className="relative aspect-video w-full bg-black flex items-center justify-center">
-          {loading ? (
+          {open && videoUrl && !error && !playableUrl ? (
             <p className="text-sm text-slate-400">Loading course video…</p>
           ) : error ? (
             <p className="p-6 text-center text-sm text-slate-400">{error}</p>
-          ) : (
+          ) : playableUrl ? (
             <EmbeddedVideoPlayer
               embed={embed}
-              videoUrl={playableUrl ?? undefined}
+              videoUrl={playableUrl}
+              sourceRef={videoUrl}
               title={`Class recording: ${title}`}
-              autoPlay
             />
+          ) : (
+            <p className="text-sm text-slate-400">Loading course video…</p>
           )}
         </div>
       </DialogContent>

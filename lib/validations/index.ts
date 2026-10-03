@@ -185,7 +185,9 @@ export const liveClassMeetModeSchema = z.enum(["google_platform", "manual"]);
 const ALLOWED_MEETING_HOSTS = [
   "meet.google.com",
   "zoom.us",
+  "zoom.com",
   "teams.microsoft.com",
+  "teams.live.com",
 ];
 
 export function isAllowedMeetingLink(url: string): boolean {

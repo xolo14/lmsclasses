@@ -50,11 +50,6 @@ export async function resolvePlayableVideoUrl(
         }
       }
 
-      // If raw is an http/https URL, fall back to playing raw URL directly
-      if (/^https?:\/\//i.test(raw)) {
-        return raw;
-      }
-
       if (res.status === 401 || res.status === 403) {
         throw new PlayableVideoError(
           serverError || "You do not have permission to view this video.",
@@ -75,9 +70,6 @@ export async function resolvePlayableVideoUrl(
     }
 
     if (!isJson) {
-      if (/^https?:\/\//i.test(raw)) {
-        return raw;
-      }
       throw new PlayableVideoError(
         "Server returned invalid non-JSON response while resolving video.",
         500
@@ -86,15 +78,11 @@ export async function resolvePlayableVideoUrl(
 
     const data = (await res.json()) as { url?: string };
     if (!data.url) {
-      if (/^https?:\/\//i.test(raw)) return raw;
       throw new PlayableVideoError("Missing signed URL in response", 500);
     }
     return data.url;
   } catch (err) {
     if (err instanceof PlayableVideoError) throw err;
-    if (/^https?:\/\//i.test(raw)) {
-      return raw;
-    }
     const msg =
       err instanceof Error
         ? err.message

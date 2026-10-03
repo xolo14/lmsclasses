@@ -3,7 +3,7 @@
  * Safe for client bundles (no @google-cloud/storage).
  */
 
-const VIDEO_EXT = /\.(mp4|webm|ogg|mov|m4v)(?:\?.*)?$/i;
+const VIDEO_EXT = /\.(mp4|webm|ogg|mov|m4v|mkv)(?:\?.*)?$/i;
 
 export function getConfiguredGcsBucket(): string {
   return (
@@ -23,9 +23,9 @@ export function looksLikeGcsVideoReference(
     return true;
   }
 
-  // Bare object path with a video extension
+  // Bare object path (with or without a video extension)
   if (!/^[a-z][a-z0-9+.-]*:/i.test(v) && !v.includes("://")) {
-    return VIDEO_EXT.test(v);
+    return VIDEO_EXT.test(v) || v.includes("/");
   }
 
   try {

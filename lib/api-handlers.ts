@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { eq, desc, sql, and, or, gte, lte, isNull, inArray, isNotNull, gt, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
+import { db, ensureSchemaReady } from "@/lib/db";
 import {
   organisations,
   users,
@@ -20,7 +20,7 @@ import {
 } from "@/lib/db/schema";
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
-import { organisationSchema, editOrganisationSchema, secondaryOrgAdminSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, liveClassFields, studentSchema, patchStaffUserSchema, patchStudentSchema } from "@/lib/validations";
+import { organisationSchema, editOrganisationSchema, secondaryOrgAdminSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, liveClassFields, studentSchema, patchStaffUserSchema, patchStudentSchema, isAllowedMeetingLink } from "@/lib/validations";
 import { orgAdminVisibleBatches } from "@/lib/batch-scope";
 import { sendOrgAdminWelcomeEmail,
   sendStudentWelcomeEmail,
@@ -2083,6 +2083,7 @@ export async function DELETEBatch(request: Request, id: string) {
 export async function GETLiveClasses(request: Request) {
   const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
+  await ensureSchemaReady();
 
   const { searchParams } = new URL(request.url);
   const tab = searchParams.get("tab") ?? "active";
@@ -2158,18 +2159,42 @@ export async function GETLiveClasses(request: Request) {
     setLiveRecordingSlotColumnsAvailable(false);
     console.error("[GETLiveClasses] falling back without extra live-class columns", err);
     try {
-      const result = await db
-        .select(coreSelect)
+      const hostUsers = alias(users, "host_users");
+      const withMeet = await db
+        .select({
+          ...coreSelect,
+          hostUserId: liveClasses.hostUserId,
+          hostName: hostUsers.name,
+          meetStatus: liveClasses.meetStatus,
+          meetError: liveClasses.meetError,
+          calendarHtmlLink: liveClasses.calendarHtmlLink,
+          googleEventId: liveClasses.googleEventId,
+          googleOrganizerEmail: liveClasses.googleOrganizerEmail,
+        })
         .from(liveClasses)
         .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
         .leftJoin(batches, eq(liveClasses.batchId, batches.id))
         .leftJoin(users, eq(liveClasses.mentorId, users.id))
+        .leftJoin(hostUsers, eq(liveClasses.hostUserId, hostUsers.id))
         .where(where)
         .orderBy(desc(liveClasses.scheduledAt));
-      return NextResponse.json(result.map((row) => ({ ...row, recordingUrlB: null, recordingUrlC: null })));
-    } catch (coreErr) {
-      console.error("[GETLiveClasses] core query failed", coreErr);
-      return NextResponse.json({ error: "Could not load live classes." }, { status: 500 });
+      return NextResponse.json(withMeet.map((row) => ({ ...row, recordingUrlB: null, recordingUrlC: null })));
+    } catch (meetErr) {
+      console.error("[GETLiveClasses] meet-column fallback failed", meetErr);
+      try {
+        const result = await db
+          .select(coreSelect)
+          .from(liveClasses)
+          .leftJoin(liveCourses, eq(liveClasses.courseId, liveCourses.id))
+          .leftJoin(batches, eq(liveClasses.batchId, batches.id))
+          .leftJoin(users, eq(liveClasses.mentorId, users.id))
+          .where(where)
+          .orderBy(desc(liveClasses.scheduledAt));
+        return NextResponse.json(result.map((row) => ({ ...row, recordingUrlB: null, recordingUrlC: null })));
+      } catch (coreErr) {
+        console.error("[GETLiveClasses] core query failed", coreErr);
+        return NextResponse.json({ error: "Could not load live classes." }, { status: 500 });
+      }
     }
   }
 }
@@ -2177,6 +2202,7 @@ export async function GETLiveClasses(request: Request) {
 export async function GETLiveClass(_request: Request, id: string) {
   const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
+  await ensureSchemaReady();
 
   const core = {
     id: liveClasses.id,
@@ -2238,6 +2264,7 @@ export async function GETLiveClass(_request: Request, id: string) {
 export async function POSTLiveClass(request: Request) {
   const { error, session } = await requireAuth(["super_admin", "manager", "mentor"]);
   if (error) return error;
+  await ensureSchemaReady();
 
   const body = await readApiJson(request);
   const parsed = liveClassSchema.safeParse(body);
@@ -2435,12 +2462,23 @@ export async function PATCHLiveClass(request: Request, id: string) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  await ensureSchemaReady();
   const body = await readApiJson(request);
   const parsed = liveClassFields.partial().safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    const first = parsed.error.issues[0]?.message ?? "Invalid live class details.";
+    return NextResponse.json({ error: first, details: parsed.error.flatten() }, { status: 400 });
   }
   const data = parsed.data;
+  if (data.meetMode === "manual") {
+    const link = (data.manualMeetLink || data.meetingLink || "").trim();
+    if (!link) {
+      return NextResponse.json({ error: "Paste a meeting link" }, { status: 400 });
+    }
+    if (!isAllowedMeetingLink(link)) {
+      return NextResponse.json({ error: "Use a Google Meet, Zoom, or Microsoft Teams link" }, { status: 400 });
+    }
+  }
 
   if (actor.role === "mentor") {
     if (data.mentorId && data.mentorId !== existing.mentorId) {
@@ -2519,6 +2557,8 @@ export async function PATCHLiveClass(request: Request, id: string) {
       updateData.meetStatus = plan.meetStatus;
       updateData.meetingLink = plan.meetingLink;
       updateData.meetError = null;
+      updateData.googleEventId = null;
+      updateData.calendarHtmlLink = null;
       manualLinkChanged = plan.meetStatus === "manual" && (plan.meetingLink ?? "") !== (existing.meetingLink?.trim() ?? "");
     }
   } else if (data.meetingLink !== undefined && !isGoogleManaged(existing.meetStatus)) {
@@ -2537,11 +2577,41 @@ export async function PATCHLiveClass(request: Request, id: string) {
   // Cancelling the class removes the Google event as well.
   const becomingCancelled = data.status === "cancelled" && existing.status !== "cancelled";
 
-  const [liveClass] = await db
-    .update(liveClasses)
-    .set(updateData)
-    .where(eq(liveClasses.id, id))
-    .returning();
+  let liveClass: { id: string } | undefined;
+  try {
+    const [row] = await db
+      .update(liveClasses)
+      .set(updateData)
+      .where(eq(liveClasses.id, id))
+      .returning();
+    liveClass = row;
+  } catch (err) {
+    console.error("[PATCHLiveClass] update failed, retrying core columns", err);
+    const coreUpdate: Record<string, unknown> = {};
+    if (updateData.title !== undefined) coreUpdate.title = updateData.title;
+    if (updateData.courseId !== undefined) coreUpdate.courseId = updateData.courseId;
+    if (updateData.batchId !== undefined) coreUpdate.batchId = updateData.batchId;
+    if (updateData.mentorId !== undefined) coreUpdate.mentorId = updateData.mentorId;
+    if (updateData.scheduledAt !== undefined) coreUpdate.scheduledAt = updateData.scheduledAt;
+    if (updateData.duration !== undefined) coreUpdate.duration = updateData.duration;
+    if (updateData.status !== undefined) coreUpdate.status = updateData.status;
+    if (updateData.recordingUrl !== undefined) coreUpdate.recordingUrl = updateData.recordingUrl;
+    if (updateData.meetingLink !== undefined) coreUpdate.meetingLink = updateData.meetingLink;
+    try {
+      const [row] = await db
+        .update(liveClasses)
+        .set(coreUpdate)
+        .where(eq(liveClasses.id, id))
+        .returning(LIVE_CLASS_CORE_RETURNING);
+      liveClass = row;
+    } catch (coreErr) {
+      console.error("[PATCHLiveClass] core update failed", coreErr);
+      return NextResponse.json(
+        { error: "Could not update the live class. Try again." },
+        { status: 500 }
+      );
+    }
+  }
 
   await logAction({
     userId: actor.id,
