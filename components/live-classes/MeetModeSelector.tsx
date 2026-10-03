@@ -136,8 +136,8 @@ export function MeetModeSelector({
           status={
             <span className="space-y-1">
               <span className="block text-xs text-amber-700">
-                Auto-create may not work until Google OAuth verification is approved. Paste a meeting link if you need
-                the class now — that does not use Google.
+                Auto-create Meet may not work until Google OAuth verification is approved. Paste a meeting link if you
+                need the class now. Students still get a calendar invite from the platform account when it is connected.
               </span>
               {myStatus.data ? (
                 myStatus.data.platformConnected ? (
@@ -161,7 +161,7 @@ export function MeetModeSelector({
         onSelect={() => select("manual", undefined)}
         icon={<Link2 className="h-4 w-4 text-primary" />}
         title="Paste a meeting link"
-        description="Zoom, Teams, or an existing Meet link. No calendar invite is sent by Google."
+        description="Zoom, Teams, or an existing Meet link. Enrolled students also get a Google Calendar invite from the platform account when it is connected."
       >
         {value.meetMode === "manual" && (
           <div className="space-y-1 pt-2">

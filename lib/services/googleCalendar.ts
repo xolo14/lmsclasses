@@ -21,6 +21,8 @@ export type LiveClassEventInput = {
   attendees: string[];
   /** LMS join URL shown as the event "source" link. Never the raw Meet link. */
   lmsJoinUrl: string;
+  /** Pasted Zoom/Teams/Meet URL for calendar-only invites (no new Google Meet). */
+  location?: string;
   calendarId?: string;
 };
 
@@ -106,6 +108,7 @@ function buildBody(input: LiveClassEventInput, options: { withConference: boolea
     },
     source: { title: appName, url: input.lmsJoinUrl },
     extendedProperties: { private: { lmsClassId: input.lmsClassId } },
+    ...(input.location ? { location: input.location } : {}),
   };
   if (options.withConference) {
     body.conferenceData = {
@@ -143,6 +146,23 @@ export async function createLiveClassEvent(
       conferenceDataVersion: 1,
       sendUpdates: "all",
       requestBody: buildBody(input, { withConference: true }),
+    });
+    return toResult(res.data, calendarId);
+  }, options);
+}
+
+/** Calendar invite for a pasted Zoom/Teams/Meet link — no new Google Meet conference. */
+export async function createLiveClassCalendarEvent(
+  hostUserId: string,
+  input: LiveClassEventInput,
+  options: GoogleCallOptions = {}
+): Promise<LiveClassEventResult> {
+  const calendarId = input.calendarId ?? DEFAULT_CALENDAR_ID;
+  return withGoogle(hostUserId, async (client) => {
+    const res = await calendarFor(client).events.insert({
+      calendarId,
+      sendUpdates: "all",
+      requestBody: buildBody(input, { withConference: false }),
     });
     return toResult(res.data, calendarId);
   }, options);

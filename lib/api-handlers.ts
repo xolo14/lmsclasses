@@ -54,6 +54,7 @@ import {
   createForClass,
   notifyAfterMeetReady,
   resolveMeetPlan,
+  syncManualCalendarForClass,
   updateForClass,
 } from "@/lib/services/liveClassGoogleSync";
 
@@ -2393,8 +2394,10 @@ export async function POSTLiveClass(request: Request) {
   // Google sync + email + WhatsApp must not block the HTTP response (Hostinger gateway ~30–60s).
   void (async () => {
     try {
-      if (meetMode !== "manual" && plan.usesGoogle) {
-        // createForClass notifies students/host itself once the Meet link exists.
+      if (meetMode === "manual") {
+        await syncManualCalendarForClass(liveClass.id, { actor });
+        await notifyAfterMeetReady(liveClass.id);
+      } else if (plan.usesGoogle) {
         await createForClass(liveClass.id, { actor });
       } else {
         await notifyAfterMeetReady(liveClass.id);
@@ -2538,6 +2541,7 @@ export async function PATCHLiveClass(request: Request, id: string) {
       updateData.googleOrganizerEmail = plan.googleOrganizerEmail;
       if (!isGoogleManaged(existing.meetStatus)) {
         // Switching from manual/none/cancelled to Google: fresh conference.
+        if (existing.googleEventId) cancelGoogleFirst = true;
         updateData.meetStatus = "pending";
         updateData.meetingLink = null;
         updateData.googleEventId = null;
@@ -2552,13 +2556,15 @@ export async function PATCHLiveClass(request: Request, id: string) {
     } else {
       wantsGoogle = false;
       cancelGoogleFirst = isGoogleManaged(existing.meetStatus);
-      updateData.hostUserId = null;
-      updateData.googleOrganizerEmail = null;
+      updateData.hostUserId = plan.hostUserId;
+      updateData.googleOrganizerEmail = plan.googleOrganizerEmail;
       updateData.meetStatus = plan.meetStatus;
       updateData.meetingLink = plan.meetingLink;
       updateData.meetError = null;
-      updateData.googleEventId = null;
-      updateData.calendarHtmlLink = null;
+      if (cancelGoogleFirst) {
+        updateData.googleEventId = null;
+        updateData.calendarHtmlLink = null;
+      }
       manualLinkChanged = plan.meetStatus === "manual" && (plan.meetingLink ?? "") !== (existing.meetingLink?.trim() ?? "");
     }
   } else if (data.meetingLink !== undefined && !isGoogleManaged(existing.meetStatus)) {
@@ -2642,10 +2648,15 @@ export async function PATCHLiveClass(request: Request, id: string) {
           await cancelForClass(id, { actor, reason: "class cancelled" });
           return;
         }
-        if (wantsGoogle && !cancelGoogleFirst) {
-          await updateForClass(id, previous, { actor });
-        } else if (manualLinkChanged) {
-          await notifyAfterMeetReady(id);
+        if (wantsGoogle) {
+          if (cancelGoogleFirst) {
+            await createForClass(id, { actor });
+          } else {
+            await updateForClass(id, previous, { actor });
+          }
+        } else if (data.meetMode === "manual" || existing.meetStatus === "manual") {
+          await syncManualCalendarForClass(id, { actor });
+          if (manualLinkChanged) await notifyAfterMeetReady(id);
         }
       } catch (err) {
         console.error("[live-class] background update sync failed:", err instanceof Error ? err.message : err);

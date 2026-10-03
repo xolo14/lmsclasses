@@ -59,7 +59,7 @@ export function LmsCalendar({ role, editHref, includePast }: Props) {
       <FullCalendar
         key={includePast ? "all" : "upcoming"}
         plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-        initialView={typeof window !== "undefined" && window.innerWidth < 640 ? "listWeek" : "timeGridWeek"}
+        initialView="dayGridMonth"
         headerToolbar={{
           left: "prev,next today",
           center: "title",

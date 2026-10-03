@@ -17,6 +17,7 @@ import { getConnection, getPlatformConnection } from "@/lib/services/googleAuth"
 import { getPlatformGoogleEmail, isPlatformGoogleEmail } from "@/lib/google-platform";
 import {
   cancelLiveClassEvent,
+  createLiveClassCalendarEvent,
   createLiveClassEvent,
   getLiveClassEvent,
   syncEventAttendees,
@@ -173,11 +174,13 @@ function attendeeEmails(ctx: ClassContext, students: AttendeeStudent[]): string[
 }
 
 function buildDescription(ctx: ClassContext, joinUrl: string): string {
+  const pasted = ctx.cls.meetStatus === "manual" ? ctx.cls.meetingLink?.trim() : "";
   const lines = [
     `Course: ${ctx.course?.title ?? "Live course"}`,
     ctx.batch ? `Batch: ${ctx.batch.name}` : null,
     ctx.mentor ? `Mentor: ${ctx.mentor.name}` : null,
     classUsesPlatformHost(ctx.cls) ? `Meet host: ${getPlatformGoogleEmail()}` : null,
+    pasted ? `Meeting link: ${pasted}` : null,
     "",
     `Join from your LMS (records attendance): ${joinUrl}`,
     "",
@@ -188,6 +191,7 @@ function buildDescription(ctx: ClassContext, joinUrl: string): string {
 
 function eventInput(ctx: ClassContext, students: AttendeeStudent[]): LiveClassEventInput {
   const joinUrl = joinUrlFor(ctx.cls.id);
+  const pasted = ctx.cls.meetStatus === "manual" ? ctx.cls.meetingLink?.trim() : "";
   return {
     requestId: requestIdFor(ctx.cls.id, ctx.cls.googleRequestVersion ?? 1),
     lmsClassId: ctx.cls.id,
@@ -197,6 +201,7 @@ function eventInput(ctx: ClassContext, students: AttendeeStudent[]): LiveClassEv
     durationMinutes: ctx.cls.duration ?? 60,
     attendees: attendeeEmails(ctx, students),
     lmsJoinUrl: joinUrl,
+    location: pasted || undefined,
     calendarId: classUsesPlatformHost(ctx.cls) ? "primary" : ctx.cls.googleCalendarId ?? "primary",
   };
 }
@@ -520,6 +525,87 @@ export async function notifyAfterMeetReady(classId: string): Promise<void> {
   }
 }
 
+/**
+ * Puts a pasted Zoom/Teams/Meet link on the platform Google Calendar and invites
+ * enrolled students. Does not create a new Google Meet. Never throws.
+ */
+export async function syncManualCalendarForClass(
+  classId: string,
+  opts: { actor?: Actor } = {}
+): Promise<SyncOutcome> {
+  const actor = opts.actor ?? null;
+  const ctx = await loadContext(classId);
+  if (!ctx) return { ok: false, reason: "no_class", message: "Class not found" };
+  const { cls } = ctx;
+  if (cls.meetStatus !== "manual" || !cls.meetingLink?.trim()) {
+    return { ok: false, reason: "skipped", message: "Not a pasted meeting link" };
+  }
+  if (cls.status === "cancelled" || cls.status === "completed") {
+    return { ok: false, reason: "skipped", message: `class is ${cls.status}` };
+  }
+
+  const platform = await getPlatformConnection();
+  if (!platform || platform.status !== "active") {
+    const message =
+      platform?.status === "needs_reconnect"
+        ? `Platform Google account (${getPlatformGoogleEmail()}) must be reconnected before calendar invites can be sent.`
+        : `Platform Google account (${getPlatformGoogleEmail()}) is not connected. The class is saved; students still see it in the LMS calendar.`;
+    await db.update(liveClasses).set({ meetError: message, lastAttemptAt: new Date() }).where(eq(liveClasses.id, classId));
+    await audit("live_class.manual_calendar_skipped", classId, actor, { message });
+    return { ok: false, reason: "host_not_connected", message };
+  }
+
+  const hosted = {
+    ...ctx,
+    cls: { ...cls, googleOrganizerEmail: getPlatformGoogleEmail(), hostUserId: cls.hostUserId ?? cls.mentorId },
+  };
+  const students = await collectStudentAttendees(cls);
+  const input = eventInput(hosted, students);
+  const callOpts = { platform: true };
+
+  try {
+    let result: LiveClassEventResult;
+    if (cls.googleEventId) {
+      try {
+        result = await updateLiveClassEvent(platform.userId, cls.googleEventId, input, callOpts);
+      } catch (err) {
+        if (!(err instanceof GoogleEventNotFoundError)) throw err;
+        result = await createLiveClassCalendarEvent(platform.userId, input, callOpts);
+      }
+    } else {
+      result = await createLiveClassCalendarEvent(platform.userId, input, callOpts);
+    }
+
+    const now = new Date();
+    await db
+      .update(liveClasses)
+      .set({
+        googleEventId: result.eventId,
+        googleCalendarId: result.calendarId,
+        calendarHtmlLink: result.htmlLink,
+        googleOrganizerEmail: getPlatformGoogleEmail(),
+        hostUserId: cls.hostUserId ?? cls.mentorId,
+        meetingLink: cls.meetingLink,
+        meetStatus: "manual",
+        meetError: null,
+        googleSyncedAt: now,
+        lastAttemptAt: now,
+      })
+      .where(eq(liveClasses.id, classId));
+    await audit("live_class.manual_calendar_synced", classId, actor, {
+      eventId: result.eventId,
+      attendees: students.length,
+    });
+    return { ok: true, meetLink: cls.meetingLink, eventId: result.eventId };
+  } catch (err) {
+    const message = describeGoogleError(err);
+    console.error("[google-sync] manual calendar failed", { classId, ...scrubGoogleError(err) });
+    await db.update(liveClasses).set({ meetError: message, lastAttemptAt: new Date() }).where(eq(liveClasses.id, classId));
+    await audit("live_class.manual_calendar_failed", classId, actor, { message });
+    return { ok: false, reason: "failed", message };
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Update                                                              */
 /* ------------------------------------------------------------------ */
@@ -650,11 +736,18 @@ export async function cancelForClass(classId: string, opts: { actor?: Actor; rea
   const ctx = await loadContext(classId, { includeDeleted: true });
   if (!ctx) return;
   const { cls } = ctx;
-  if (!["created", "pending", "failed"].includes(cls.meetStatus)) return;
+  if (!cls.googleEventId && !["created", "pending", "failed"].includes(cls.meetStatus)) return;
 
-  if (cls.googleEventId && cls.hostUserId) {
+  if (cls.googleEventId) {
     try {
-      const actorGoogle = await googleActor(cls);
+      let actorGoogle: { userId: string; platform: boolean };
+      try {
+        actorGoogle = await googleActor(cls);
+      } catch {
+        const platform = await getPlatformConnection();
+        if (!platform) throw new GoogleNotConnectedError("platform");
+        actorGoogle = { userId: platform.userId, platform: true };
+      }
       await cancelLiveClassEvent(actorGoogle.userId, cls.googleEventId, cls.googleCalendarId ?? "primary", {
         platform: actorGoogle.platform,
       });
@@ -765,7 +858,7 @@ export async function syncCourseAttendees(courseId: string, opts: { batchId?: st
   const conditions = [
     eq(liveClasses.courseId, courseId),
     isNull(liveClasses.deletedAt),
-    eq(liveClasses.meetStatus, "created"),
+    inArray(liveClasses.meetStatus, ["created", "manual"]),
     inArray(liveClasses.status, ["scheduled", "live"]),
     gt(liveClasses.scheduledAt, new Date(Date.now() - 60 * 60_000)),
   ];
@@ -777,7 +870,7 @@ export async function syncCourseAttendees(courseId: string, opts: { batchId?: st
     if (!isUpcoming(cls)) continue;
     // A class with a batch only cares about enrollment changes in that batch.
     if (cls.batchId && opts.batchId && cls.batchId !== opts.batchId) continue;
-    if (!cls.googleEventId || !cls.hostUserId) continue;
+    if (!cls.googleEventId) continue;
 
     try {
       const ctx = await loadContext(cls.id);
@@ -796,6 +889,17 @@ export async function syncCourseAttendees(courseId: string, opts: { batchId?: st
     } catch (err) {
       failed += 1;
       if (err instanceof GoogleEventNotFoundError) {
+        if (cls.meetStatus === "manual") {
+          await db
+            .update(liveClasses)
+            .set({
+              googleEventId: null,
+              calendarHtmlLink: null,
+              meetError: "Google Calendar event was deleted. Re-save the class to send a new invite.",
+            })
+            .where(eq(liveClasses.id, cls.id));
+          continue;
+        }
         await db
           .update(liveClasses)
           .set({
@@ -880,7 +984,14 @@ export function resolveMeetPlan(input: {
     };
   }
   if (mode === "manual" && manual) {
-    return { ...none, meetStatus: "manual", meetingLink: manual };
+    return {
+      hostUserId: input.explicitHostId ?? input.mentorId,
+      meetStatus: "manual",
+      meetingLink: manual,
+      usesGoogle: false,
+      usesPlatform: false,
+      googleOrganizerEmail: getPlatformGoogleEmail(),
+    };
   }
   return none;
 }
