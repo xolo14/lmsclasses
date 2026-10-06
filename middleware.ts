@@ -42,7 +42,7 @@ export default auth((req) => {
 
     const role = req.auth?.user?.role;
 
-    const publicPaths = ["/login", "/hr/login", "/hr/register", "/", "/privacy", "/terms", "/auth/continue"];
+    const publicPaths = ["/login", "/hr/login", "/hr/register", "/", "/privacy", "/terms", "/auth/continue", "/auth/google"];
     const isPublic =
       publicPaths.some((p) => pathname === p) ||
       pathname.startsWith("/courses") ||
