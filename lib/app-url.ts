@@ -8,6 +8,11 @@ export function getAppUrl(): string {
   return url.replace(/\/$/, "");
 }
 
+/** Website Google login callback. Hostinger WAF 403s `/api/auth/callback/google`. */
+export function googleSignInCallbackUrl(): string {
+  return `${getAppUrl()}/api/google/signin`;
+}
+
 /** Origin for 302s. Never use request.url alone — on Hostinger it can be invalid and 500. */
 export function publicOrigin(request: Request): string {
   const env = (

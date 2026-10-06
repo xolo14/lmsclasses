@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { customFetch } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
@@ -6,6 +6,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, hrUsers } from "@/lib/db/schema";
 import { authConfig } from "@/lib/auth.config";
+import { googleSignInCallbackUrl } from "@/lib/app-url";
 
 function googleLoginCredentials() {
   const clientId = process.env.AUTH_GOOGLE_ID?.trim() || process.env.GOOGLE_CLIENT_ID?.trim();
@@ -201,6 +202,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               clientId: google.clientId,
               clientSecret: google.clientSecret,
               allowDangerousEmailAccountLinking: true,
+              authorization: {
+                params: {
+                  prompt: "select_account",
+                  redirect_uri: googleSignInCallbackUrl(),
+                },
+              },
+              [customFetch]: async (...args: Parameters<typeof fetch>) => {
+                const init = args[1];
+                const body = init?.body;
+                if (body instanceof URLSearchParams && body.has("redirect_uri")) {
+                  body.set("redirect_uri", googleSignInCallbackUrl());
+                }
+                return fetch(...args);
+              },
             }),
           ]
         : [];

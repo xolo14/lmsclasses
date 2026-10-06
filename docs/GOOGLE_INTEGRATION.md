@@ -66,11 +66,12 @@ Use the **left menu** in this order: **Branding → Audience → Data Access →
 ```
 http://localhost:3000/api/google/callback
 https://lmsclasses.com/api/google/callback
-http://localhost:3000/api/auth/callback/google
-https://lmsclasses.com/api/auth/callback/google
+http://localhost:3000/api/google/signin
+https://lmsclasses.com/api/google/signin
 ```
 
-The `/api/auth/callback/google` URIs are for **website login** (existing LMS users only).
+The `/api/google/signin` URIs are for **website login** (existing LMS users only).
+Hostinger WAF blocks `/api/auth/callback/google`, so do not use that path for login.
 The `/api/google/callback` URIs stay for **Calendar / Meet connect**. Do not mix the two.
 
 4. Copy Client ID and Client secret into Hostinger `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.

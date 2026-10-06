@@ -49,6 +49,7 @@ export default auth((req) => {
       pathname.startsWith("/demo") ||
       pathname.startsWith("/api/video") ||
       pathname.startsWith("/api/auth") ||
+      pathname.startsWith("/api/google/signin") ||
       pathname === "/api/logout" ||
       pathname.startsWith("/api/public") ||
       pathname.startsWith("/api/cron") ||
