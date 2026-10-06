@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Play, AlertCircle, Link2, Check } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { sortByCourseTitle } from "@/lib/utils";
 import { ResolvedVideoPlayer } from "@/components/ui/resolved-video-player";
 
 type Course = {
@@ -54,10 +55,13 @@ export function DemosPage({ liveOnly = false }: DemosPageProps) {
         liveRes.ok ? liveRes.json() : [],
         recordRes.ok ? recordRes.json() : [],
       ]);
-      return [
-        ...(Array.isArray(liveCourses) ? liveCourses : []),
-        ...(Array.isArray(recordCourses) ? recordCourses : []),
-      ];
+      return sortByCourseTitle(
+        [
+          ...(Array.isArray(liveCourses) ? liveCourses : []),
+          ...(Array.isArray(recordCourses) ? recordCourses : []),
+        ],
+        (c) => c.title
+      );
     },
   });
 

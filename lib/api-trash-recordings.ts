@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, desc, and, isNull, isNotNull, gte, or, sql } from "drizzle-orm";
+import { eq, desc, asc, and, isNull, isNotNull, gte, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   organisations,
@@ -210,7 +210,7 @@ export async function GETOngoingCourses() {
     )
     .where(and(eq(liveCourses.isActive, true), isNull(liveCourses.deletedAt)))
     .groupBy(liveCourses.id, liveCourses.title, liveCourses.description)
-    .orderBy(liveCourses.title);
+    .orderBy(asc(sql`lower(${liveCourses.title})`));
 
   return NextResponse.json(ongoing);
 }

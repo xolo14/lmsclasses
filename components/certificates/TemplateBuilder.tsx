@@ -251,7 +251,7 @@ export function TemplateBuilder({
         type: "record" as const,
       })),
     ];
-    setCourses(opts);
+    setCourses(opts.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true })));
   }, []);
 
   useEffect(() => {

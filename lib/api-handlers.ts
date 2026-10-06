@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, desc, sql, and, or, gte, lte, isNull, inArray, isNotNull, gt, ne } from "drizzle-orm";
+import { eq, desc, asc, sql, and, or, gte, lte, isNull, inArray, isNotNull, gt, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import bcrypt from "bcryptjs";
 import { db, ensureSchemaReady } from "@/lib/db";
@@ -40,7 +40,7 @@ import {
 } from "@/lib/live-recording-query";
 import { getDefaultMeetMode } from "@/lib/google-platform";
 import { getPlatformConnection } from "@/lib/services/googleAuth";
-import { canHostLiveClass, parseDatetimeLocalAsIst } from "@/lib/utils";
+import { canHostLiveClass, compareCourseTitle, parseDatetimeLocalAsIst } from "@/lib/utils";
 import {
   assertLiveCoursesExist,
   getMentorCourseIds,
@@ -478,7 +478,7 @@ export async function GETLiveCourses() {
       .select()
       .from(liveCourses)
       .where(and(...filters))
-      .orderBy(desc(liveCourses.createdAt)),
+      .orderBy(asc(sql`lower(${liveCourses.title})`)),
     db
       .select({
         liveCourseId: studentCourses.liveCourseId,
@@ -543,7 +543,8 @@ export async function GETOrgAdminPurchasedLiveCourses(organisationId: string) {
       price: liveCourses.price,
     })
     .from(liveCourses)
-    .where(and(inArray(liveCourses.id, courseIds), isNull(liveCourses.deletedAt), eq(liveCourses.isActive, true)));
+    .where(and(inArray(liveCourses.id, courseIds), isNull(liveCourses.deletedAt), eq(liveCourses.isActive, true)))
+    .orderBy(asc(sql`lower(${liveCourses.title})`));
 
   const enriched = courses.map((course) => {
     const totals = byCourse.get(course.id)!;
@@ -572,7 +573,7 @@ export async function GETRecordCourses() {
       .select()
       .from(recordCourses)
       .where(and(...filters))
-      .orderBy(desc(recordCourses.createdAt)),
+      .orderBy(asc(sql`lower(${recordCourses.title})`)),
     db
       .select({
         recordCourseId: studentCourses.recordCourseId,
@@ -637,7 +638,8 @@ export async function GETOrgAdminPurchasedRecordCourses(organisationId: string) 
       price: recordCourses.price,
     })
     .from(recordCourses)
-    .where(and(inArray(recordCourses.id, courseIds), isNull(recordCourses.deletedAt), eq(recordCourses.isActive, true)));
+    .where(and(inArray(recordCourses.id, courseIds), isNull(recordCourses.deletedAt), eq(recordCourses.isActive, true)))
+    .orderBy(asc(sql`lower(${recordCourses.title})`));
 
   const enriched = courses.map((course) => {
     const totals = byCourse.get(course.id)!;
@@ -1018,8 +1020,10 @@ export async function GETStudents(request: Request) {
       orgName: r.orgName,
       enrollmentSource: source,
       source,
-      courseTitles: r.courseTitles,
-      courseTitle: r.courseTitles.length > 0 ? r.courseTitles.join(", ") : (r.courseTitle || "—"),
+      courseTitles: [...r.courseTitles].sort(compareCourseTitle),
+      courseTitle: r.courseTitles.length > 0
+        ? [...r.courseTitles].sort(compareCourseTitle).join(", ")
+        : (r.courseTitle || "—"),
       batchName: r.batchName || "—",
     };
   });
@@ -1627,16 +1631,15 @@ export async function GETUsersByRole(role: "manager" | "mentor") {
       return NextResponse.json(
         result.map((row) => {
           const assigned = extra.get(row.id);
-          const courseIds = assigned?.courseIds.length
-            ? assigned.courseIds
-            : row.courseId
-              ? [row.courseId]
-              : [];
-          const courseTitles = assigned?.courseTitles.length
-            ? assigned.courseTitles
-            : row.courseTitle
-              ? [row.courseTitle]
-              : [];
+          const paired = (
+            assigned?.courseIds.length
+              ? assigned.courseIds.map((id, i) => ({ id, title: assigned.courseTitles[i] ?? "" }))
+              : row.courseId
+                ? [{ id: row.courseId, title: row.courseTitle ?? "" }]
+                : []
+          ).sort((a, b) => compareCourseTitle(a.title, b.title));
+          const courseIds = paired.map((p) => p.id);
+          const courseTitles = paired.map((p) => p.title).filter(Boolean);
           return {
             ...row,
             courseId: courseIds[0] ?? null,
@@ -3048,7 +3051,8 @@ export async function GETStudentCourses(studentId: string) {
     .leftJoin(batches, eq(studentCourses.batchId, batches.id))
     .where(
       and(eq(studentCourses.studentId, studentId), eq(studentCourses.isActive, true))
-    );
+    )
+    .orderBy(asc(sql`lower(coalesce(${liveCourses.title}, ${recordCourses.title}))`));
 
   return NextResponse.json(enrolled);
 }

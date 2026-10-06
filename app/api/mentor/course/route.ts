@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { liveCourses, batches, classRecordings, studentCourses } from "@/lib/db/schema";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getMentorCourseIds } from "@/lib/mentor-courses";
 
 export const dynamic = "force-dynamic";
@@ -30,13 +30,10 @@ export async function GET() {
       createdAt: liveCourses.createdAt,
     })
     .from(liveCourses)
-    .where(and(inArray(liveCourses.id, courseIds), isNull(liveCourses.deletedAt)));
+    .where(and(inArray(liveCourses.id, courseIds), isNull(liveCourses.deletedAt)))
+    .orderBy(asc(sql`lower(${liveCourses.title})`));
 
-  const ordered = courseIds
-    .map((id) => courseRows.find((row) => row.id === id))
-    .filter((row): row is NonNullable<typeof row> => !!row);
-
-  if (!ordered.length) {
+  if (!courseRows.length) {
     return NextResponse.json({ course: null, courses: [] });
   }
 
@@ -62,7 +59,7 @@ export async function GET() {
   const recordingMap = new Map(recordingCounts.map((row) => [row.courseId, row.count]));
   const studentMap = new Map(studentCounts.map((row) => [row.courseId, row.count]));
 
-  const courses = ordered.map((course) => ({
+  const courses = courseRows.map((course) => ({
     ...course,
     batchCount: batchMap.get(course.id) ?? 0,
     recordingCount: recordingMap.get(course.id) ?? 0,

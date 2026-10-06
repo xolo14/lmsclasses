@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { liveCourses, recordCourses, studentCourses, slots, users } from "@/lib/db/schema";
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
@@ -7,6 +7,7 @@ import {
   isDirectPlatformStudent,
   SUPER_ADMIN_DIRECT_STUDENT_ONLY_MSG,
 } from "@/lib/enrollment-service";
+import { sortByCourseTitle } from "@/lib/utils";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -56,12 +57,14 @@ export async function GET(request: Request) {
   const liveRows = await db
     .select()
     .from(liveCourses)
-    .where(and(eq(liveCourses.isActive, true), isNull(liveCourses.deletedAt)));
+    .where(and(eq(liveCourses.isActive, true), isNull(liveCourses.deletedAt)))
+    .orderBy(asc(sql`lower(${liveCourses.title})`));
 
   const recordRows = await db
     .select()
     .from(recordCourses)
-    .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)));
+    .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)))
+    .orderBy(asc(sql`lower(${recordCourses.title})`));
 
   let purchasedLiveIds: string[] | null = null;
   let purchasedRecordIds: string[] | null = null;
@@ -97,5 +100,5 @@ export async function GET(request: Request) {
       })),
   ];
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: sortByCourseTitle(data, (c) => c.title) });
 }

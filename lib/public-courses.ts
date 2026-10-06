@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { recordCourses, studentCourses, courseRecordings } from "@/lib/db/schema";
 import { resolveCourseThumbnailUrl } from "@/lib/course-thumbnail";
-import { and, eq, isNull, sql, desc, count } from "drizzle-orm";
+import { and, eq, isNull, sql, asc, count } from "drizzle-orm";
 
 export type PublicCourseListItem = {
   id: string;
@@ -45,7 +45,7 @@ export async function getPublicCourses(): Promise<PublicCourseListItem[]> {
     })
     .from(recordCourses)
     .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)))
-    .orderBy(desc(recordCourses.createdAt));
+    .orderBy(asc(sql`lower(${recordCourses.title})`));
 
   return rows.map((c) => ({
       id: c.id,

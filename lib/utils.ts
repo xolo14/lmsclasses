@@ -5,6 +5,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function compareCourseTitle(a: string | null | undefined, b: string | null | undefined): number {
+  return (a ?? "").localeCompare(b ?? "", undefined, { sensitivity: "base", numeric: true });
+}
+
+export function sortByCourseTitle<T>(
+  items: T[],
+  titleOf: (item: T) => string | null | undefined
+): T[] {
+  return [...items].sort((a, b) => compareCourseTitle(titleOf(a), titleOf(b)));
+}
+
 export function formatCurrency(amount: string | number): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
   return new Intl.NumberFormat("en-IN", {

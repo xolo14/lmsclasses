@@ -71,7 +71,9 @@ export function AddDirectStudentModal({ isOpen, onClose, onSuccess }: AddDirectS
       ]);
       const mappedLive = (Array.isArray(liveData) ? liveData : []).map((c: any) => ({ ...c, type: "live" }));
       const mappedRecord = (Array.isArray(recordData) ? recordData : []).map((c: any) => ({ ...c, type: "record" }));
-      return [...mappedLive, ...mappedRecord].filter((c: CourseOption) => c.isActive !== false);
+      return [...mappedLive, ...mappedRecord]
+        .filter((c: CourseOption) => c.isActive !== false)
+        .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true }));
     },
     enabled: isOpen,
   });

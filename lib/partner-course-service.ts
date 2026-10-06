@@ -1,4 +1,5 @@
 import { and, eq, isNull, ilike } from "drizzle-orm";
+import { sortByCourseTitle } from "@/lib/utils";
 import { db } from "@/lib/db";
 import { batches, liveCourses, recordCourses } from "@/lib/db/schema";
 import { resolveCourseThumbnailUrl } from "@/lib/course-thumbnail";
@@ -152,13 +153,14 @@ export async function getCoursesForApiKey(apiKey: ApiKey): Promise<PublicCourseI
     .from(recordCourses)
     .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)));
 
-  return rows
-    .filter((c) => {
+  return sortByCourseTitle(
+    rows.filter((c) => {
       if (!c.slug) return false;
       if (apiKey.courseId) return c.id === apiKey.courseId;
       return courseAllowed(apiKey, c.title, c.id);
-    })
-    .map((c) => ({
+    }),
+    (c) => c.title
+  ).map((c) => ({
       id: c.id,
       name: c.title,
       slug: c.slug!,

@@ -185,9 +185,9 @@ export async function serializeApiKeyWithCourse(
     .from(recordCourses)
     .where(inArray(recordCourses.id, allowedIds));
   const titleById = new Map(rows.map((r) => [r.id, r.title]));
-  const courseTitles = allowedIds
+  const courseTitles = (allowedIds
     .map((id) => titleById.get(id))
-    .filter(Boolean) as string[];
+    .filter(Boolean) as string[]).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
 
   return serializeApiKey(k, {
     ...options,

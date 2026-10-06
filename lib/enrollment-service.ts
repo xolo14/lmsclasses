@@ -636,7 +636,7 @@ export async function getStudentEnrollmentsRich(
         or(eq(studentCourses.status, "active"), eq(studentCourses.status, "completed"))
       )
     )
-    .orderBy(desc(studentCourses.enrolledAt));
+    .orderBy(asc(sql`lower(coalesce(${liveCourses.title}, ${recordCourses.title}))`));
 
   const result: EnrollmentWithCourse[] = [];
 

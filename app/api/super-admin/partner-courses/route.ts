@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { recordCourses } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/api-auth";
@@ -21,7 +21,8 @@ export async function GET() {
       isActive: recordCourses.isActive,
     })
     .from(recordCourses)
-    .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)));
+    .where(and(eq(recordCourses.isActive, true), isNull(recordCourses.deletedAt)))
+    .orderBy(asc(sql`lower(${recordCourses.title})`));
 
   return NextResponse.json(
     courses.map((c) => ({
