@@ -32,7 +32,7 @@ async function createUniqueLmsId(): Promise<string> {
 }
 
 export async function POST(request: Request) {
-  const { error, session } = await requireAuth(["super_admin"]);
+  const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
 
   try {

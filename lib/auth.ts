@@ -1,16 +1,67 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, hrUsers } from "@/lib/db/schema";
 import { authConfig } from "@/lib/auth.config";
 
+function googleLoginCredentials() {
+  const clientId = process.env.AUTH_GOOGLE_ID?.trim() || process.env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = process.env.AUTH_GOOGLE_SECRET?.trim() || process.env.GOOGLE_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret };
+}
+
+async function findActiveLmsUserByEmail(email: string) {
+  const [row] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      organisationId: users.organisationId,
+      courseId: users.courseId,
+      lmsId: users.lmsId,
+      isActive: users.isActive,
+    })
+    .from(users)
+    .where(and(eq(users.email, email), isNull(users.deletedAt)))
+    .limit(1);
+  if (!row || row.isActive === false || row.role === "hr") return null;
+  return row;
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,
-    async jwt({ token, user }) {
+    async signIn({ account, profile }) {
+      if (account?.provider !== "google") return true;
+      const email = typeof profile?.email === "string" ? profile.email.trim().toLowerCase() : "";
+      const verified = (profile as { email_verified?: boolean } | undefined)?.email_verified !== false;
+      if (!email || !verified) return "/login?error=GoogleNotRegistered";
+      const row = await findActiveLmsUserByEmail(email);
+      if (!row) return "/login?error=GoogleNotRegistered";
+      return true;
+    },
+    async jwt({ token, user, account }) {
+      if (account?.provider === "google") {
+        const email = user?.email?.trim().toLowerCase();
+        if (!email) return null as unknown as typeof token;
+        const row = await findActiveLmsUserByEmail(email);
+        if (!row) return null as unknown as typeof token;
+        token.sub = row.id;
+        token.role = row.role;
+        token.organisationId = row.organisationId;
+        token.courseId = row.courseId;
+        token.lmsId = row.lmsId;
+        token.companyId = null;
+        token.checkedAt = Date.now();
+        return token;
+      }
+
       if (user) {
         token.role = user.role;
         token.organisationId = user.organisationId;
@@ -142,5 +193,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
       },
     }),
+    ...(() => {
+      const google = googleLoginCredentials();
+      return google
+        ? [
+            Google({
+              clientId: google.clientId,
+              clientSecret: google.clientSecret,
+              allowDangerousEmailAccountLinking: true,
+            }),
+          ]
+        : [];
+    })(),
   ],
 });

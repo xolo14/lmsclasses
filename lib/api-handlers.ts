@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, desc, asc, sql, and, or, gte, lte, isNull, inArray, isNotNull, gt, ne } from "drizzle-orm";
+import { eq, desc, asc, sql, and, or, gte, lte, isNull, inArray, isNotNull, gt } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import bcrypt from "bcryptjs";
 import { db, ensureSchemaReady } from "@/lib/db";
@@ -20,7 +20,7 @@ import {
 } from "@/lib/db/schema";
 import { requireAuth, resolveOrganisationId } from "@/lib/api-auth";
 import { logAction, getClientIp } from "@/lib/audit";
-import { organisationSchema, editOrganisationSchema, secondaryOrgAdminSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, liveClassFields, studentSchema, patchStaffUserSchema, patchStudentSchema, isAllowedMeetingLink } from "@/lib/validations";
+import { organisationSchema, editOrganisationSchema, courseSchema, managerSchema, mentorSchema, batchSchema, liveClassSchema, liveClassFields, studentSchema, patchStaffUserSchema, patchStudentSchema, isAllowedMeetingLink } from "@/lib/validations";
 import { orgAdminVisibleBatches } from "@/lib/batch-scope";
 import { sendOrgAdminWelcomeEmail,
   sendStudentWelcomeEmail,
@@ -227,135 +227,6 @@ export async function POSTOrganisation(request: Request) {
   );
 
   return NextResponse.json({ org, admin }, { status: 201 });
-}
-
-export async function GETOrganisationSecondaryAdmins(orgId: string) {
-  const { error } = await requireAuth(["super_admin", "manager"]);
-  if (error) return error;
-
-  const [org] = await db
-    .select({ id: organisations.id, adminId: organisations.adminId })
-    .from(organisations)
-    .where(and(eq(organisations.id, orgId), isNull(organisations.deletedAt)))
-    .limit(1);
-
-  if (!org) {
-    return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
-  }
-
-  const conditions = [
-    eq(users.organisationId, orgId),
-    eq(users.role, "org_admin"),
-    isNull(users.deletedAt),
-  ];
-  if (org.adminId) conditions.push(ne(users.id, org.adminId));
-
-  const secondaries = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      isActive: users.isActive,
-    })
-    .from(users)
-    .where(and(...conditions))
-    .orderBy(desc(users.createdAt));
-
-  return NextResponse.json(secondaries);
-}
-
-export async function POSTOrganisationSecondaryAdmin(request: Request, orgId: string) {
-  const { error, session } = await requireAuth(["super_admin", "manager"]);
-  if (error) return error;
-
-  const [org] = await db
-    .select()
-    .from(organisations)
-    .where(and(eq(organisations.id, orgId), isNull(organisations.deletedAt)))
-    .limit(1);
-
-  if (!org) {
-    return NextResponse.json({ error: "Organisation not found" }, { status: 404 });
-  }
-
-  const body = await request.json();
-  const parsed = secondaryOrgAdminSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const { name, email, password } = parsed.data;
-  const hashedPassword = await bcrypt.hash(password, 12);
-
-  const [taken] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (taken?.deletedAt) {
-    return NextResponse.json({ error: "Email already exists" }, { status: 409 });
-  }
-
-  if (taken) {
-    const isThisOrgAdmin = taken.role === "org_admin" && taken.organisationId === org.id;
-    const isPrimary = org.adminId === taken.id;
-    if (isPrimary) {
-      return NextResponse.json({ error: "That email is already the primary admin" }, { status: 409 });
-    }
-    if (!isThisOrgAdmin) {
-      return NextResponse.json({ error: "Email already exists" }, { status: 409 });
-    }
-
-    const [updated] = await db
-      .update(users)
-      .set({
-        name,
-        password: hashedPassword,
-        isActive: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, taken.id))
-      .returning({ id: users.id, name: users.name, email: users.email });
-
-    await logAction({
-      userId: session!.user.id,
-      role: session!.user.role,
-      action: "UPDATED_SECONDARY_ORG_ADMIN",
-      entity: "User",
-      entityId: taken.id,
-      metadata: { orgId: org.id, email },
-      ipAddress: getClientIp(request),
-    });
-
-    await trySendWelcomeEmail("org admin welcome", () =>
-      sendOrgAdminWelcomeEmail({ email, adminName: name, orgName: org.name, password })
-    );
-
-    return NextResponse.json(updated);
-  }
-
-  const [admin] = await db
-    .insert(users)
-    .values({
-      name,
-      email,
-      password: hashedPassword,
-      role: "org_admin",
-      organisationId: org.id,
-    })
-    .returning({ id: users.id, name: users.name, email: users.email });
-
-  await logAction({
-    userId: session!.user.id,
-    role: session!.user.role,
-    action: "CREATED_SECONDARY_ORG_ADMIN",
-    entity: "User",
-    entityId: admin.id,
-    metadata: { orgId: org.id, email },
-    ipAddress: getClientIp(request),
-  });
-
-  await trySendWelcomeEmail("org admin welcome", () =>
-    sendOrgAdminWelcomeEmail({ email, adminName: name, orgName: org.name, password })
-  );
-
-  return NextResponse.json(admin, { status: 201 });
 }
 
 export async function PATCHOrganisation(request: Request, id: string) {

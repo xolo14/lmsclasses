@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { Plus, Pencil, Trash2, Eye } from "lucide-react";
 import { DataTable } from "@/components/tables/DataTable";
@@ -24,6 +24,8 @@ type Org = OrganisationRow & {
 
 export default function OrganisationsPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const orgBase = pathname.startsWith("/manager") ? "/manager" : "/super-admin";
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editOrg, setEditOrg] = useState<OrganisationRow | undefined>();
@@ -91,7 +93,7 @@ export default function OrganisationsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => router.push(`/super-admin/organisations/${row.original.id}`)}
+            onClick={() => router.push(`${orgBase}/organisations/${row.original.id}`)}
           >
             <Eye className="h-3 w-3 mr-1" /> View
           </Button>

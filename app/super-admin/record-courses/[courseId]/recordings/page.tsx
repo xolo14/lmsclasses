@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,11 @@ import { formatDate } from "@/lib/utils";
 
 export default function RecordCourseRecordingsPage() {
   const params = useParams();
+  const pathname = usePathname();
   const courseId = params.courseId as string;
+  const coursesHref = pathname.startsWith("/manager")
+    ? "/manager/record-courses"
+    : "/super-admin/record-courses";
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<CourseRecording | undefined>();
@@ -54,7 +58,7 @@ export default function RecordCourseRecordingsPage() {
   return (
     <div className="space-y-6">
       <nav className="text-sm text-muted-foreground">
-        <Link href="/super-admin/record-courses" className="hover:text-primary">
+        <Link href={coursesHref} className="hover:text-primary">
           Record Courses
         </Link>
         {" > "}

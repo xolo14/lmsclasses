@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Plus, Pencil, Trash2, FileSpreadsheet, Play, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,8 @@ type Course = {
 };
 
 export default function RecordCoursesPage() {
+  const pathname = usePathname();
+  const courseBase = pathname.startsWith("/manager") ? "/manager" : "/super-admin";
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -113,7 +116,7 @@ export default function RecordCoursesPage() {
               <div className="flex items-center justify-between gap-2 mt-4">
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" asChild>
-                    <Link href={`/super-admin/record-courses/${course.id}/recordings`}>
+                    <Link href={`${courseBase}/record-courses/${course.id}/recordings`}>
                       <Film className="h-3 w-3 mr-1" /> Manage Recordings
                     </Link>
                   </Button>

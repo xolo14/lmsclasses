@@ -420,7 +420,7 @@ export async function assignCoursesToStudent(
           batchId: liveAccess ? input.batchId ?? null : null,
           organisationId: orgId,
           assignedBy: actor.userId,
-          enrollmentSource: actor.role === "super_admin" ? "super_admin" : "org_admin",
+          enrollmentSource: orgId ? "org_admin" : "super_admin",
           accessType: input.accessType,
           liveAccess,
           liveAccessFrom: liveAccess ? liveFrom : null,
