@@ -121,6 +121,7 @@ export async function autoCompletePastLiveClasses(filters?: { courseId?: string;
 export async function GETOrganisations() {
   const { error, session } = await requireAuth(["super_admin", "manager"]);
   if (error) return error;
+  await ensureSchemaReady();
 
   const orgs = await db
     .select({

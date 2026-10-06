@@ -106,6 +106,19 @@ function createDb(): Db {
       () => sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_gconn_one_platform
         ON google_connections (is_platform_account) WHERE is_platform_account = true`
     );
+
+    // Secondary mailbox accounts were extra org_admins. Keep only the org's primary adminId.
+    await runIgnored(
+      () => sql`UPDATE users
+        SET is_active = false, deleted_at = NOW(), updated_at = NOW()
+        WHERE role = 'org_admin'
+          AND deleted_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM organisations o
+            WHERE o.admin_id = users.id
+              AND o.deleted_at IS NULL
+          )`
+    );
   })();
 
   return drizzle(sql, {

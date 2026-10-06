@@ -95,8 +95,6 @@ export function AddOrganisationAdminModal({
       setStatusActive(organisation?.isActive ?? true);
       setJobPortalAccess(organisation?.jobPortalAccess ?? false);
       setError("");
-    } else {
-      setSecondaryOpen(false);
     }
   }, [open, formValues, reset, organisation]);
 
@@ -128,7 +126,6 @@ export function AddOrganisationAdminModal({
   });
 
   return (
-    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[min(90dvh,90vh)] overflow-y-auto">
         <DialogHeader>
@@ -246,6 +243,5 @@ export function AddOrganisationAdminModal({
         </form>
       </DialogContent>
     </Dialog>
-    </>
   );
 }
