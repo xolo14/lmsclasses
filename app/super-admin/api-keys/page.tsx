@@ -319,13 +319,13 @@ export default function SuperAdminApiKeysPage() {
         title="API Keys"
         description="Widget, recording, and pages API keys for partner platforms."
       >
-        <Button variant="outline" onClick={() => setPagesModalOpen(true)}>
+        <Button onClick={() => setPagesModalOpen(true)}>
           <LayoutGrid className="h-4 w-4 mr-2" /> Pages API Key
         </Button>
         <Button variant="outline" onClick={() => setRecordingsModalOpen(true)}>
           <Film className="h-4 w-4 mr-2" /> Recording Access Key
         </Button>
-        <Button onClick={() => setModalOpen(true)}>
+        <Button variant="outline" onClick={() => setModalOpen(true)}>
           <Plus className="h-4 w-4 mr-2" /> Generate Widget Key
         </Button>
       </PageHeader>
@@ -338,13 +338,13 @@ export default function SuperAdminApiKeysPage() {
             another platform can read and write selected LMS pages.
           </p>
           <div className="flex flex-wrap justify-center gap-2">
-            <Button variant="outline" onClick={() => setPagesModalOpen(true)}>
+            <Button onClick={() => setPagesModalOpen(true)}>
               <LayoutGrid className="h-4 w-4 mr-2" /> Pages API Key
             </Button>
             <Button variant="outline" onClick={() => setRecordingsModalOpen(true)}>
               <Film className="h-4 w-4 mr-2" /> Recording Access Key
             </Button>
-            <Button onClick={() => setModalOpen(true)}>
+            <Button variant="outline" onClick={() => setModalOpen(true)}>
               <Plus className="h-4 w-4 mr-2" /> Generate Widget Key
             </Button>
           </div>

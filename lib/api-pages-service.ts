@@ -33,6 +33,16 @@ export class PagesApiError extends Error {
   }
 }
 
+export type PagesWriteContext = { apiKeyId: string; apiKeyName: string };
+
+const LIVE_CLASS_STATUSES = ["scheduled", "live", "completed", "cancelled"] as const;
+const LEAD_STATUSES = ["new", "contacted", "follow_up", "converted", "lost"] as const;
+const LEAD_PAYMENT_STATUSES = ["initiated", "completed", "failed", "cancelled"] as const;
+
+function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value);
+}
+
 function omitSecret<T extends { password?: string | null }>(row: T) {
   const { password: _omit, ...rest } = row;
   return rest;
@@ -113,7 +123,7 @@ async function createStudent(body: unknown) {
 
 async function updateStudent(id: string, body: Record<string, unknown>) {
   await getStudent(id);
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  const patch: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
   if (typeof body.name === "string") patch.name = body.name;
   if (typeof body.email === "string") patch.email = body.email.trim().toLowerCase();
   if (typeof body.phone === "string") patch.phone = body.phone;
@@ -171,7 +181,7 @@ async function createLiveCourse(body: unknown) {
 
 async function updateLiveCourse(id: string, body: Record<string, unknown>) {
   await getLiveCourse(id);
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  const patch: Partial<typeof liveCourses.$inferInsert> = { updatedAt: new Date() };
   if (typeof body.title === "string") patch.title = body.title;
   if (typeof body.description === "string") patch.description = body.description;
   if (body.price != null) patch.price = String(body.price);
@@ -231,7 +241,7 @@ async function createRecordCourse(body: unknown) {
 
 async function updateRecordCourse(id: string, body: Record<string, unknown>) {
   await getRecordCourse(id);
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  const patch: Partial<typeof recordCourses.$inferInsert> = { updatedAt: new Date() };
   if (typeof body.title === "string") patch.title = body.title;
   if (typeof body.description === "string") patch.description = body.description;
   if (body.price != null) patch.price = String(body.price);
@@ -298,7 +308,7 @@ async function createBatch(body: unknown) {
 
 async function updateBatch(id: string, body: Record<string, unknown>) {
   await getBatch(id);
-  const patch: Record<string, unknown> = {};
+  const patch: Partial<typeof batches.$inferInsert> = {};
   if (typeof body.name === "string") patch.name = body.name;
   if (typeof body.maxSlots === "number") patch.maxSlots = body.maxSlots;
   if (typeof body.startDate === "string") patch.startDate = new Date(body.startDate);
@@ -360,7 +370,7 @@ async function createMentor(body: unknown) {
 
 async function updateMentor(id: string, body: Record<string, unknown>) {
   await getMentor(id);
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  const patch: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
   if (typeof body.name === "string") patch.name = body.name;
   if (typeof body.email === "string") patch.email = body.email.trim().toLowerCase();
   if (typeof body.phone === "string") patch.phone = body.phone;
@@ -434,9 +444,9 @@ async function createLiveClass(body: unknown) {
 
 async function updateLiveClass(id: string, body: Record<string, unknown>) {
   await getLiveClass(id);
-  const patch: Record<string, unknown> = {};
+  const patch: Partial<typeof liveClasses.$inferInsert> = {};
   if (typeof body.title === "string") patch.title = body.title;
-  if (typeof body.status === "string") patch.status = body.status;
+  if (isOneOf(body.status, LIVE_CLASS_STATUSES)) patch.status = body.status;
   if (typeof body.meetingLink === "string") patch.meetingLink = body.meetingLink;
   if (typeof body.scheduledAt === "string") patch.scheduledAt = new Date(body.scheduledAt);
   if (typeof body.duration === "number") patch.duration = body.duration;
@@ -487,7 +497,7 @@ async function createRecording(body: unknown) {
 
 async function updateRecording(id: string, body: Record<string, unknown>) {
   await getRecording(id);
-  const patch: Record<string, unknown> = {};
+  const patch: Partial<typeof classRecordings.$inferInsert> = {};
   if (typeof body.weekName === "string") patch.weekName = body.weekName;
   if (typeof body.topicName === "string") patch.topicName = body.topicName;
   if (typeof body.videoUrl === "string") patch.videoUrl = body.videoUrl;
@@ -511,12 +521,13 @@ async function getLead(id: string) {
   return row;
 }
 
-async function createLead(body: Record<string, unknown>, ctx?: PagesWriteContext) {
+async function createLead(body: unknown, ctx?: PagesWriteContext) {
   if (!ctx) throw new PagesApiError("API key context missing", 500);
-  const fullName = typeof body.fullName === "string" ? body.fullName : typeof body.name === "string" ? body.name : "";
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const phone = typeof body.phone === "string" ? body.phone : "";
-  const courseId = typeof body.courseId === "string" ? body.courseId : "";
+  const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const fullName = typeof data.fullName === "string" ? data.fullName : typeof data.name === "string" ? data.name : "";
+  const email = typeof data.email === "string" ? data.email.trim().toLowerCase() : "";
+  const phone = typeof data.phone === "string" ? data.phone : "";
+  const courseId = typeof data.courseId === "string" ? data.courseId : "";
   if (!fullName || !email || !phone || !courseId) {
     throw new PagesApiError("fullName, email, phone, and courseId are required", 422);
   }
@@ -543,11 +554,11 @@ async function createLead(body: Record<string, unknown>, ctx?: PagesWriteContext
 
 async function updateLead(id: string, body: Record<string, unknown>) {
   await getLead(id);
-  const patch: Record<string, unknown> = { updatedAt: new Date() };
-  if (typeof body.status === "string") patch.status = body.status;
-  if (typeof body.paymentStatus === "string") patch.paymentStatus = body.paymentStatus;
+  const patch: Partial<typeof widgetLeads.$inferInsert> = { updatedAt: new Date() };
+  if (isOneOf(body.status, LEAD_STATUSES)) patch.status = body.status;
+  if (isOneOf(body.paymentStatus, LEAD_PAYMENT_STATUSES)) patch.paymentStatus = body.paymentStatus;
   if (typeof body.name === "string" || typeof body.fullName === "string") {
-    patch.fullName = typeof body.fullName === "string" ? body.fullName : body.name;
+    patch.fullName = typeof body.fullName === "string" ? body.fullName : String(body.name);
   }
   if (typeof body.phone === "string") patch.phone = body.phone;
   await db.update(widgetLeads).set(patch).where(eq(widgetLeads.id, id));
@@ -596,7 +607,7 @@ async function createCertificate() {
 
 async function updateCertificate(id: string, body: Record<string, unknown>) {
   await getCertificate(id);
-  const patch: Record<string, unknown> = {};
+  const patch: Partial<typeof issuedCertificates.$inferInsert> = {};
   if (body.isRevoked === true) {
     patch.isRevoked = true;
     patch.revokedAt = new Date();
@@ -619,8 +630,6 @@ async function deleteCertificate(id: string) {
     .where(eq(issuedCertificates.id, id));
   return { success: true };
 }
-
-export type PagesWriteContext = { apiKeyId: string; apiKeyName: string };
 
 const handlers: Record<
   ApiPageId,
