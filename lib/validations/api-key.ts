@@ -1,12 +1,15 @@
 import { z } from "zod";
-import { API_PERMISSIONS } from "@/lib/api-key-types";
+import { API_PAGES, API_PERMISSIONS } from "@/lib/api-key-types";
+
+const API_PAGE_IDS = API_PAGES.map((p) => p.id) as [string, ...string[]];
 
 export const createApiKeySchema = z
   .object({
-    keyType: z.enum(["widget", "recordings"]).optional().default("widget"),
+    keyType: z.enum(["widget", "recordings", "pages"]).optional().default("widget"),
     name: z.string().min(2).max(120),
     courseId: z.string().uuid().optional(),
     allowedCourses: z.array(z.string().uuid()).optional().default([]),
+    pages: z.array(z.enum(API_PAGE_IDS)).optional().default([]),
     permissions: z.array(z.enum(API_PERMISSIONS)).min(1).optional(),
     allowedPaymentGateway: z.enum(["razorpay", "manual", "any"]).optional().default("any"),
     widgetDomainsAllowed: z.array(z.string()).optional().default([]),
@@ -67,7 +70,15 @@ export const createApiKeySchema = z
     ),
   })
   .superRefine((val, ctx) => {
-    if (val.keyType === "recordings") {
+    if (val.keyType === "pages") {
+      if (!val.pages || val.pages.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Select at least one page",
+          path: ["pages"],
+        });
+      }
+    } else if (val.keyType === "recordings") {
       if (!val.allowedCourses || val.allowedCourses.length === 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

@@ -10,7 +10,7 @@ import {
   hashApiKey,
   extractDisplayPrefix,
 } from "@/lib/api-key-service";
-import { DEFAULT_LEAD_FIELDS, DEFAULT_RATE_LIMIT, RECORDINGS_KEY_PERMISSIONS, WIDGET_KEY_DEFAULT_PERMISSIONS } from "@/lib/api-key-types";
+import { DEFAULT_LEAD_FIELDS, DEFAULT_RATE_LIMIT, RECORDINGS_KEY_PERMISSIONS, WIDGET_KEY_DEFAULT_PERMISSIONS, isPagesApiKey, pagePermission } from "@/lib/api-key-types";
 import { serializeApiKey, insertApiKeySafe, selectApiKeysSafe } from "@/lib/api-key-admin";
 import { buildEmbedSnippet } from "@/lib/widget/build-embed-snippet";
 import { generateUniqueFormSlug } from "@/lib/widget/form-slug";
@@ -70,6 +70,7 @@ export async function GET(request: Request) {
         const ids = allowed.length > 0 ? allowed : k.courseId ? [k.courseId] : [];
         const titles = ids.map((id) => courseTitleById.get(id)).filter(Boolean) as string[];
         const isRecordingsKey = ((k.permissions ?? []) as string[]).includes("get_recordings");
+        const pagesKey = isPagesApiKey(k);
         const stats = statsByKey.get(k.id);
         return {
           ...serializeApiKey(k, {
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
                 : titles[0] ?? null,
             coursePrice: titles.length === 1 && ids[0] ? (coursePriceById.get(ids[0]!) ?? null) : null,
           }),
-          keyType: isRecordingsKey ? "recordings" : "widget",
+          keyType: pagesKey ? "pages" : isRecordingsKey ? "recordings" : "widget",
           courseTitles: titles,
           allowedCourses: ids,
           totalLeads: stats?.totalLeads ?? 0,
@@ -123,58 +124,65 @@ export async function POST(request: Request) {
 
     const data = parsed.data;
     const isRecordingsKey = data.keyType === "recordings";
+    const isPagesKey = data.keyType === "pages";
 
-    const courseIds = isRecordingsKey
-      ? [...new Set(data.allowedCourses ?? [])]
-      : data.courseId
-        ? [data.courseId]
-        : [];
+    const courseIds = isPagesKey
+      ? []
+      : isRecordingsKey
+        ? [...new Set(data.allowedCourses ?? [])]
+        : data.courseId
+          ? [data.courseId]
+          : [];
 
-    if (courseIds.length === 0) {
+    if (!isPagesKey && courseIds.length === 0) {
       return NextResponse.json({ error: "Select at least one course" }, { status: 400 });
     }
 
-    const courseRows = await db
-      .select({ id: recordCourses.id, title: recordCourses.title, price: recordCourses.price })
-      .from(recordCourses)
-      .where(inArray(recordCourses.id, courseIds));
+    const courseRows = courseIds.length
+      ? await db
+          .select({ id: recordCourses.id, title: recordCourses.title, price: recordCourses.price })
+          .from(recordCourses)
+          .where(inArray(recordCourses.id, courseIds))
+      : [];
 
-    if (courseRows.length !== courseIds.length) {
+    if (!isPagesKey && courseRows.length !== courseIds.length) {
       return NextResponse.json({ error: "One or more courses were not found" }, { status: 400 });
     }
 
-    const primaryCourse = courseRows.find((c) => c.id === courseIds[0]) ?? courseRows[0]!;
+    const primaryCourse = courseRows.find((c) => c.id === courseIds[0]) ?? courseRows[0];
 
     const plainKey = generatePlainApiKey(data.environment);
     const keyHash = hashApiKey(plainKey);
     const keyPrefix = extractDisplayPrefix(plainKey);
-    const formSlug = isRecordingsKey ? null : await generateUniqueFormSlug(data.name);
+    const formSlug = isRecordingsKey || isPagesKey ? null : await generateUniqueFormSlug(data.name);
 
-    const defaultPermissions = data.permissions?.length
-      ? data.permissions
-      : isRecordingsKey
-        ? RECORDINGS_KEY_PERMISSIONS
-        : WIDGET_KEY_DEFAULT_PERMISSIONS;
+    const defaultPermissions = isPagesKey
+      ? (data.pages ?? []).map((id) => pagePermission(id))
+      : data.permissions?.length
+        ? data.permissions
+        : isRecordingsKey
+          ? RECORDINGS_KEY_PERMISSIONS
+          : WIDGET_KEY_DEFAULT_PERMISSIONS;
 
     const insertValues = {
       name: data.name,
       keyPrefix,
       keyHash,
       permissions: defaultPermissions,
-      courseId: primaryCourse.id,
+      courseId: isPagesKey ? null : primaryCourse!.id,
       allowedCourses: courseIds,
-      allowedPaymentGateway: isRecordingsKey ? "any" : (data.allowedPaymentGateway ?? "any"),
-      webhookUrl: isRecordingsKey ? null : (data.webhookUrl ?? null),
-      webhookSecret: isRecordingsKey ? null : (data.webhookSecret ?? null),
-      leadFields: isRecordingsKey ? { required: [], optional: [] } : (data.leadFields ?? DEFAULT_LEAD_FIELDS),
-      autoCreateStudent: isRecordingsKey ? false : (data.autoCreateStudent ?? true),
-      sendWelcomeEmail: isRecordingsKey ? false : (data.sendWelcomeEmail ?? true),
-      notifyWebhook: isRecordingsKey ? false : (data.notifyWebhook ?? false),
+      allowedPaymentGateway: isRecordingsKey || isPagesKey ? "any" : (data.allowedPaymentGateway ?? "any"),
+      webhookUrl: isRecordingsKey || isPagesKey ? null : (data.webhookUrl ?? null),
+      webhookSecret: isRecordingsKey || isPagesKey ? null : (data.webhookSecret ?? null),
+      leadFields: isRecordingsKey || isPagesKey ? { required: [], optional: [] } : (data.leadFields ?? DEFAULT_LEAD_FIELDS),
+      autoCreateStudent: isRecordingsKey || isPagesKey ? false : (data.autoCreateStudent ?? true),
+      sendWelcomeEmail: isRecordingsKey || isPagesKey ? false : (data.sendWelcomeEmail ?? true),
+      notifyWebhook: isRecordingsKey || isPagesKey ? false : (data.notifyWebhook ?? false),
       rateLimit: data.rateLimit ?? DEFAULT_RATE_LIMIT,
       ipWhitelist: data.ipWhitelist ?? [],
-      widgetDomainsAllowed: isRecordingsKey ? [] : (data.widgetDomainsAllowed ?? []),
-      redirectOnSuccess: isRecordingsKey ? "/login" : (data.redirectOnSuccess ?? "/login"),
-      redirectOnFailure: isRecordingsKey ? null : (data.redirectOnFailure ?? null),
+      widgetDomainsAllowed: isRecordingsKey || isPagesKey ? [] : (data.widgetDomainsAllowed ?? []),
+      redirectOnSuccess: isRecordingsKey || isPagesKey ? "/login" : (data.redirectOnSuccess ?? "/login"),
+      redirectOnFailure: isRecordingsKey || isPagesKey ? null : (data.redirectOnFailure ?? null),
       expiresAt: data.expiresAt ?? null,
       environment: data.environment ?? "live",
       isActive: true,
@@ -196,6 +204,7 @@ export async function POST(request: Request) {
         courseId: row.courseId,
         keyType: data.keyType ?? "widget",
         allowedCourses: courseIds,
+        pages: data.pages ?? [],
       },
       ipAddress: getClientIp(request),
     });
@@ -205,18 +214,20 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ...serializeApiKey(row, {
-          courseTitle:
-            courseTitles.length > 1
+          courseTitle: isPagesKey
+            ? null
+            : courseTitles.length > 1
               ? `${courseTitles.length} courses`
-              : primaryCourse.title,
-          coursePrice: courseTitles.length === 1 ? parseFloat(primaryCourse.price) : null,
+              : primaryCourse?.title ?? null,
+          coursePrice: !isPagesKey && courseTitles.length === 1 ? parseFloat(primaryCourse!.price) : null,
         }),
         key: plainKey,
-        embedSnippet: isRecordingsKey ? null : buildEmbedSnippet(plainKey),
+        embedSnippet: isRecordingsKey || isPagesKey ? null : buildEmbedSnippet(plainKey),
         keyType: data.keyType ?? "widget",
         allowedCourses: courseIds,
         courseTitles,
         recordingsEndpoint: isRecordingsKey ? "/api/external/recordings" : null,
+        pagesEndpoint: isPagesKey ? "/api/external/pages" : null,
       },
       { status: 201 }
     );

@@ -4,7 +4,7 @@ import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { apiKeys, recordCourses } from "@/lib/db/schema";
 import { maskFromPrefix, resolveAllowedCourseIds } from "@/lib/api-key-service";
-import { isRecordingsApiKey } from "@/lib/api-key-types";
+import { isPagesApiKey, isRecordingsApiKey, pagesFromPermissions } from "@/lib/api-key-types";
 import { buildFormLink } from "@/lib/widget/form-slug";
 
 export function resolveApiKeyCourseId(k: ApiKey): string | null {
@@ -210,16 +210,18 @@ export function serializeApiKey(
   const courseId = resolveApiKeyCourseId(k);
   const allowedCourses = resolveAllowedCourseIds(k);
   const recordingsKey = isRecordingsApiKey(k);
+  const pagesKey = isPagesApiKey(k);
   return {
     id: k.id,
     name: k.name,
     maskedKey: maskFromPrefix(k.keyPrefix, k.environment ?? "live"),
     keyPrefix: k.keyPrefix,
-    courseId,
-    courseTitle: options?.courseTitle ?? null,
-    coursePrice: options?.coursePrice ?? null,
-    courseTitles: options?.courseTitles ?? [],
-    keyType: recordingsKey ? ("recordings" as const) : ("widget" as const),
+    courseId: pagesKey ? null : courseId,
+    courseTitle: pagesKey ? null : (options?.courseTitle ?? null),
+    coursePrice: pagesKey ? null : (options?.coursePrice ?? null),
+    courseTitles: pagesKey ? [] : (options?.courseTitles ?? []),
+    keyType: pagesKey ? ("pages" as const) : recordingsKey ? ("recordings" as const) : ("widget" as const),
+    pages: pagesFromPermissions(k.permissions),
     permissions: k.permissions ?? [],
     allowedCourses,
     allowedPaymentGateway: k.allowedPaymentGateway,
@@ -233,17 +235,17 @@ export function serializeApiKey(
     ipWhitelist: k.ipWhitelist ?? [],
     environment: k.environment,
     isActive: k.isActive,
-    widgetDomainsAllowed: recordingsKey ? [] : (k.widgetDomainsAllowed ?? []),
+    widgetDomainsAllowed: recordingsKey || pagesKey ? [] : (k.widgetDomainsAllowed ?? []),
     redirectOnSuccess: k.redirectOnSuccess ?? "/login",
     redirectOnFailure: k.redirectOnFailure ?? null,
     expiresAt: k.expiresAt,
     lastUsedAt: k.lastUsedAt,
     usageCount: k.usageCount,
     notes: k.notes,
-    // Recordings keys never expose hosted form / embed enrollment links
-    formSlug: recordingsKey ? null : (k.formSlug ?? null),
-    formLink: recordingsKey || !k.formSlug ? null : buildFormLink(k.formSlug),
+    formSlug: recordingsKey || pagesKey ? null : (k.formSlug ?? null),
+    formLink: recordingsKey || pagesKey || !k.formSlug ? null : buildFormLink(k.formSlug),
     recordingsEndpoint: recordingsKey ? "/api/external/recordings" : null,
+    pagesEndpoint: pagesKey ? "/api/external/pages" : null,
     createdAt: k.createdAt,
     updatedAt: k.updatedAt,
   };

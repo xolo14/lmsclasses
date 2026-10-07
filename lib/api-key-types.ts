@@ -34,6 +34,37 @@ export function isRecordingsApiKey(apiKey: {
   return ((apiKey.permissions ?? []) as string[]).includes("get_recordings");
 }
 
+export const API_PAGES = [
+  { id: "students", label: "Students" },
+  { id: "live-courses", label: "Live Courses" },
+  { id: "record-courses", label: "Record Courses" },
+  { id: "batches", label: "Batches" },
+  { id: "mentors", label: "Mentors" },
+  { id: "live-classes", label: "Live Classes" },
+  { id: "live-recordings", label: "Live Recordings" },
+  { id: "leads", label: "Leads" },
+  { id: "certificates", label: "Certificates" },
+] as const;
+
+export type ApiPageId = (typeof API_PAGES)[number]["id"];
+
+export function pagePermission(id: ApiPageId | string): string {
+  return `page:${id}`;
+}
+
+export function isPagesApiKey(apiKey: { permissions?: string[] | null }): boolean {
+  return ((apiKey.permissions ?? []) as string[]).some((p) => p.startsWith("page:"));
+}
+
+export function pagesFromPermissions(permissions?: string[] | null): string[] {
+  const set = new Set(permissions ?? []);
+  return API_PAGES.filter((p) => set.has(pagePermission(p.id))).map((p) => p.label);
+}
+
+export function isApiPageId(value: string): value is ApiPageId {
+  return API_PAGES.some((p) => p.id === value);
+}
+
 export const WIDGET_KEY_DEFAULT_PERMISSIONS: ApiPermission[] = [
   "submit_lead",
   "get_lead_status",

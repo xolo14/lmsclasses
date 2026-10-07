@@ -11,8 +11,8 @@ import {
   sanitizeLogBody,
   courseAllowed,
 } from "@/lib/api-key-service";
-import type { ApiPermission } from "@/lib/api-key-types";
-import { DEFAULT_RATE_LIMIT } from "@/lib/api-key-types";
+import type { ApiPageId, ApiPermission } from "@/lib/api-key-types";
+import { DEFAULT_RATE_LIMIT, isApiPageId, pagePermission } from "@/lib/api-key-types";
 import { getClientIp } from "@/lib/audit";
 
 export type ApiKeyContext = {
@@ -74,7 +74,7 @@ export { courseAllowed, isTestKey } from "@/lib/api-key-service";
 
 export async function requireApiKey(
   request: Request,
-  permission: ApiPermission,
+  permission: ApiPermission | string,
   endpoint: string
 ): Promise<{ error?: NextResponse; context?: ApiKeyContext }> {
   const startTime = Date.now();
@@ -132,6 +132,19 @@ export async function requireApiKey(
     .catch((err) => console.error("[api-key-last-used]", err));
 
   return { context: { apiKey, ipAddress, startTime } };
+}
+
+export async function requireApiPage(
+  request: Request,
+  page: string,
+  endpoint: string
+): Promise<{ error?: NextResponse; context?: ApiKeyContext; page?: ApiPageId }> {
+  if (!isApiPageId(page)) {
+    return { error: NextResponse.json({ error: "UNKNOWN_PAGE", message: "Unknown page" }, { status: 404 }) };
+  }
+  const auth = await requireApiKey(request, pagePermission(page), endpoint);
+  if (auth.error) return auth;
+  return { ...auth, page };
 }
 
 export async function finishApiKeyRequest(
